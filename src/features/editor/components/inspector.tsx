@@ -14,7 +14,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { REFERENCE_FORMATS, REFERENCE_ID, SAMPLESHEET_ID } from "@/features/workflow/builtins";
 import { resolveNodeDef } from "@/features/workflow/catalog";
 import { portSignature, socketInputs } from "@/features/workflow/ports";
-import { usePipelineSchema, type JsonSchema } from "@/features/workflow/queries";
+import { projectMeta } from "@/features/project/generate";
+import { buildParamsSchema, referenceParams } from "@/features/project/schema";
 import samplesheetSchema from "@/data/samplesheet-schema.json";
 import type { ModuleDef, PortDef } from "@/features/workflow/types";
 import { cn } from "@/lib/utils";
@@ -274,39 +275,28 @@ function NodeInspector({ node }: { node: FlowNode }) {
 }
 
 function PipelineInspector() {
-  const { data: schema } = usePipelineSchema();
   const params = useEditorStore((s) => s.params);
   const setParam = useEditorStore((s) => s.setParam);
   const nodes = useEditorStore((s) => s.nodes);
+  const name = useEditorStore((s) => s.name);
+  const description = useEditorStore((s) => s.description);
+  const project = useEditorStore((s) => s.project);
 
-  const extraFields = React.useMemo(
-    () =>
-      nodes
-        .filter((n) => n.data.moduleId === REFERENCE_ID && n.data.settings?.param)
-        .map((n) => ({
-          name: String(n.data.settings!.param),
-          spec: {
-            type: "string",
-            format: "file-path",
-            description: `参考文件（${String(n.data.settings?.format ?? "file")}），连接到 ${n.data.alias}`,
-          } satisfies JsonSchema,
-        })),
-    [nodes],
-  );
+  // Same schema the generated project ships as nextflow_schema.json.
+  const schema = React.useMemo(() => {
+    const meta = projectMeta({ name, description, project });
+    return buildParamsSchema(meta.name, meta.description, referenceParams({ nodes }));
+  }, [nodes, name, description, project]);
 
   return (
     <div className="grid gap-4 p-4">
       <div>
         <div className="font-serif text-lg font-semibold">流程参数</div>
         <p className="text-sm text-muted-foreground">
-          来自 nextflow_schema.json。选中画布中的节点可编辑节点配置。
+          与生成项目的 nextflow_schema.json 一致。选中画布中的节点可编辑节点配置。
         </p>
       </div>
-      {schema ? (
-        <SchemaForm schema={schema} values={params} onChange={setParam} extraFields={extraFields} />
-      ) : (
-        <div className="text-sm text-muted-foreground">加载参数定义…</div>
-      )}
+      <SchemaForm schema={schema} values={params} onChange={setParam} />
     </div>
   );
 }

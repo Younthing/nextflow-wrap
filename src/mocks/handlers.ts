@@ -1,12 +1,12 @@
 import { delay, http, HttpResponse } from "msw";
 
 import catalog from "@/data/nf-core-modules.json";
-import pipelineSchema from "@/data/pipeline-schema.json";
 import samplesheetSchema from "@/data/samplesheet-schema.json";
 import { newId } from "@/features/workflow/nodes";
 import type { ModuleCatalog, WorkflowDoc, WorkflowSummary } from "@/features/workflow/types";
 import type { HealthStatus } from "@/lib/api-types";
 import { readDb, writeDb } from "./db";
+import { runHandlers } from "./runs";
 
 const summarize = (w: WorkflowDoc): WorkflowSummary => ({
   id: w.id,
@@ -33,7 +33,6 @@ export const handlers = [
     return HttpResponse.json(catalog as ModuleCatalog);
   }),
 
-  http.get("/api/schemas/pipeline", () => HttpResponse.json(pipelineSchema)),
   http.get("/api/schemas/samplesheet", () => HttpResponse.json(samplesheetSchema)),
 
   http.get("/api/workflows", async () => {
@@ -78,4 +77,6 @@ export const handlers = [
     });
     return new HttpResponse(null, { status: 204 });
   }),
+
+  ...runHandlers,
 ];

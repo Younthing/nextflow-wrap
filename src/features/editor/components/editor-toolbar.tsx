@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   Download,
   FolderOpen,
+  Play,
   Plus,
   Redo2,
   Save,
@@ -163,6 +164,7 @@ export function EditorToolbar({
   onImport,
   onExport,
   onFocusNode,
+  onRun,
 }: {
   issues: Issue[];
   saving: boolean;
@@ -172,6 +174,7 @@ export function EditorToolbar({
   onImport: (file: File) => void;
   onExport: () => void;
   onFocusNode: (id: string) => void;
+  onRun: () => void;
 }) {
   const name = useEditorStore((s) => s.name);
   const setName = useEditorStore((s) => s.setName);
@@ -227,8 +230,11 @@ export function EditorToolbar({
           e.target.value = "";
         }}
       />
-      <div className="ml-auto">
+      <div className="ml-auto flex items-center gap-2">
         <IssuesBadge issues={issues} onFocus={onFocusNode} />
+        <Button size="sm" onClick={onRun}>
+          <Play /> 运行
+        </Button>
       </div>
       <OpenWorkflowDialog
         open={openDialog}

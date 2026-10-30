@@ -8,6 +8,7 @@ import { BUILTIN_MODULES } from "@/features/workflow/builtins";
 import { emptyWorkflow, parseWorkflowDoc } from "@/features/workflow/document";
 import { useModuleCatalog, useSaveWorkflow, useWorkflow } from "@/features/workflow/queries";
 import { validateWorkflow } from "@/features/workflow/validate";
+import { RunDialog } from "@/features/runs/components/run-dialog";
 import { selectIsDirty, useEditorStore } from "../store";
 import { toast } from "../toast";
 import { EditorToolbar } from "./editor-toolbar";
@@ -29,7 +30,7 @@ function readCurrentId() {
   }
 }
 
-function rememberCurrentId(id: string) {
+export function rememberCurrentId(id: string) {
   try {
     localStorage.setItem(CURRENT_KEY, id);
   } catch {
@@ -53,6 +54,7 @@ function Editor() {
   const { fitView, setCenter, screenToFlowPosition } = useReactFlow();
   const canvasRef = React.useRef<HTMLDivElement>(null);
   const [search, setSearch] = React.useState<SearchRequest | null>(null);
+  const [runOpen, setRunOpen] = React.useState(false);
 
   const store = useEditorStore;
   const docId = useEditorStore((s) => s.docId);
@@ -219,6 +221,10 @@ function Editor() {
             const doc = store.getState().toDoc();
             downloadJson(doc.name || "workflow", doc);
           }}
+          onRun={() => {
+            if (store.getState().docId && selectIsDirty(store.getState())) doSave(true);
+            setRunOpen(true);
+          }}
           onFocusNode={(id) => {
             const node = store.getState().nodes.find((n) => n.id === id);
             if (!node) return;
@@ -242,6 +248,7 @@ function Editor() {
       </div>
       <Inspector className="w-80 shrink-0" />
       <NodeSearchDialog request={search} modules={modules} onPick={onPick} onClose={() => setSearch(null)} />
+      <RunDialog open={runOpen} onOpenChange={setRunOpen} issues={issues} modulesSha={catalog.data?.gitSha ?? ""} />
       <Toaster />
     </div>
   );

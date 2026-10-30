@@ -1,0 +1,58 @@
+import { describe, expect, it } from "vitest";
+
+import catalog from "@/data/nf-core-modules.json";
+import { defaultLaunchConfig } from "@/features/project/launch";
+import { indexModules } from "@/features/workflow/catalog";
+import { demoRnaseqWorkflow } from "@/features/workflow/demo";
+import type { ModuleCatalog, PipelineParams } from "@/features/workflow/types";
+import { simulateRun } from "./simulate";
+
+const index = indexModules((catalog as ModuleCatalog).modules);
+const T0 = Date.parse("2026-01-01T00:00:00Z");
+const HOUR = 3_600_000;
+
+function run(extra: { params?: PipelineParams; cancelledAt?: number } = {}) {
+  const workflow = demoRnaseqWorkflow("wf");
+  return {
+    id: "run_test",
+    workflow,
+    params: { ...workflow.params, ...extra.params },
+    submittedAt: new Date(T0).toISOString(),
+    cancelledAt: extra.cancelledAt ? new Date(extra.cancelledAt).toISOString() : undefined,
+    launch: defaultLaunchConfig(),
+  };
+}
+
+describe("simulateRun", () => {
+  it("is queued before start and succeeds once every task finishes", () => {
+    expect(simulateRun(run(), index, T0 + 1000).status).toBe("submitted");
+    const done = simulateRun(run(), index, T0 + HOUR);
+    expect(done.status).toBe("succeeded");
+    expect(done.progress.completed).toBe(done.progress.total);
+    // FASTP, FASTQC and STAR_ALIGN run once per sample.
+    expect(done.tasks.filter((t) => t.process === "FASTP")).toHaveLength(3);
+    expect(done.tasks.filter((t) => t.process === "MULTIQC")).toHaveLength(1);
+  });
+
+  it("never starts a task before its inputs are done", () => {
+    const { tasks } = simulateRun(run(), index, T0 + HOUR);
+    const multiqc = tasks.find((t) => t.process === "MULTIQC")!;
+    const lastOther = Math.max(...tasks.filter((t) => t !== multiqc).map((t) => Date.parse(t.completedAt!)));
+    expect(Date.parse(multiqc.startedAt!)).toBeGreaterThan(lastOther);
+  });
+
+  it("fails with the failing task's name when simulate_failure is set", () => {
+    const sim = simulateRun(run({ params: { simulate_failure: true } }), index, T0 + HOUR);
+    expect(sim.status).toBe("failed");
+    expect(sim.progress.failed).toBe(1);
+    expect(sim.errorMessage).toMatch(/terminated with an error exit status/);
+    expect(sim.failedNodeId).toBeDefined();
+  });
+
+  it("aborts running tasks when cancelled", () => {
+    const sim = simulateRun(run({ cancelledAt: T0 + 6000 }), index, T0 + HOUR);
+    expect(sim.status).toBe("cancelled");
+    expect(sim.progress.aborted).toBeGreaterThan(0);
+    expect(sim.tasks.some((t) => t.process === "MULTIQC" && t.status === "pending")).toBe(true);
+  });
+});

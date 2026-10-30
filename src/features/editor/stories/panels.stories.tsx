@@ -1,9 +1,8 @@
 import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { fn } from "storybook/test";
 
-import pipelineSchema from "@/data/pipeline-schema.json";
+import { buildParamsSchema } from "@/features/project/schema";
 import { SAMPLESHEET_ID } from "@/features/workflow/builtins";
-import type { JsonSchema } from "@/features/workflow/queries";
 import { ModuleLibrary } from "../components/module-library";
 import { NodeSearchDialog } from "../components/node-search-dialog";
 import { SchemaForm } from "../components/schema-form";
@@ -31,10 +30,12 @@ export const PipelineParams: Story = {
   render: () => (
     <div className="glass w-96 rounded-xl p-4">
       <SchemaForm
-        schema={pipelineSchema as JsonSchema}
+        schema={buildParamsSchema("studio/rnaseq", "RNA-seq", [
+          { name: "fasta", format: "fasta", nodeAlias: "REFERENCE" },
+          { name: "gtf", format: "gtf", nodeAlias: "REFERENCE_2" },
+        ])}
         values={{ input: "assets/samplesheet.csv", outdir: "results" }}
         onChange={fn()}
-        extraFields={[{ name: "gtf", spec: { type: "string", format: "file-path", description: "参考注释" } }]}
       />
     </div>
   ),

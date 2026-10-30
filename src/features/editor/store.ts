@@ -19,6 +19,7 @@ import { checkCompatibility, findPort, type Compatibility } from "@/features/wor
 import type {
   ModuleDef,
   PipelineParams,
+  ProjectSettings,
   WidgetValue,
   WorkflowDoc,
   WorkflowNodeData,
@@ -39,6 +40,7 @@ interface EditorState {
   docId: string;
   name: string;
   description?: string;
+  project?: ProjectSettings;
   params: PipelineParams;
   nodes: FlowNode[];
   edges: FlowEdge[];
@@ -64,6 +66,7 @@ interface EditorState {
   setWidget: (id: string, name: string, value: WidgetValue) => void;
   removeNodes: (ids: string[]) => void;
   setName: (name: string) => void;
+  setProject: (project: ProjectSettings) => void;
   setParam: (key: string, value: WidgetValue | undefined) => void;
 
   beginChange: (key?: string) => void;
@@ -100,6 +103,7 @@ export const useEditorStore = create<EditorState>()((set, get) => {
         docId: doc.id,
         name: doc.name,
         description: doc.description,
+        project: doc.project,
         params: doc.params,
         nodes: doc.nodes.map(toFlowNode),
         edges: doc.edges.map((e) => ({ ...e })),
@@ -116,6 +120,7 @@ export const useEditorStore = create<EditorState>()((set, get) => {
         id: s.docId,
         name: s.name,
         description: s.description,
+        project: s.project,
         version: 1,
         params: s.params,
         nodes: s.nodes.map((n) => ({ id: n.id, position: n.position, data: n.data })),
@@ -260,6 +265,11 @@ export const useEditorStore = create<EditorState>()((set, get) => {
     setName: (name) => {
       get().beginChange("name");
       commit({ name });
+    },
+
+    setProject: (project) => {
+      get().beginChange("project");
+      commit({ project });
     },
 
     setParam: (key, value) => {

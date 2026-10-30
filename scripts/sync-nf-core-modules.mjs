@@ -8,10 +8,16 @@
  *
  *   node scripts/sync-nf-core-modules.mjs
  */
+import { execFileSync } from "node:child_process";
 import { writeFile } from "node:fs/promises";
 import { parse } from "yaml";
 
-const REF = process.env.NF_CORE_MODULES_REF ?? "master";
+// Pin to a commit so modules.json in generated projects can reference it.
+const REF =
+  process.env.NF_CORE_MODULES_REF ??
+  execFileSync("git", ["ls-remote", "https://github.com/nf-core/modules", "refs/heads/master"], {
+    encoding: "utf8",
+  }).split("\t")[0];
 const RAW = `https://raw.githubusercontent.com/nf-core/modules/${REF}/modules/nf-core`;
 
 /** Modules exposed in the library, grouped by category for the side panel. */
@@ -104,7 +110,10 @@ function parseMain(src) {
   const container = src.match(/'((?:community\.wave\.seqera\.io|quay\.io|biocontainers)[^']+)'\s*}"/)?.[1];
   // Output emit order follows main.nf, which is how users think about it.
   const emits = [...src.matchAll(/emit:\s*([A-Za-z0-9_]+)/g)].map((m) => m[1]);
-  return { process, label, container, emits };
+  // Newer modules publish versions on the `versions` topic; older ones still
+  // emit a versions.yml that the workflow has to mix in by hand.
+  const versions = /emit:\s*versions\s*$/m.test(src) ? "emit" : "topic";
+  return { process, label, container, emits, versions };
 }
 
 async function fetchText(url) {
@@ -160,6 +169,7 @@ async function loadModule(path, category) {
     tools,
     label: main.label,
     container: main.container,
+    versions: main.versions,
     inputs,
     outputs,
   };
@@ -180,6 +190,7 @@ for (const [category, paths] of Object.entries(CATALOG)) {
 
 const out = {
   source: `https://github.com/nf-core/modules/tree/${REF}`,
+  gitSha: REF,
   syncedAt: new Date().toISOString().slice(0, 10),
   modules,
 };

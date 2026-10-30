@@ -22,13 +22,39 @@ ComfyUI 式的 Nextflow 可视化前端：在画布上用 nf-core 模块搭建�
 - 右侧面板编辑节点配置（`ext.args`、`ext.prefix`、资源标签、是否发布）或流程参数（按 `nextflow_schema.json` 自动生成）。
 - 撤销/重做（Ctrl+Z / Ctrl+Shift+Z），Ctrl+S 保存，已保存的流程会自动保存；也可以导入/导出 JSON。
 
+## 一键运行
+
+点工具栏的「运行」会把画布生成一个 nf-core 结构的项目（`src/features/project`），并选择运行环境后提交到后端：
+
+- 生成的文件：`main.nf`、`workflows/<name>.nf`、`subworkflows/local/utils_nfcore_<name>_pipeline`、`nextflow.config`、`conf/{base,modules,test}.config`、`nextflow_schema.json`、`assets/*`、`modules.json`、`.nf-core.yml`、`README.md`。nf-core 模块和 `utils_*` 子流程不内嵌，按 `modules.json` 里锁定的提交由后端 `nf-core modules install` 安装。
+- 跟随最新 nf-core 模板：Nextflow `>=25.10.4`，nf-schema 2.7.3，版本信息走 topic channel，MultiQC 用新的元组输入。
+- 运行环境：本机、SLURM、Google Batch、AWS Batch、Azure Batch、Kubernetes。执行器设置写进单独的 `run.config`，容器/环境用 `-profile`，参数写进 `params.json`，后端在项目目录里执行：
+
+  ```bash
+  nextflow run . -profile docker -c run.config -params-file params.json -resume
+  ```
+
+- 运行记录页（`/runs`）和详情页（`/runs/<id>`）显示状态、进度、命令、配置和当时的项目快照，运行中可以停止。
+
+### `/api/runs` 接口
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/api/runs?workflowId=` | 运行列表（`RunSummary[]`） |
+| `POST` | `/api/runs` | 启动：`LaunchRequest`（流程、项目文件、参数、启动配置、`run.config`、命令） |
+| `GET` | `/api/runs/:id` | 运行详情（`RunDetail`） |
+| `POST` | `/api/runs/:id/cancel` | 停止，已结束返回 409 |
+| `DELETE` | `/api/runs/:id` | 删除记录 |
+
+类型定义在 `src/features/runs/types.ts`。模拟后端（`src/mocks/runs.ts`）按流程结构确定性地推演任务进度；参数里设置 `simulate_failure: true` 可以模拟任务失败。
+
 ## 开发
 
 ```bash
 pnpm install
 pnpm dev               # http://localhost:3000
 pnpm storybook         # http://localhost:6006
-pnpm test              # 端口兼容性、校验等单元测试
+pnpm test              # 端口兼容性、校验、项目生成、运行模拟等单元测试
 pnpm typecheck && pnpm lint && pnpm build
 ```
 
