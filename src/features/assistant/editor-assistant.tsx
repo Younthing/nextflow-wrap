@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import { useEditorStore } from "@/features/editor/store";
 import { useAssistantStatus } from "./assistant-provider";
+import { StartRunTool } from "./start-run-tool";
 import {
   addModule,
   configureNode,
@@ -44,6 +45,7 @@ function EditorTools({ onCanvasChange }: { onCanvasChange: () => void }) {
       { title: "搭一个质控流程", message: "从样本表开始，搭一个 FastQC + fastp + MultiQC 的质控流程" },
       { title: "检查流程", message: "检查当前流程有什么问题，能修的直接修好" },
       { title: "解释这个流程", message: "用几句话解释当前流程每一步在做什么" },
+      { title: "运行当前流程", message: "启动当前流程" },
     ],
   });
 
@@ -135,7 +137,13 @@ function EditorTools({ onCanvasChange }: { onCanvasChange: () => void }) {
   return null;
 }
 
-/** Lets the assistant read and edit the open workflow; renders nothing. */
+/** Lets the assistant read and edit the open workflow, and start it after a confirmation. */
 export function EditorAssistant({ onCanvasChange }: { onCanvasChange: () => void }) {
-  return useAssistantStatus().enabled ? <EditorTools onCanvasChange={onCanvasChange} /> : null;
+  if (!useAssistantStatus().enabled) return null;
+  return (
+    <>
+      <EditorTools onCanvasChange={onCanvasChange} />
+      <StartRunTool />
+    </>
+  );
 }

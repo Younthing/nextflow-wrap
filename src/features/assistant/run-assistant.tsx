@@ -5,8 +5,10 @@ import { useAgentContext, useConfigureSuggestions, useFrontendTool, type JsonSer
 import { z } from "zod";
 
 import { api } from "@/lib/api";
+import { isActive } from "@/features/runs/queries";
 import type { RunDetail, TaskRecord } from "@/features/runs/types";
 import { useAssistantStatus } from "./assistant-provider";
+import { RunControlTools } from "./run-control-tools";
 
 const LOG_TAIL = 120;
 
@@ -44,12 +46,14 @@ function RunTools({ run, tasks }: { run: RunDetail; tasks: TaskRecord[] }) {
   const summary = React.useMemo(() => runSummary(run, tasks), [run, tasks]);
   useAgentContext({ description: "用户正在查看的这次 Nextflow 运行", value: summary as unknown as JsonSerializable });
 
-  useConfigureSuggestions(
+  const suggestions = [
     run.status === "failed"
-      ? { suggestions: [{ title: "为什么失败", message: "这次运行为什么失败？该怎么修？" }] }
-      : { suggestions: [{ title: "运行概况", message: "总结一下这次运行的情况" }] },
-    [run.status],
-  );
+      ? { title: "为什么失败", message: "这次运行为什么失败？该怎么修？" }
+      : { title: "运行概况", message: "总结一下这次运行的情况" },
+  ];
+  if (isActive(run.status)) suggestions.push({ title: "停止运行", message: "停止这次运行" });
+  else if (run.nextflowSessionId) suggestions.push({ title: "从这里恢复", message: "从这次运行恢复" });
+  useConfigureSuggestions({ suggestions }, [run.status, run.nextflowSessionId]);
 
   useFrontendTool(
     {
@@ -82,7 +86,13 @@ function RunTools({ run, tasks }: { run: RunDetail; tasks: TaskRecord[] }) {
   return null;
 }
 
-/** Lets the assistant read the run on screen; renders nothing. */
+/** Lets the assistant read the run on screen, and stop or resume it after a confirmation. */
 export function RunAssistant({ run, tasks }: { run: RunDetail; tasks: TaskRecord[] | undefined }) {
-  return useAssistantStatus().enabled ? <RunTools run={run} tasks={tasks ?? []} /> : null;
+  if (!useAssistantStatus().enabled) return null;
+  return (
+    <>
+      <RunTools run={run} tasks={tasks ?? []} />
+      <RunControlTools run={run} />
+    </>
+  );
 }
