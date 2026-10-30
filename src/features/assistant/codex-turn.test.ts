@@ -1,7 +1,20 @@
+import { mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import type { CodexEvent, CodexHarness, CodexSession } from "@/features/codex-harness";
-import { interpretCodexEvents, parseToolReply, renderCodexPrompt, runCodexAssistant } from "./codex-turn";
+import {
+  ASSISTANT_MAX_STEPS,
+  assistantStepsUsed,
+  interpretCodexEvents,
+  parseToolReply,
+  type PromptMessage,
+  renderCodexPrompt,
+  runCodexAssistant,
+} from "./codex-turn";
+import { createSessionPermit } from "./session-limit";
 
 const tools = [{ name: "search_modules", description: "搜索模块", parameters: { type: "object" } }];
 
@@ -36,6 +49,8 @@ describe("Codex assistant turns", () => {
     expect(prompt).toContain("search_modules");
     expect(prompt).toContain("加一个 FastQC");
     expect(prompt).toContain("nf-core/fastqc");
+    expect(prompt).toContain("这次调用会被拒绝，不会执行");
+    expect(prompt).toContain("这一轮最多调用 12 次工具");
     expect(prompt).not.toContain("auth.json");
     expect(prompt).not.toContain("OPENAI_API_KEY");
   });
@@ -47,7 +62,23 @@ describe("Codex assistant turns", () => {
     });
     expect(parseToolReply('```json\n{"tool":"search_modules","arguments":{}}\n```', ["search_modules"])?.name).toBe("search_modules");
     expect(parseToolReply("先搜索再添加", ["search_modules"])).toBeUndefined();
-    expect(parseToolReply('{"tool":"rm","arguments":{}}', ["search_modules"])).toBeUndefined();
+    expect(parseToolReply('结果是 {"ok":true}', ["search_modules"])).toBeUndefined();
+    expect(parseToolReply('{"tool":"search_modules","arguments":{"query":"a { b } c","nested":{"a":1}}}', ["search_modules"])).toEqual({
+      name: "search_modules",
+      arguments: { query: "a { b } c", nested: { a: 1 } },
+    });
+    expect(() => parseToolReply('{"tool":"rm","arguments":{}}', ["search_modules", "add_module"])).toThrow(
+      "未知工具「rm」。只能使用：search_modules、add_module",
+    );
+    expect(() => parseToolReply('{"tool":"rm","arguments":{}}', [])).toThrow(/没有已注册的工具/);
+    expect(() => parseToolReply('{"tool":"search_modules","arguments":[]}', ["search_modules"])).toThrow(/arguments/);
+    expect(() => parseToolReply('先搜索。\n{"tool":"search_modules","arguments":{"query":"fastqc"}}', ["search_modules"])).toThrow(
+      /没有执行工具/,
+    );
+    expect(() => parseToolReply('{"tool":"search_modules","arguments":{}}\n完成了', ["search_modules"])).toThrow(/没有执行工具/);
+    expect(() => parseToolReply('先看\n```json\n{"tool":"search_modules","arguments":{}}\n```', ["search_modules"])).toThrow(
+      /没有执行工具/,
+    );
   });
 
   it("streams prose and turns a JSON reply into one tool call", async () => {
@@ -214,7 +245,223 @@ describe("Codex assistant turns", () => {
     expect(events.map((event) => event.type)).toEqual(["TEXT_MESSAGE_CHUNK"]);
     expect(closed).toBe(1);
   });
+
+  it("rejects an unknown tool and prose followed by tool JSON", async () => {
+    const unknown: CodexEvent[] = [
+      { type: "text.delta", itemId: "m", delta: '{"tool":"rm","arguments":{}}' },
+      { type: "turn.end", turnId: "turn_unknown", status: "completed" },
+    ];
+    await expect(collect(interpretCodexEvents(of(unknown), ["search_modules"], ids()))).rejects.toThrow(/未知工具「rm」/);
+
+    const mixed = '先搜索一下。\n{"tool":"search_modules","arguments":{"query":"fastqc"}}';
+    const seen: { type: string }[] = [];
+    await expect((async () => {
+      for await (const event of interpretCodexEvents(of<CodexEvent>([
+        { type: "text.delta", itemId: "m", delta: mixed },
+        { type: "turn.end", turnId: "turn_mixed", status: "completed" },
+      ]), ["search_modules"], ids())) seen.push(event);
+    })()).rejects.toThrow(/没有执行工具/);
+    expect(seen.some((event) => event.type === "TOOL_CALL_START")).toBe(false);
+  });
+
+  it("counts tool steps only after the latest user message", () => {
+    expect(ASSISTANT_MAX_STEPS).toBe(12);
+    const call = (id: string): PromptMessage => ({
+      role: "assistant",
+      content: "",
+      toolCalls: [{ id, function: { name: "search_modules", arguments: "{}" } }],
+    });
+    expect(assistantStepsUsed([
+      { role: "user", content: "旧的" },
+      call("old"),
+      { role: "tool", toolCallId: "old", content: "{}" },
+      { role: "user", content: "新的" },
+      call("c1"),
+      { role: "tool", toolCallId: "c1", content: "{}" },
+    ])).toBe(1);
+    expect(assistantStepsUsed([
+      { role: "user", content: "继续" },
+      { role: "tool", toolCallId: "c1", content: "{}" },
+      { role: "tool", toolCallId: "c2", content: "{}" },
+    ])).toBe(2);
+    expect(assistantStepsUsed([
+      { role: "user", content: "新的" },
+      { role: "activity", content: "thinking" },
+    ])).toBe(0);
+  });
+
+  it("stops before opening Codex once the step cap is reached", async () => {
+    let opened = 0;
+    const capped: CodexHarness = {
+      probe: async () => ({ installed: true, authed: true }),
+      open: async () => {
+        opened += 1;
+        throw new Error("should not open");
+      },
+    };
+    const messages: PromptMessage[] = [{ role: "user", content: "继续" }];
+    for (let index = 0; index < 2; index += 1) {
+      messages.push({
+        role: "assistant",
+        content: "",
+        toolCalls: [{ id: `c${index}`, function: { name: "search_modules", arguments: "{}" } }],
+      });
+      messages.push({ role: "tool", toolCallId: `c${index}`, content: "{}" });
+    }
+    await expect(collect(runCodexAssistant({ messages }, {
+      harness: capped,
+      prompt: "系统提示",
+      maxSteps: 2,
+    }))).rejects.toThrow(/步数上限（2）/);
+    expect(opened).toBe(0);
+
+    const allowed: CodexHarness = {
+      probe: async () => ({ installed: true, authed: true }),
+      open: async () => scriptedSession("pong"),
+    };
+    await expect(collect(runCodexAssistant({
+      messages: messages.slice(0, 3),
+    }, {
+      harness: allowed,
+      prompt: "系统提示",
+      cwd: "/work",
+      maxSteps: 2,
+    }))).resolves.toEqual([
+      { type: "TEXT_MESSAGE_CHUNK", role: "assistant", messageId: expect.any(String), delta: "pong" },
+    ]);
+  });
+
+  it("does not start a turn when the request is aborted while Codex is opening", async () => {
+    let started = 0;
+    let closed = 0;
+    let releaseOpen: (session: CodexSession) => void = () => undefined;
+    const session: CodexSession = {
+      events: of<CodexEvent>([]),
+      ensureThread: async () => ({ threadId: "thr_abort" }),
+      startTurn: async () => {
+        started += 1;
+        return { turnId: "turn_abort" };
+      },
+      interrupt: async () => undefined,
+      respondToApproval: async () => undefined,
+      close: async () => {
+        closed += 1;
+      },
+    };
+    const controller = new AbortController();
+    let opened = false;
+    const harness: CodexHarness = {
+      probe: async () => ({ installed: true, authed: true }),
+      open: () => new Promise((resolve) => {
+        opened = true;
+        releaseOpen = resolve;
+      }),
+    };
+    const task = collect(runCodexAssistant({
+      messages: [{ role: "user", content: "ping" }],
+    }, {
+      harness,
+      prompt: "系统提示",
+      cwd: "/work",
+      signal: controller.signal,
+    }));
+    expect(opened).toBe(true);
+    controller.abort();
+    releaseOpen(session);
+    await expect(task).resolves.toEqual([]);
+    expect(started).toBe(0);
+    expect(closed).toBe(1);
+  });
+
+  it("does not open Codex after the session permit was released", async () => {
+    let opened = 0;
+    const permit = createSessionPermit(() => undefined);
+    permit.releaseIfUnclaimed();
+    const harness: CodexHarness = {
+      probe: async () => ({ installed: true, authed: true }),
+      open: async () => {
+        opened += 1;
+        throw new Error("should not open");
+      },
+    };
+    await expect(collect(runCodexAssistant({
+      messages: [{ role: "user", content: "ping" }],
+    }, { harness, prompt: "系统提示", permit }))).rejects.toThrow(/请求已结束/);
+    expect(opened).toBe(0);
+  });
+
+  it("runs Codex in an empty temp directory and removes it afterwards", async () => {
+    let cwd = "";
+    let names: string[] = ["unread"];
+    const harness: CodexHarness = {
+      probe: async () => ({ installed: true, authed: true }),
+      open: async (opts) => {
+        cwd = opts.cwd;
+        names = await readdir(opts.cwd);
+        expect(opts.cwd).not.toBe(process.cwd());
+        expect(opts.cwd.startsWith(tmpdir())).toBe(true);
+        expect(opts.sandboxPolicy).toBe("readOnly");
+        return scriptedSession("pong");
+      },
+    };
+    const events = await collect(runCodexAssistant({
+      messages: [{ role: "user", content: "ping" }],
+    }, { harness, prompt: "系统提示" }));
+    expect(names).toEqual([]);
+    expect(events.map((event) => event.type)).toEqual(["TEXT_MESSAGE_CHUNK"]);
+    await expect(stat(cwd)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("removes the temp directory when Codex fails to open", async () => {
+    let cwd = "";
+    const harness: CodexHarness = {
+      probe: async () => ({ installed: true, authed: true }),
+      open: async (opts) => {
+        cwd = opts.cwd;
+        throw new Error("open failed");
+      },
+    };
+    await expect(collect(runCodexAssistant({
+      messages: [{ role: "user", content: "ping" }],
+    }, { harness, prompt: "系统提示" }))).rejects.toThrow(/open failed/);
+    expect(cwd.startsWith(tmpdir())).toBe(true);
+    await expect(stat(cwd)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("does not delete a caller-supplied working directory", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "nextflow-codex-keep-"));
+    await writeFile(join(cwd, "keep.txt"), "stay");
+    try {
+      const harness: CodexHarness = {
+        probe: async () => ({ installed: true, authed: true }),
+        open: async (opts) => {
+          expect(opts.cwd).toBe(cwd);
+          return scriptedSession("pong");
+        },
+      };
+      await collect(runCodexAssistant({
+        messages: [{ role: "user", content: "ping" }],
+      }, { harness, prompt: "系统提示", cwd }));
+      await expect(readdir(cwd)).resolves.toEqual(["keep.txt"]);
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
 });
+
+function scriptedSession(text: string): CodexSession {
+  return {
+    events: of<CodexEvent>([
+      { type: "text.delta", itemId: "m", delta: text },
+      { type: "turn.end", turnId: "turn_scripted", status: "completed" },
+    ]),
+    ensureThread: async () => ({ threadId: "thr_scripted" }),
+    startTurn: async () => ({ turnId: "turn_scripted" }),
+    interrupt: async () => undefined,
+    respondToApproval: async () => undefined,
+    close: async () => undefined,
+  };
+}
 
 function of<T>(items: readonly T[]): AsyncIterable<T> {
   return {

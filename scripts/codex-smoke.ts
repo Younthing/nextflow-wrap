@@ -1,3 +1,7 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { createCodexHarness, CodexHarnessError, type CodexSession } from "../src/features/codex-harness";
 
 const DEFAULT_PROMPT = "Reply with the single word pong.";
@@ -9,6 +13,7 @@ function usage(): string {
     "",
     "Runs one Codex turn with the local `codex` CLI (`codex login` must already be done).",
     "Auth stays in ~/.codex. This script never reads or copies tokens.",
+    "The turn uses an empty temporary directory, not this repository.",
     "If `codex` is not on PATH, the script skips and exits 0.",
   ].join("\n");
 }
@@ -78,37 +83,51 @@ async function main(): Promise<void> {
     throw new CodexHarnessError("codex is installed but not authenticated. Run `codex login`. This script does not read ~/.codex.");
   }
 
-  const session = await harness.open({
-    cwd: process.cwd(),
-    model: args.model,
-    binaryPath: args.binary,
-    approvalPolicy: args.approval ?? "never",
-    sandboxPolicy: "workspace-write",
-    autoApproval: "decline",
-  });
+  const cwd = await mkdtemp(join(tmpdir(), "nextflow-codex-smoke-"));
+  const removeCwd = () => rm(cwd, { recursive: true, force: true }).catch(() => undefined);
+  console.error(`cwd ${cwd}`);
+  // Registered before open() so Ctrl+C during startup still deletes the directory.
+  const shutdown = (code: number) => {
+    void removeCwd().finally(() => process.exit(code));
+  };
+  const onSignal = () => shutdown(130);
+  process.once("SIGINT", onSignal);
+  process.once("SIGTERM", onSignal);
   const timer = setTimeout(() => {
     console.error(`smoke timed out after ${TIMEOUT_MS}ms`);
-    void session.close().finally(() => process.exit(1));
+    shutdown(1);
   }, TIMEOUT_MS);
   timer.unref();
-  const stop = () => {
-    void session.close().finally(() => process.exit(130));
-  };
-  process.once("SIGINT", stop);
-  process.once("SIGTERM", stop);
-  const reading = readTurn(session);
+  let session: CodexSession | undefined;
   try {
-    const { threadId } = await session.ensureThread();
-    const { turnId } = await session.startTurn(args.prompt);
-    console.error(`thread ${threadId} turn ${turnId}`);
-    await reading;
+    session = await harness.open({
+      cwd,
+      model: args.model,
+      binaryPath: args.binary,
+      approvalPolicy: args.approval ?? "never",
+      sandboxPolicy: "workspace-write",
+      autoApproval: "decline",
+    });
+    const reading = readTurn(session);
+    try {
+      const { threadId } = await session.ensureThread();
+      const { turnId } = await session.startTurn(args.prompt);
+      console.error(`thread ${threadId} turn ${turnId}`);
+      await reading;
+    } finally {
+      await session.close();
+      // Observe a reader that rejected because the session closed first.
+      await reading.catch(() => undefined);
+    }
   } finally {
     clearTimeout(timer);
-    process.removeListener("SIGINT", stop);
-    process.removeListener("SIGTERM", stop);
-    await session.close();
-    // Observe a reader that rejected because the session closed first.
-    await reading.catch(() => undefined);
+    process.removeListener("SIGINT", onSignal);
+    process.removeListener("SIGTERM", onSignal);
+    await Promise.race([
+      session?.close() ?? Promise.resolve(),
+      new Promise((resolve) => setTimeout(resolve, 3_000)),
+    ]);
+    await removeCwd();
   }
 }
 
