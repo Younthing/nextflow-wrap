@@ -20,13 +20,13 @@ export function AssistantButton() {
       <Sparkles /> AI 助手
     </Button>
   );
-  if (status.enabled) return button;
+  const hint = status.enabled ? status.detail : status.message;
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span tabIndex={0}>{button}</span>
+        {status.enabled ? button : <span tabIndex={0}>{button}</span>}
       </TooltipTrigger>
-      <TooltipContent side="bottom">{status.message}</TooltipContent>
+      <TooltipContent side="bottom">{hint}</TooltipContent>
     </Tooltip>
   );
 }

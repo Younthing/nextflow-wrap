@@ -50,3 +50,7 @@ pnpm codex:smoke --model gpt-test --approval never -- Say hello
 ```
 
 `--binary` overrides the executable (the same value as `open({ binaryPath })`). The script skips with exit code 0 when `codex` is not on `PATH`. It exits 1 when the CLI is present but `account/read` says the user is not authenticated. Approvals during the smoke run are auto-declined. The sandbox is `workspace-write` and the approval policy defaults to `never`.
+
+## Assistant
+
+The CopilotKit route (`/api/copilotkit`) uses this harness when `COPILOT_BACKEND` is `auto` (the default) or `codex` and `probe()` reports an installed, authenticated CLI. That path does not read `OPENAI_API_KEY`. `auto` falls back to the API-key BuiltInAgent when Codex is missing or not logged in. Each chat run opens a short-lived read-only thread (`approvalPolicy: never`) and closes it afterward. A reply that is only `{"tool","arguments"}` is handed to the browser tools; other replies are shown as text.
