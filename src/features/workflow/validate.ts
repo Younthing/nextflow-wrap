@@ -1,6 +1,6 @@
 import { REFERENCE_ID, SAMPLESHEET_ID } from "./builtins";
 import { resolveNodeDef, type ModuleIndex } from "./catalog";
-import { socketInputs } from "./ports";
+import { checkCompatibility, findPort, socketInputs } from "./ports";
 import type { PipelineParams, WorkflowEdge, WorkflowNode } from "./types";
 
 export interface Issue {
@@ -8,6 +8,12 @@ export interface Issue {
   level: "error" | "warning";
   message: string;
 }
+
+/** Tuple files that modules accept as `[]` although meta.yml doesn't say so. */
+const KNOWN_OPTIONAL = new Set(["nf-core/fastp:adapter_fasta"]);
+
+const isOptional = (moduleId: string, el: { name: string; description: string }) =>
+  KNOWN_OPTIONAL.has(`${moduleId}:${el.name}`) || /optional/i.test(el.description);
 
 const ALIAS_RE = /^[A-Z][A-Z0-9_]*$/;
 const PARAM_RE = /^[a-z][a-z0-9_]*$/;
@@ -67,6 +73,31 @@ export function validateWorkflow(
             : `${data.alias}：输入 ${port.name} 未连接，将传入空值 []`,
       });
     });
+  }
+
+  // meta.yml rarely says which tuple files are optional, so padded files are flagged for review.
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const flagged = new Set<string>();
+  for (const edge of edges) {
+    const src = byId.get(edge.source);
+    const dst = byId.get(edge.target);
+    const srcDef = src && resolveNodeDef(index, src.data);
+    const dstDef = dst && resolveNodeDef(index, dst.data);
+    const out = srcDef && findPort(srcDef, edge.sourceHandle, "out");
+    const inp = dstDef && findPort(dstDef, edge.targetHandle, "in");
+    if (!out || !inp || inp.collect || dst.data.disabled || flagged.has(`${dst.id}:${inp.name}`)) continue;
+    const padded = checkCompatibility(out, inp).padded?.filter((name) => {
+      const el = inp.elements.find((e) => e.name === name);
+      return !el || !isOptional(dstDef.id, el);
+    });
+    if (padded?.length) {
+      flagged.add(`${dst.id}:${inp.name}`);
+      issues.push({
+        nodeId: dst.id,
+        level: "warning",
+        message: `${dst.data.alias}：输入 ${inp.name} 的 ${padded.join("、")} 会传入空值 []，如果该模块必须提供这些文件，运行会失败`,
+      });
+    }
   }
 
   for (const [alias, count] of aliases) {

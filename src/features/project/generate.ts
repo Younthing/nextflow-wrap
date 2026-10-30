@@ -1,4 +1,5 @@
 import samplesheetSchema from "@/data/samplesheet-schema.json";
+import emailTemplates from "./email-templates.json";
 import type { ModuleIndex } from "@/features/workflow/catalog";
 import type { ProjectSettings, WorkflowDoc } from "@/features/workflow/types";
 import { gdynamic, gstr, section } from "./groovy";
@@ -194,9 +195,11 @@ Install them before the first run with \`nf-core modules install\` (Nextflow Stu
 }
 
 export function generateProject(doc: WorkflowDoc, index: ModuleIndex, opts: GenerateOptions): GeneratedProject {
-  const meta = projectMeta(doc);
   const refs = referenceParams(doc);
   const { order } = planNodes(doc, index);
+  const meta = projectMeta(doc);
+  // Included processes and the pipeline workflow share one namespace.
+  if (order.some((p) => p.node.data.alias === meta.workflowName)) meta.workflowName += "_PIPELINE";
   const schema = buildParamsSchema(meta.name, meta.description, refs);
 
   const moduleComponents = [...new Map(order.filter((p) => !p.def.builtin).map((p) => [p.def.path, p.def])).values()]
@@ -243,6 +246,12 @@ export function generateProject(doc: WorkflowDoc, index: ModuleIndex, opts: Gene
     { path: "assets/samplesheet.csv", language: "csv", content: SAMPLESHEET_CSV },
     { path: "assets/multiqc_config.yml", language: "yaml", content: MULTIQC_CONFIG(meta) },
     { path: "assets/methods_description_template.yml", language: "yaml", content: METHODS_DESCRIPTION(meta) },
+    // Read by completionEmail() when --email or --email_on_fail is set.
+    ...Object.entries(emailTemplates).map(([file, content]) => ({
+      path: `assets/${file}`,
+      language: "text" as const,
+      content: content.replaceAll("__NAME__", meta.name).replaceAll("__DESCRIPTION__", meta.description),
+    })),
     { path: "modules.json", language: "json", content: `${JSON.stringify(modulesJson(meta, components), null, 4)}\n` },
     {
       path: ".nf-core.yml",

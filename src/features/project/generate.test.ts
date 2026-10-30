@@ -121,3 +121,20 @@ describe("project naming", () => {
     expect(meta.workflowName).toBe("NF10XRNASEQ");
   });
 });
+
+describe("generated project extras", () => {
+  it("renames the pipeline workflow when a module alias takes its name", () => {
+    const doc = { ...demoRnaseqWorkflow("wf"), project: { name: "studio/fastqc", version: "1.0", author: "a" } };
+    const script = file(doc, "workflows/fastqc.nf");
+    expect(script).toMatch(/^workflow FASTQC_PIPELINE \{/m);
+    expect(file(doc, "main.nf")).toContain("FASTQC_PIPELINE");
+  });
+
+  it("ships the templates completionEmail reads", () => {
+    const paths = generate(demoRnaseqWorkflow("wf")).files.map((f) => f.path);
+    expect(paths).toEqual(
+      expect.arrayContaining(["assets/email_template.txt", "assets/email_template.html", "assets/sendmail_template.txt"]),
+    );
+    expect(file(demoRnaseqWorkflow("wf"), "assets/email_template.html")).not.toMatch(/__NAME__|\{\{/);
+  });
+});
