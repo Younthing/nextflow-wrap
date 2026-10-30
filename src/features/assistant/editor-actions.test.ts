@@ -10,6 +10,7 @@ import {
   configureNode,
   connectNodes,
   disconnect,
+  findNode,
   removeNode,
   searchCatalog,
   setParam,
@@ -59,6 +60,22 @@ describe("assistant editor actions", () => {
     expect(() => connectNodes({ source: "FASTQC", target: "MULTIQC" })).toThrow(/多个输出端口（html, zip/);
     expect(() => connectNodes({ source: "NOPE", target: "MULTIQC" })).toThrow(/现有节点：SAMPLESHEET, FASTQC, MULTIQC/);
     expect(() => configureNode({ node: "FASTQC", widgets: { nope: 1 } })).toThrow(/没有参数 nope/);
+  });
+
+  it("leaves the canvas unchanged when a request is rejected", () => {
+    buildQc();
+    const before = useEditorStore.getState().nodes;
+    expect(() => addModule({ moduleId: "nf-core/fastp", alias: "fastqc" })).toThrow(/已经被别的节点用了/);
+    expect(() => addModule({ moduleId: "nf-core/fastp", alias: "9bad" })).toThrow(/不合法/);
+    expect(() => configureNode({ node: "FASTQC", config: { args: "--quiet" }, alias: "MULTIQC" })).toThrow(/已经被别的节点用了/);
+    expect(useEditorStore.getState().nodes).toBe(before);
+  });
+
+  it("checks widget values against their declared type", () => {
+    addModule({ moduleId: "nf-core/fastp" });
+    expect(() => configureNode({ node: "FASTP", widgets: { discard_trimmed_pass: "false" } })).toThrow(/boolean 类型/);
+    configureNode({ node: "FASTP", widgets: { discard_trimmed_pass: true } });
+    expect(findNode("FASTP").data.widgets.discard_trimmed_pass).toBe(true);
   });
 
   it("configures nodes and params in undoable steps", () => {

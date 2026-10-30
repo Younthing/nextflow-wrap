@@ -2,7 +2,7 @@ import { useEditorStore, type FlowNode } from "@/features/editor/store";
 import { REFERENCE_FORMATS, REFERENCE_ID } from "@/features/workflow/builtins";
 import { resolveNodeDef, searchModules } from "@/features/workflow/catalog";
 import { inHandle, outHandle, portFromHandle, portSignature, socketInputs, widgetInputs } from "@/features/workflow/ports";
-import type { ModuleDef, NodeConfig, PortDef, WidgetValue } from "@/features/workflow/types";
+import type { ModuleDef, NodeConfig, PortDef, WidgetValue, WorkflowNodeData } from "@/features/workflow/types";
 import { validateWorkflow } from "@/features/workflow/validate";
 
 /*
@@ -124,18 +124,32 @@ export function addModule(args: { moduleId: string; after?: string; alias?: stri
     throw new Error(`模块 ${args.moduleId} 不存在。${guesses.length ? `相近的有：${guesses.join(", ")}` : "先用 search_modules 查一下。"}`);
   }
   const after = args.after ? findNode(args.after) : undefined;
+  // Check everything before touching the canvas, so a failed call changes nothing.
+  const alias = args.alias ? checkAlias(args.alias) : undefined;
   const node = state.addNode(def, placeAfter(after));
-  if (args.alias) renameNode(node.id, args.alias);
+  if (alias) state.updateNodeData(node.id, { alias });
   const added = findNode(node.id);
   return { id: added.id, alias: added.data.alias, ...describeModule(def) };
 }
 
-function renameNode(id: string, alias: string) {
+/** Normalizes an alias and checks it is valid and not used by another node. */
+function checkAlias(alias: string, nodeId?: string) {
   const next = alias.trim().toUpperCase();
   if (!/^[A-Z][A-Z0-9_]*$/.test(next)) throw new Error(`别名 ${alias} 不合法，只能用大写字母、数字和下划线，并以字母开头`);
-  const { nodes, updateNodeData } = useEditorStore.getState();
-  if (nodes.some((n) => n.id !== id && n.data.alias === next)) throw new Error(`别名 ${next} 已经被别的节点用了`);
-  updateNodeData(id, { alias: next });
+  if (useEditorStore.getState().nodes.some((n) => n.id !== nodeId && n.data.alias === next)) {
+    throw new Error(`别名 ${next} 已经被别的节点用了`);
+  }
+  return next;
+}
+
+/** Checks a widget value against the type the module declares for it. */
+function checkWidget(alias: string, name: string, type: string, value: WidgetValue): WidgetValue {
+  const expected = type === "boolean" ? "boolean" : type === "integer" || type === "float" || type === "number" ? "number" : "string";
+  if (typeof value !== expected) {
+    throw new Error(`${alias} 的参数 ${name} 是 ${type} 类型，收到的是 ${JSON.stringify(value)}，请传 ${expected === "boolean" ? "true 或 false" : expected === "number" ? "数字" : "字符串"}`);
+  }
+  if (type === "integer" && !Number.isInteger(value)) throw new Error(`${alias} 的参数 ${name} 需要整数`);
+  return value;
 }
 
 function pickPort(ports: PortDef[], name: string | undefined, side: string, alias: string) {
@@ -197,22 +211,25 @@ export function configureNode(args: {
 }) {
   const node = findNode(args.node);
   const def = defOf(node);
-  const state = useEditorStore.getState();
+  const { alias: current } = node.data;
 
+  // Validate the whole request first, then apply it as one change.
+  const patch: Partial<WorkflowNodeData> = {};
   if (args.widgets) {
-    const allowed = new Set(widgetInputs(def).map((p) => p.name));
+    const types = new Map(widgetInputs(def).map((p) => [p.name, p.widget!]));
+    const widgets = { ...node.data.widgets };
     for (const [name, value] of Object.entries(args.widgets)) {
-      if (!allowed.has(name)) {
-        throw new Error(`${node.data.alias} 没有参数 ${name}，可设置的有：${[...allowed].join(", ") || "无"}`);
-      }
-      state.setWidget(node.id, name, value);
+      const type = types.get(name);
+      if (!type) throw new Error(`${current} 没有参数 ${name}，可设置的有：${[...types.keys()].join(", ") || "无"}`);
+      widgets[name] = checkWidget(current, name, type, value);
     }
+    patch.widgets = widgets;
   }
   if (args.config) {
     if (def.builtin) throw new Error("输入节点没有 ext.args / publish 这些设置");
-    state.updateNodeData(node.id, { config: { ...findNode(node.id).data.config, ...args.config } });
+    patch.config = { ...node.data.config, ...args.config };
   }
-  if (args.disabled !== undefined) state.updateNodeData(node.id, { disabled: args.disabled });
+  if (args.disabled !== undefined) patch.disabled = args.disabled;
   if (args.referenceParam !== undefined || args.referenceFormat !== undefined) {
     if (def.id !== REFERENCE_ID) throw new Error("只有「参考文件」节点有参数名和文件格式");
     const format = args.referenceFormat;
@@ -223,13 +240,11 @@ export function configureNode(args: {
     if (param !== undefined && !/^[a-z][a-z0-9_]*$/.test(param)) {
       throw new Error(`参数名 ${param} 不合法，只能用小写字母、数字和下划线`);
     }
-    const settings = findNode(node.id).data.settings ?? {};
-    state.updateNodeData(node.id, {
-      settings: { ...settings, ...(param !== undefined && { param }), ...(format && { format }) },
-    });
+    patch.settings = { ...node.data.settings, ...(param !== undefined && { param }), ...(format && { format }) };
   }
-  if (args.alias) renameNode(node.id, args.alias);
+  if (args.alias) patch.alias = checkAlias(args.alias, node.id);
 
+  useEditorStore.getState().updateNodeData(node.id, patch, `assistant:${node.id}:${Date.now()}`);
   const updated = findNode(node.id);
   return { id: updated.id, alias: updated.data.alias, widgets: updated.data.widgets, config: updated.data.config, settings: updated.data.settings };
 }
