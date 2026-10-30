@@ -1,0 +1,86 @@
+"use client";
+
+import * as React from "react";
+import { useAgentContext, useConfigureSuggestions, useFrontendTool, type JsonSerializable } from "@copilotkit/react-core/v2";
+import { z } from "zod";
+
+import { api } from "@/lib/api";
+import type { RunDetail, TaskRecord } from "@/features/runs/types";
+import { useAssistantStatus } from "./assistant-provider";
+
+const LOG_TAIL = 120;
+
+/** What the assistant needs to explain a run, without the generated files. */
+export function runSummary(run: RunDetail, tasks: TaskRecord[]) {
+  const alias = new Map(run.workflow.nodes.map((n) => [n.id, n.data.alias]));
+  const failed = tasks.filter((t) => t.status === "failed");
+  return {
+    runId: run.id,
+    runName: run.runName,
+    workflow: run.workflowName,
+    status: run.status,
+    ...(run.errorMessage && { errorMessage: run.errorMessage }),
+    executor: run.executor,
+    profile: run.profile,
+    command: run.command,
+    params: run.params,
+    progress: run.progress,
+    failedTasks: failed.map((t) => ({
+      name: t.name,
+      hash: t.hash,
+      node: alias.get(t.nodeId),
+      exitStatus: t.exitStatus,
+      cpus: t.cpus,
+      peakRss: t.peakRss,
+      workdir: t.workdir,
+    })),
+    edges: run.workflow.edges.map((e) => `${alias.get(e.source)} -> ${alias.get(e.target)}`),
+  };
+}
+
+function RunTools({ run, tasks }: { run: RunDetail; tasks: TaskRecord[] }) {
+  const summary = React.useMemo(() => runSummary(run, tasks), [run, tasks]);
+  useAgentContext({ description: "用户正在查看的这次 Nextflow 运行", value: summary as unknown as JsonSerializable });
+
+  useConfigureSuggestions(
+    run.status === "failed"
+      ? { suggestions: [{ title: "为什么失败", message: "这次运行为什么失败？该怎么修？" }] }
+      : { suggestions: [{ title: "运行概况", message: "总结一下这次运行的情况" }] },
+    [run.status],
+  );
+
+  useFrontendTool(
+    {
+      name: "get_task_log",
+      description: "读取这次运行中某个任务的 .command.log（任务名或哈希）。",
+      parameters: z.object({ task: z.string().describe("任务哈希（如 3f/a1b2c3）或任务名（如 FASTQC (S1)）") }),
+      handler: async ({ task }) => {
+        const match = tasks.find((t) => t.hash === task || t.name === task);
+        if (!match) return { error: `找不到任务 ${task}` };
+        const { text } = await api<{ text: string }>(`/runs/${run.id}/task-log?hash=${encodeURIComponent(match.hash)}`);
+        return { task: match.name, status: match.status, exitStatus: match.exitStatus, log: text };
+      },
+    },
+    [run.id, tasks],
+  );
+
+  useFrontendTool(
+    {
+      name: "get_run_log",
+      description: `读取 Nextflow 主日志（.nextflow.log 的控制台输出）最后 ${LOG_TAIL} 行。`,
+      parameters: z.object({}),
+      handler: async () => {
+        const { lines } = await api<{ lines: string[] }>(`/runs/${run.id}/log`);
+        return { lines: lines.slice(-LOG_TAIL) };
+      },
+    },
+    [run.id],
+  );
+
+  return null;
+}
+
+/** Lets the assistant read the run on screen; renders nothing. */
+export function RunAssistant({ run, tasks }: { run: RunDetail; tasks: TaskRecord[] | undefined }) {
+  return useAssistantStatus().enabled ? <RunTools run={run} tasks={tasks ?? []} /> : null;
+}

@@ -1,3 +1,5 @@
+import { AssistantButton } from "@/features/assistant/assistant-button";
+
 import { BackendStatus } from "./backend-status";
 import { NavRail } from "./nav-rail";
 import { ThemeToggle } from "./theme-toggle";
@@ -16,6 +18,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </span>
           <div className="ml-auto flex items-center gap-2">
             <BackendStatus />
+            <AssistantButton />
             <ThemeToggle />
           </div>
         </header>

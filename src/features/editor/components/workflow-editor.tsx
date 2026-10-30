@@ -8,6 +8,7 @@ import { BUILTIN_MODULES } from "@/features/workflow/builtins";
 import { emptyWorkflow, parseWorkflowDoc } from "@/features/workflow/document";
 import { useModuleCatalog, useSaveWorkflow, useWorkflow } from "@/features/workflow/queries";
 import { validateWorkflow } from "@/features/workflow/validate";
+import { EditorAssistant } from "@/features/assistant/editor-assistant";
 import { RunDialog } from "@/features/runs/components/run-dialog";
 import { selectIsDirty, useEditorStore } from "../store";
 import { toast } from "../toast";
@@ -150,6 +151,11 @@ function Editor() {
     [catalog.data],
   );
 
+  // Keep nodes the assistant adds in view.
+  const onAssistantChange = React.useCallback(() => {
+    requestAnimationFrame(() => void fitView({ padding: 0.2, maxZoom: 1, duration: 300 }));
+  }, [fitView]);
+
   const addAtCenter = (def: (typeof modules)[number]) => {
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
@@ -266,6 +272,7 @@ function Editor() {
       <Inspector className="w-80 shrink-0" />
       <NodeSearchDialog request={search} modules={modules} onPick={onPick} onClose={() => setSearch(null)} />
       <RunDialog open={runOpen} onOpenChange={setRunOpen} issues={issues} modulesSha={catalog.data?.gitSha ?? ""} />
+      <EditorAssistant onCanvasChange={onAssistantChange} />
       <Toaster />
     </div>
   );
