@@ -8,7 +8,7 @@ ComfyUI 式的 Nextflow 可视化前端：在画布上用 nf-core 模块搭建�
 - Tailwind CSS 4，玻璃拟态主题（`src/app/globals.css` 中的 `glass` / `glass-strong` / `ambient-backdrop` 工具类）
 - shadcn/ui 写法的基础组件（Radix + cva），见 `src/components/ui`
 - lucide-react 图标；next/font 加载思源黑体、思源宋体、JetBrains Mono
-- TanStack Query 取数，MSW 在浏览器里模拟 `/api`
+- TanStack Query 取数；本机 API + SQLite 持久化 + 独立 Nextflow runner，另保留 MSW 演示模式
 - Storybook 10（`@storybook/nextjs-vite`）
 - React Flow 画布，TanStack Table 表格，Tiptap 编辑器
 - CopilotKit v2 AI 助手（`@copilotkit/react-core/v2` + `@copilotkit/runtime/v2`）
@@ -29,13 +29,14 @@ ComfyUI 式的 Nextflow 可视化前端：在画布上用 nf-core 模块搭建�
 
 - 生成的文件：`main.nf`、`workflows/<name>.nf`、`subworkflows/local/utils_nfcore_<name>_pipeline`、`nextflow.config`、`conf/{base,modules,test}.config`、`nextflow_schema.json`、`assets/*`、`modules.json`、`.nf-core.yml`、`README.md`。nf-core 模块和 `utils_*` 子流程不内嵌，按 `modules.json` 里锁定的提交由后端 `nf-core modules install` 安装。
 - 跟随最新 nf-core 模板：Nextflow `>=25.10.4`，nf-schema 2.7.3，版本信息走 topic channel，MultiQC 用新的元组输入。
-- 运行环境：本机、SLURM、Google Batch、AWS Batch、Azure Batch、Kubernetes。执行器设置写进单独的 `run.config`，容器/环境用 `-profile`，参数写进 `params.json`，后端在项目目录里执行：
+- 真实模式支持本机 + Docker，Apple Silicon 自动使用 amd64 模拟；SLURM、云 Batch 和 Kubernetes 在真实模式禁用，演示模式仍可预览配置。执行器设置写进单独的 `run.config`，容器/环境用 `-profile`，参数写进 `params.json`，runner 在独立项目目录里执行：
 
   ```bash
-  nextflow run . -profile docker -c run.config -params-file params.json -resume
+  nextflow run . -profile docker -c run.config -params-file params.json
   ```
 
 - 运行记录页（`/runs`）和详情页（`/runs/<id>`）显示状态、进度、命令、配置和当时的项目快照，运行中可以停止。
+- 新运行不默认加 `-resume`。从已结束运行详情选择「从此运行恢复」，服务端使用明确的 session ID、原项目和 work/cache，日志与结果按尝试隔离。删除记录保留计算文件，不自动清理其他尝试依赖的缓存。
 
 ### `/api/runs` 接口
 
@@ -45,6 +46,7 @@ ComfyUI 式的 Nextflow 可视化前端：在画布上用 nf-core 模块搭建�
 | `POST` | `/api/runs` | 启动：`LaunchRequest`（流程、项目文件、参数、启动配置、`run.config`、命令） |
 | `GET` | `/api/runs/:id` | 运行详情（`RunDetail`） |
 | `POST` | `/api/runs/:id/cancel` | 停止，已结束返回 409 |
+| `POST` | `/api/runs/:id/resume` | 从明确来源恢复，返回新运行记录 |
 | `DELETE` | `/api/runs/:id` | 删除记录 |
 
 运行详情页可以实时查看：
@@ -83,6 +85,52 @@ COPILOT_MODEL=anthropic/claude-sonnet-5-5
 
 ## 开发
 
+### 真实 Nextflow 冒烟验证
+
+现已提供独立 CLI 验证命令，用现有画布项目生成器执行真实的 `Samplesheet → FastQC → MultiQC`：
+
+```bash
+pnpm smoke:nextflow --preflight    # 检查 Nextflow、Java、nf-core、Git 和 Docker daemon
+pnpm smoke:nextflow --prepare-only # 生成项目/测试数据并安装锁定组件
+pnpm smoke:nextflow                # 本机 hello、容器 hello、真实质控和结果核验
+pnpm smoke:nextflow --star         # 加入 fastp、小型参考序列和 STAR，比对流程共 8 个任务
+```
+
+需要已运行的 Docker、nf-core/tools、Git 和 Java 17–26。脚本固定 Nextflow 26.10.4，优先使用受支持的 Java；Apple Silicon 的质控运行使用 `docker,emulate_amd64`。默认限制计算任务使用最多 2 CPU / 2 GB，执行器总预算为 2 CPU / 4 GB。
+
+脚本生成一个单端样本和一个双端样本，每个 FASTQ 含 200 条确定性的 100 bp 合成读段，无外部生物数据下载。它验证两个 FastQC 任务和一个 MultiQC 任务成功、三份 HTML/ZIP 已发布，以及 MultiQC 中三个读段文件各有 200 条序列。合成数据可能出现质控警告，这是测试数据特征，不影响执行验收。
+
+每次执行写入独立目录，默认 `~/.local/share/nextflow-studio/smoke/<timestamp>/`；控制台打印实际位置。目录包含生成项目、工作流快照、输入文件校验和、预期组件锁 `components.lock.json`、实际安装清单 `modules.json` / `installed-components.json`、启动参数、完整日志、结果和 `verification.json`。运行数据不放入 Git，nf-core 自身缓存可复用已下载的模块仓库。
+
+可通过 `NEXTFLOW_STUDIO_DATA_DIR` 设置数据目录；`NEXTFLOW_BIN`、`NF_CORE_BIN`、`DOCKER_BIN`、`GIT_BIN` 指定可执行文件；`NEXTFLOW_JAVA_HOME` 指定 JDK。Conda 安装的 nf-core 会从常见的 `~/miniconda3/bin` 或 `~/miniforge3/bin` 查找，不要求启动交互式 shell。需要代理时用 `NEXTFLOW_HTTP_PROXY` 指定 HTTP 代理地址，子进程会忽略 Nextflow 不支持的 SOCKS 代理变量。
+
+模块跟随目录 SHA，但 `utils_nfschema_plugin` 单独固定到与 nf-schema 2.7.3 兼容的 `a7b27fd25bfa8dcc07d299e88bd790585901a436`；当前目录提交中的该子流程已采用 nf-schema 3.x API，混用会导致启动失败。
+
+### 从网页启动真实运行
+
+需要 Node.js >=22.13（使用内置 SQLite；Node 22 会打印实验性 API 提示），以及以上本机工具。分别在两个终端启动：
+
+```bash
+pnpm runner      # 独立执行服务；先等到 Runner ready
+pnpm dev:real    # 另一个终端，http://127.0.0.1:3000
+```
+
+打开页面即加载内置 FastQC/MultiQC 示例，样本表已指向 runner 创建的合成数据。点击「运行 → 启动运行」，即可查看真实任务、日志和下载结果。默认任务上限 2 CPU / 2 GB，可在运行弹窗调整；输出和 work 目录由服务端隔离管理。自备数据时，`--input` 必须是 runner 主机上的绝对样本表路径，样本表内的 FASTQ 路径也推荐使用绝对路径。
+
+本机 web 默认只监听 127.0.0.1，执行可信工作流。runner 每次领取一条任务，使用 `nf-schema@2.7.3` 和 `nf-weblog@1.2.0` 采集真实状态，trace 最终对账；运行图中的任务数随数据流展开。取消会停止进程和带本次运行标签的容器。runner 异常退出后，重启会核验原进程身份、清理孤儿任务并标记中断，用户再从原记录恢复。重启 web 不影响独立 runner。
+
+数据默认位于 `~/.local/share/nextflow-studio/`：`studio.sqlite` 保存工作流和运行状态，`demo/` 保存示例输入，`executions/<lineage>/project/` 保存固定项目，`work/` 保存中间数据，`attempts/<run-id>/` 保存各次参数、日志、trace、报告和结果。日志接口返回有界尾部，下载接口返回完整文件；HTML 使用去脚本的沙箱静态预览，完整交互报告可下载。
+
+可执行完整 API 验收（需要 web 和 runner 都已启动，会新增验收记录）：
+
+```bash
+pnpm smoke:runner # 幂等提交 → 实时任务 → 成功/下载 → 缓存续跑 → 运行中取消 → 缺失输入失败
+```
+
+生产模式先 `pnpm build:real`，再分别运行 `pnpm runner` 和 `pnpm start`。公共环境变量在构建时固化，因此真实生产构建必须使用 `build:real`。
+
+旧演示工作流仍保存在浏览器 `nf-studio-mock-db`，不会自动导入为真实数据。可以先在 `pnpm dev` 演示模式导出 JSON，再在真实模式导入并保存；模拟运行历史不会冒充真实执行记录。
+
 ```bash
 pnpm install
 pnpm dev               # http://localhost:3000
@@ -91,4 +139,4 @@ pnpm test              # 端口兼容性、校验、项目生成、运行模拟�
 pnpm typecheck && pnpm lint && pnpm build
 ```
 
-目前还没有真实后端，除 `/api/copilotkit` 外的 `/api` 请求都由 MSW（`src/mocks`）在浏览器里应答。接入真实后端后，设置 `NEXT_PUBLIC_API_MOCKING=disabled` 即可关闭模拟。
+`pnpm dev` 默认保留 MSW 演示模式；`pnpm dev:real` 或 `NEXT_PUBLIC_API_MOCKING=disabled` 使用真实 API。切换到真实模式会注销本应用的 mock Service Worker。

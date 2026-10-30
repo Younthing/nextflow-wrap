@@ -5,6 +5,7 @@ import { Loader2 } from "lucide-react";
 import { RunDetailView } from "@/features/runs/components/run-detail";
 
 export const metadata: Metadata = { title: "运行详情" };
+export const instant = false;
 
 export default function RunPage({ params }: PageProps<"/runs/[id]">) {
   return (

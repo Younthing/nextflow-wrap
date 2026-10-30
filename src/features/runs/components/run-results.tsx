@@ -9,7 +9,8 @@ import { CodeViewer } from "@/features/project/components/code-viewer";
 import { cn } from "@/lib/utils";
 import { formatBytes } from "../format";
 import type { ResultFile } from "../outputs";
-import { useResultContent, useRunLog, useRunResults } from "../queries";
+import { useHealthStatus, useResultContent, useRunLog, useRunResults } from "../queries";
+import { staticReportHtml } from "../report-preview";
 
 const MULTIQC = "multiqc/multiqc_report.html";
 
@@ -21,6 +22,7 @@ function languageOf(path: string) {
 
 function Preview({ runId, file, outdir }: { runId: string; file: ResultFile; outdir: string }) {
   const content = useResultContent(runId, file.preview ? file.path : null);
+  const reportHtml = React.useMemo(() => file.preview === "html" && content.data ? staticReportHtml(content.data.body) : "", [file.preview, content.data]);
   const fullPath = `${outdir.replace(/\/$/, "")}/${file.path}`;
 
   if (!file.preview) {
@@ -44,7 +46,7 @@ function Preview({ runId, file, outdir }: { runId: string; file: ResultFile; out
     return (
       <iframe
         title={file.path}
-        srcDoc={content.data.body}
+        srcDoc={reportHtml}
         // Reports are untrusted output: no scripts or same-origin access.
         sandbox=""
         className="min-h-0 flex-1 rounded-lg border border-border bg-white"
@@ -65,6 +67,7 @@ function groupByDir(files: ResultFile[]) {
 }
 
 export function RunResults({ runId, active, outdir }: { runId: string; active: boolean; outdir: string }) {
+  const health = useHealthStatus();
   const results = useRunResults(runId, active);
   const files = React.useMemo(() => results.data ?? [], [results.data]);
   const [selected, setSelected] = React.useState<string | null>(null);
@@ -157,6 +160,8 @@ export function RunResults({ runId, active, outdir }: { runId: string; active: b
             <div className="font-mono text-xs text-muted-foreground">
               {outdir.replace(/\/$/, "")}/{current.path}
             </div>
+            {health.data?.mocked === false && <Button asChild variant="outline" size="sm" className="self-start"><a href={`/api/runs/${runId}/results/content?download=1&path=${encodeURIComponent(current.path)}`}>下载原始文件</a></Button>}
+            {current.preview === "html" && <p className="text-xs text-muted-foreground">静态预览；交互图表请下载报告后查看。</p>}
             <Preview key={current.path} runId={runId} file={current} outdir={outdir} />
           </>
         )}
@@ -166,6 +171,7 @@ export function RunResults({ runId, active, outdir }: { runId: string; active: b
 }
 
 export function RunConsole({ runId, active }: { runId: string; active: boolean }) {
+  const health = useHealthStatus();
   const log = useRunLog(runId, active);
   const ref = React.useRef<HTMLDivElement>(null);
   const lines = log.data?.lines;
@@ -177,6 +183,7 @@ export function RunConsole({ runId, active }: { runId: string; active: boolean }
   }, [lines?.length]);
 
   return (
+    <><div className="flex justify-end pb-2">{health.data?.mocked === false && <Button asChild variant="outline" size="sm"><a href={`/api/runs/${runId}/log?download=1`}>下载完整日志</a></Button>}</div>
     <div ref={ref} className="min-h-0 flex-1 overflow-auto rounded-lg bg-[oklch(0.2_0.02_260)] p-3 font-mono text-[12px] leading-5 text-[oklch(0.9_0.01_260)]">
       {log.isPending && <span className="opacity-60">加载日志…</span>}
       {lines?.map((line, i) => (
@@ -193,6 +200,6 @@ export function RunConsole({ runId, active }: { runId: string; active: boolean }
           {line || " "}
         </div>
       ))}
-    </div>
+    </div></>
   );
 }

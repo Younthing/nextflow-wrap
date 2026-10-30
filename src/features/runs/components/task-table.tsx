@@ -98,7 +98,7 @@ const columns = helper.columns([
 ]);
 
 function TaskLogPanel({ runId, task, active, onClose }: { runId: string; task: TaskRecord; active: boolean; onClose: () => void }) {
-  const log = useTaskLog(runId, task.hash, active);
+  const log = useTaskLog(runId, task.id ?? task.hash, active);
   return (
     <aside className="flex w-[380px] shrink-0 flex-col gap-3 rounded-lg bg-secondary/40 p-3">
       <div className="flex items-start gap-2">
@@ -155,9 +155,9 @@ export function TaskTable({
     columns,
     data,
     initialState: { sorting: [{ id: "submitted", desc: false }] },
-    getRowId: (t) => t.hash,
+    getRowId: (t) => t.id ?? t.hash,
   });
-  const selectedTask = tasks.find((t) => t.hash === selected);
+  const selectedTask = tasks.find((t) => (t.id ?? t.hash) === selected);
 
   return (
     <div className="flex min-h-0 flex-1 gap-3">

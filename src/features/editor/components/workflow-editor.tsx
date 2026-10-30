@@ -5,6 +5,7 @@ import { ReactFlowProvider, useReactFlow } from "@xyflow/react";
 import { Loader2 } from "lucide-react";
 
 import { BUILTIN_MODULES } from "@/features/workflow/builtins";
+import { API_MOCKING_ENABLED } from "@/lib/mocking";
 import { emptyWorkflow, parseWorkflowDoc } from "@/features/workflow/document";
 import { useModuleCatalog, useSaveWorkflow, useWorkflow } from "@/features/workflow/queries";
 import { validateWorkflow } from "@/features/workflow/validate";
@@ -20,7 +21,7 @@ import { Toaster } from "./toaster";
 import { WorkflowCanvas } from "./workflow-canvas";
 
 const CURRENT_KEY = "nf-studio-current-workflow";
-const DEFAULT_WORKFLOW = "wf_demo_rnaseq";
+const DEFAULT_WORKFLOW = API_MOCKING_ENABLED ? "wf_demo_rnaseq" : "qc-smoke";
 const AUTOSAVE_MS = 1500;
 
 function readCurrentId() {

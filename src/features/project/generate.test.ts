@@ -3,8 +3,9 @@ import { describe, expect, it } from "vitest";
 import catalog from "@/data/nf-core-modules.json";
 import { indexModules } from "@/features/workflow/catalog";
 import { demoRnaseqWorkflow } from "@/features/workflow/demo";
+import { qcDemoWorkflow } from "@/features/workflow/qc-demo";
 import type { ModuleCatalog, WorkflowDoc } from "@/features/workflow/types";
-import { GenerateError, generateProject, projectMeta } from "./generate";
+import { GenerateError, generateProject, NF_SCHEMA_UTILS_SHA, projectMeta } from "./generate";
 
 const typed = catalog as ModuleCatalog;
 const index = indexModules(typed.modules);
@@ -13,6 +14,17 @@ const file = (doc: WorkflowDoc, path: string) => generate(doc).files.find((f) =>
 
 describe("generateProject", () => {
   const demo = demoRnaseqWorkflow("wf");
+
+  it("generates a QC workflow whose test input belongs to the exported project", () => {
+    const doc = qcDemoWorkflow();
+    const workflow = file(doc, "workflows/qcsmoke.nf");
+    expect(workflow).toContain("FASTQC (");
+    expect(workflow).toContain("FASTQC.out.zip");
+    expect(workflow).toContain("MULTIQC (");
+    const config = file(doc, "conf/test.config");
+    expect(config).toContain('${projectDir}/assets/samplesheet.csv');
+    expect(config).not.toContain("viralrecon");
+  });
 
   it("lays out an nf-core style project", () => {
     const paths = generate(demo).files.map((f) => f.path);
@@ -82,6 +94,8 @@ describe("generateProject", () => {
     const modules = modulesJson.repos["https://github.com/nf-core/modules.git"].modules["nf-core"];
     expect(Object.keys(modules).sort()).toEqual(["fastp", "fastqc", "multiqc", "star/align", "star/genomegenerate"]);
     expect(modules.fastp.git_sha).toBe(typed.gitSha);
+    const utils = modulesJson.repos["https://github.com/nf-core/modules.git"].subworkflows["nf-core"];
+    expect(utils.utils_nfschema_plugin.git_sha).toBe(NF_SCHEMA_UTILS_SHA);
   });
 
   it("skips disabled nodes and rejects a missing main input", () => {

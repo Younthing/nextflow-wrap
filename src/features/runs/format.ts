@@ -6,6 +6,7 @@ export const RUN_STATUS: Record<RunStatus, { label: string; variant: "default" |
   succeeded: { label: "成功", variant: "success" },
   failed: { label: "失败", variant: "destructive" },
   cancelled: { label: "已停止", variant: "warning" },
+  interrupted: { label: "已中断", variant: "warning" },
 };
 
 export const TASK_STATUS: Record<TaskStatus, { label: string; color: string }> = {

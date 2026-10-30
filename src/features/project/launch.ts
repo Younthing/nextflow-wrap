@@ -130,7 +130,7 @@ export function defaultLaunchConfig(): LaunchConfig {
     engine: "docker",
     extraProfiles: [],
     workDir: "work",
-    resume: true,
+    resume: false,
     registry: "quay.io",
   };
 }

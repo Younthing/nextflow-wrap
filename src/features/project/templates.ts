@@ -271,7 +271,7 @@ def validateInputSamplesheet(input) {
 // Get attribute from genome config file e.g. fasta
 //
 def getGenomeAttribute(attribute) {
-    if (params.genomes && params.genome && params.genomes.containsKey(params.genome)) {
+    if (params.containsKey('genomes') && params.genomes && params.genome && params.genomes.containsKey(params.genome)) {
         if (params.genomes[ params.genome ].containsKey(attribute)) {
             return params.genomes[ params.genome ][ attribute ]
         }
@@ -283,7 +283,7 @@ def getGenomeAttribute(attribute) {
 // Exit pipeline if incorrect --genome key provided
 //
 def genomeExistsError() {
-    if (params.genomes && params.genome && !params.genomes.containsKey(params.genome)) {
+    if (params.containsKey('genomes') && params.genomes && params.genome && !params.genomes.containsKey(params.genome)) {
         error("Genome '@{params.genome}' not found in any config files provided to the pipeline. Available genome keys: @{params.genomes.keySet().join(", ")}")
     }
 }
@@ -631,8 +631,8 @@ params {
     config_profile_name        = 'Test profile'
     config_profile_description = 'Minimal test dataset to check pipeline function'
 
-    // Input data
-    input = params.pipelines_testdata_base_path + 'viralrecon/samplesheet/samplesheet_test_illumina_amplicon.csv'
+    // Supply real reads in this samplesheet (the generated CSV documents its format).
+    input = "@{projectDir}/assets/samplesheet.csv"
 }
 `;
 }

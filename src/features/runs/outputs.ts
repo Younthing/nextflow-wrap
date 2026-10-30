@@ -10,17 +10,8 @@ import { NEXTFLOW_VERSION } from "@/features/project/templates";
 import { projectMeta } from "@/features/project/generate";
 import type { ModuleDef } from "@/features/workflow/types";
 import { formatBytes, formatDuration } from "./format";
-import type { RunDetail, TaskRecord } from "./types";
-
-export interface ResultFile {
-  /** Path relative to `--outdir`. */
-  path: string;
-  size: number;
-  /** How the UI can show it: plain text, an HTML report, or not at all. */
-  preview: "text" | "html" | null;
-  /** Canvas node that published it, if any. */
-  nodeId?: string;
-}
+import type { ResultFile, RunDetail, TaskRecord } from "./types";
+export type { ResultFile } from "./types";
 
 type RunLike = Pick<RunDetail, "id" | "runName" | "workflow" | "params" | "submittedAt" | "launch" | "status" | "completedAt" | "startedAt" | "errorMessage">;
 

@@ -4,6 +4,7 @@ import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
+import type { HealthStatus } from "@/lib/api-types";
 import type { ResultFile } from "./outputs";
 import type { LaunchRequest, RunDetail, RunStatus, RunSummary, TaskRecord } from "./types";
 
@@ -16,6 +17,18 @@ export const runKeys = {
 export const isActive = (status: RunStatus) => status === "submitted" || status === "running";
 
 const POLL_MS = 2_000;
+
+export function useHealthStatus(enabled = true) {
+  return useQuery({ queryKey: ["health"], queryFn: () => api<HealthStatus>("/health"), refetchInterval: 10_000, enabled });
+}
+
+export function useResumeRun() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api<RunDetail>(`/runs/${id}/resume`, { method: "POST" }),
+    onSuccess: (run) => { qc.setQueryData(runKeys.detail(run.id), run); void qc.invalidateQueries({ queryKey: ["runs", "list"] }); },
+  });
+}
 
 export function useRuns(workflowId?: string) {
   return useQuery({
@@ -37,7 +50,7 @@ export function useRun(id: string) {
 export function useLaunchRun() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (req: LaunchRequest) => api<RunDetail>("/runs", { method: "POST", body: JSON.stringify(req) }),
+    mutationFn: (req: LaunchRequest) => api<RunDetail>("/runs", { method: "POST", headers: { "idempotency-key": crypto.randomUUID() }, body: JSON.stringify(req) }),
     onSuccess: (run) => {
       qc.setQueryData(runKeys.detail(run.id), run);
       void qc.invalidateQueries({ queryKey: ["runs", "list"] });

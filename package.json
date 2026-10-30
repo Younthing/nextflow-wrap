@@ -3,15 +3,20 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --hostname 127.0.0.1",
+    "dev:real": "NEXT_PUBLIC_API_MOCKING=disabled next dev --hostname 127.0.0.1",
+    "runner": "tsx scripts/runner.ts",
     "build": "next build",
-    "start": "next start",
+    "build:real": "NEXT_PUBLIC_API_MOCKING=disabled next build",
+    "start": "next start --hostname 127.0.0.1",
     "lint": "eslint",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
-    "sync:modules": "node scripts/sync-nf-core-modules.mjs"
+    "sync:modules": "node scripts/sync-nf-core-modules.mjs",
+    "smoke:nextflow": "tsx scripts/smoke-nextflow.ts",
+    "smoke:runner": "tsx scripts/smoke-runner.ts"
   },
   "dependencies": {
     "@copilotkit/react-core": "1.83.0",
@@ -35,12 +40,13 @@
     "zustand": "^5.0.16"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@storybook/addon-docs": "^10.6.5",
     "@storybook/nextjs-vite": "^10.6.5",
     "@tailwindcss/turbopack": "^4",
     "@tailwindcss/vite": "^4.3.3",
     "@tanstack/react-query-devtools": "^5.105.0",
-    "@types/node": "^20",
+    "@types/node": "^22.20.5",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
@@ -48,11 +54,13 @@
     "msw": "^3.0.3",
     "storybook": "^10.6.5",
     "tailwindcss": "^4",
+    "tsx": "^4.23.15",
     "typescript": "^5",
     "vite": "latest",
     "vitest": "^5.0.5",
     "yaml": "^2.9.1"
   },
+  "engines": { "node": ">=22.13.0" },
   "packageManager": "pnpm@10.28.0",
   "msw": {
     "workerDirectory": [

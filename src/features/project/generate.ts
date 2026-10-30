@@ -46,6 +46,8 @@ export interface GenerateOptions {
 }
 
 const UTILS_SUBWORKFLOWS = ["utils_nextflow_pipeline", "utils_nfcore_pipeline", "utils_nfschema_plugin"];
+// nf-core/tools' nf-schema 2.x template pins this revision. Catalog HEAD uses the 3.x API.
+export const NF_SCHEMA_UTILS_SHA = "a7b27fd25bfa8dcc07d299e88bd790585901a436";
 
 export function slugify(name: string): string {
   return name
@@ -210,7 +212,11 @@ export function generateProject(doc: WorkflowDoc, index: ModuleIndex, opts: Gene
   }
   const components: RemoteComponent[] = [
     ...moduleComponents,
-    ...UTILS_SUBWORKFLOWS.map((path) => ({ kind: "subworkflow" as const, path, gitSha: opts.modulesSha })),
+    ...UTILS_SUBWORKFLOWS.map((path) => ({
+      kind: "subworkflow" as const,
+      path,
+      gitSha: path === "utils_nfschema_plugin" ? NF_SCHEMA_UTILS_SHA : opts.modulesSha,
+    })),
   ];
 
   const files: ProjectFile[] = [

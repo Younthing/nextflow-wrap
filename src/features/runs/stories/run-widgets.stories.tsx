@@ -30,3 +30,14 @@ export const Progress: Story = {
     </div>
   ),
 };
+
+export const DiscoveringTasks: Story = {
+  render: () => (
+    <div className="grid w-80 gap-3 text-sm">
+      <StatusBadge status="submitted" />
+      <p className="text-muted-foreground">正在准备项目和安装依赖</p>
+      <ProgressBar progress={{ total: 0, pending: 0, running: 0, completed: 0, cached: 0, failed: 0, aborted: 0 }} />
+      <p className="text-xs text-muted-foreground">已发现 0 · 完成 0；任务数量随流程展开更新。</p>
+    </div>
+  ),
+};

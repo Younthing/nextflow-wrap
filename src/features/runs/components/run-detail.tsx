@@ -15,7 +15,7 @@ import { ApiError } from "@/lib/api";
 import { formatDuration, formatTime, runDuration } from "../format";
 import { useModuleCatalog } from "@/features/workflow/queries";
 import { RunAssistant } from "@/features/assistant/run-assistant";
-import { isActive, useCancelRun, useDeleteRun, useRefreshWhenDone, useRun, useRunTasks } from "../queries";
+import { isActive, useCancelRun, useDeleteRun, useRefreshWhenDone, useResumeRun, useRun, useRunTasks } from "../queries";
 import type { RunDetail } from "../types";
 import { RunGraph } from "./run-graph";
 import { RunConsole, RunResults } from "./run-results";
@@ -46,6 +46,7 @@ function RunHeader({ run }: { run: RunDetail }) {
   const router = useRouter();
   const cancel = useCancelRun();
   const del = useDeleteRun();
+  const resume = useResumeRun();
   const active = isActive(run.status);
   const now = useNow(active);
   const p = run.progress;
@@ -72,8 +73,9 @@ function RunHeader({ run }: { run: RunDetail }) {
           >
             <PencilRuler /> 在编辑器中打开
           </Button>
+          {!active && run.nextflowSessionId && <Button variant="outline" size="sm" disabled={resume.isPending} onClick={() => resume.mutate(run.id, { onSuccess: (next) => router.push(`/runs/${next.id}`) })}>从此运行恢复</Button>}
           {active ? (
-            <Button variant="destructive" size="sm" disabled={cancel.isPending} onClick={() => cancel.mutate(run.id)}>
+            <Button variant="destructive" size="sm" disabled={cancel.isPending || run.phase === "cancelling"} onClick={() => cancel.mutate(run.id)}>
               {cancel.isPending ? <Loader2 className="animate-spin" /> : <Square />} 停止
             </Button>
           ) : (
@@ -88,6 +90,9 @@ function RunHeader({ run }: { run: RunDetail }) {
           )}
         </div>
       </div>
+
+      {run.phase && <p className="text-xs text-muted-foreground">{{ queued: "等待 runner 领取", preparing: "正在准备项目和安装依赖", executing: "执行中 · 任务数量随流程展开更新", finalizing: "正在核对任务与结果", cancelling: "正在停止计算并清理任务" }[run.phase]}</p>}
+      {(cancel.error || del.error || resume.error) && <p role="alert" className="text-sm text-destructive">{(cancel.error || del.error || resume.error)?.message}</p>}
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
         <Stat label="运行环境">{executorDef(run.executor).name}</Stat>
@@ -104,7 +109,7 @@ function RunHeader({ run }: { run: RunDetail }) {
         </Stat>
         <Stat label="任务">
           <span className="font-mono">
-            {p.completed + p.cached}/{p.total}
+            已发现 {p.total} · 完成 {p.completed + p.cached}
             {p.running > 0 && <span className="text-primary"> · {p.running} 运行中</span>}
             {p.failed > 0 && <span className="text-destructive"> · {p.failed} 失败</span>}
             {p.aborted > 0 && <span className="text-warning"> · {p.aborted} 中止</span>}

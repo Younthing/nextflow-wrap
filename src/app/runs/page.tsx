@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { RunsTable } from "@/features/runs/components/runs-table";
 
 export const metadata: Metadata = { title: "运行记录" };
+export const instant = false;
 
 export default function RunsPage() {
   return (

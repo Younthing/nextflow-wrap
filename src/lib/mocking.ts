@@ -1,6 +1,5 @@
 /**
- * There is no backend yet, so mocking is on unless explicitly disabled with
- * NEXT_PUBLIC_API_MOCKING=disabled (e.g. once a real `/api` is deployed).
+ * Demo mode uses MSW; dev:real / NEXT_PUBLIC_API_MOCKING=disabled uses the local API.
  */
 export const API_MOCKING_ENABLED =
   process.env.NEXT_PUBLIC_API_MOCKING !== "disabled";
@@ -8,8 +7,14 @@ export const API_MOCKING_ENABLED =
 let started: Promise<void> | null = null;
 
 export function startMocking(): Promise<void> {
-  if (!API_MOCKING_ENABLED || typeof window === "undefined") {
+  if (typeof window === "undefined") {
     return Promise.resolve();
+  }
+  if (!API_MOCKING_ENABLED) {
+    started ??= ("serviceWorker" in navigator ? navigator.serviceWorker.getRegistrations().then(async (registrations) => {
+      await Promise.all(registrations.filter((registration) => (registration.active ?? registration.waiting ?? registration.installing)?.scriptURL.endsWith("/mockServiceWorker.js")).map((registration) => registration.unregister()));
+    }) : Promise.resolve());
+    return started;
   }
   started ??= import("@/mocks/browser").then(({ worker }) =>
     worker

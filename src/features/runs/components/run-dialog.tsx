@@ -30,7 +30,7 @@ import {
 } from "@/features/project/launch";
 import type { Issue } from "@/features/workflow/validate";
 import { cn } from "@/lib/utils";
-import { useLaunchRun } from "../queries";
+import { useHealthStatus, useLaunchRun } from "../queries";
 
 const EXECUTOR_ICONS: Record<ExecutorId, React.ComponentType<{ className?: string }>> = {
   local: Server,
@@ -105,7 +105,7 @@ function SettingInput({
   );
 }
 
-function EnvironmentForm({ config, onChange }: { config: LaunchConfig; onChange: (c: LaunchConfig) => void }) {
+function EnvironmentForm({ config, onChange, real }: { config: LaunchConfig; onChange: (c: LaunchConfig) => void; real?: boolean }) {
   const def = executorDef(config.executor);
   const set = (patch: Partial<LaunchConfig>) => onChange({ ...config, ...patch });
 
@@ -123,6 +123,7 @@ function EnvironmentForm({ config, onChange }: { config: LaunchConfig; onChange:
                 type="button"
                 role="radio"
                 aria-checked={active}
+                disabled={real && e.id !== "local"}
                 onClick={() => {
                   if (active) return;
                   const engine = e.engines.includes(config.engine) ? config.engine : e.engines[0];
@@ -131,6 +132,7 @@ function EnvironmentForm({ config, onChange }: { config: LaunchConfig; onChange:
                   set({ executor: e.id, engine, workDir, settings: {} });
                 }}
                 className={cn(
+                  real && e.id !== "local" && "cursor-not-allowed opacity-40",
                   "flex flex-col gap-1 rounded-lg border p-3 text-left transition-colors hover:bg-accent",
                   active ? "border-primary bg-primary/10 shadow-sm" : "border-border",
                 )}
@@ -171,7 +173,7 @@ function EnvironmentForm({ config, onChange }: { config: LaunchConfig; onChange:
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {def.engines.map((e) => (
+                {def.engines.filter((e) => !real || e === "docker").map((e) => (
                   <SelectItem key={e} value={e}>
                     {ENGINE_LABELS[e]}
                   </SelectItem>
@@ -196,13 +198,14 @@ function EnvironmentForm({ config, onChange }: { config: LaunchConfig; onChange:
           <Field label="工作目录（workDir）" htmlFor="workdir">
             <Input
               id="workdir"
+              disabled={real}
               value={config.workDir}
               placeholder={def.workDirHint}
               onChange={(e) => set({ workDir: e.target.value })}
               className="h-9 font-mono text-xs"
             />
           </Field>
-          <Field label="额外 profile" htmlFor="profiles" hint="逗号分隔，例如 test,gpu">
+          <Field label="额外 profile" htmlFor="profiles" hint={real ? "支持 test、debug、emulate_amd64；逗号分隔" : "逗号分隔，例如 test,gpu"}>
             <Input
               id="profiles"
               value={config.extraProfiles.join(",")}
@@ -228,10 +231,10 @@ function EnvironmentForm({ config, onChange }: { config: LaunchConfig; onChange:
               className="h-9 font-mono text-xs"
             />
           </Field>
-          <label className="flex h-9 items-center justify-between self-end rounded-md border border-input px-3 text-sm">
+          {real ? <p className="self-end text-xs text-muted-foreground">工作目录自动隔离；断点续跑请从运行详情选择来源记录。</p> : <label className="flex h-9 items-center justify-between self-end rounded-md border border-input px-3 text-sm">
             断点续跑（-resume）
             <Switch checked={config.resume} onCheckedChange={(resume) => set({ resume })} />
-          </label>
+          </label>}
         </div>
       </section>
     </div>
@@ -281,10 +284,13 @@ export function RunDialog({
 }) {
   const router = useRouter();
   const launch = useLaunchRun();
+  const health = useHealthStatus(open);
+  const real = !!health.data && !health.data.mocked;
   const docId = useEditorStore((s) => s.docId);
   const revision = useEditorStore((s) => s.revision);
   const index = useEditorStore((s) => s.index);
   const [config, setConfig] = React.useState<LaunchConfig>(() => readLaunchConfig(docId));
+  const launchConfig: LaunchConfig = real ? { ...config, settings: { cpus: 2, memory: "2.GB", ...config.settings }, executor: "local", engine: "docker", resume: false } : config;
   const [tab, setTab] = React.useState("environment");
 
   // Re-read the saved launch settings whenever the dialog opens for a workflow.
@@ -309,27 +315,29 @@ export function RunDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, index, modulesSha, config.registry, revision]);
 
-  const runConfig = renderRunConfig(config);
-  const command = launchCommand(config);
+  const runConfig = renderRunConfig(launchConfig);
+  const command = launchCommand(launchConfig);
   const errors = issues.filter((i) => i.level === "error").map((i) => i.message);
   const problems = [
     ...(docId ? [] : ["请先保存流程（Ctrl+S）"]),
     ...(generated?.error ? [`无法生成项目：${generated.error}`] : []),
     ...errors,
-    ...launchProblems(config),
+    ...launchProblems(launchConfig),
+    ...(real && !health.data?.runnerReady ? [health.data?.diagnostics ?? "Runner 未就绪"] : []),
   ];
 
   const start = () => {
     if (problems.length || !generated?.project) return;
     const doc = useEditorStore.getState().toDoc();
     const { project } = generated;
-    rememberLaunchConfig(docId, config);
+    rememberLaunchConfig(docId, launchConfig);
     launch.mutate(
       {
         workflow: doc,
         project: { name: project.meta.name, files: project.files.map(({ path, content }) => ({ path, content })), components: project.components },
         params: doc.params,
-        launch: config,
+        launch: launchConfig,
+        modulesSha,
         runConfig,
         command,
       },
@@ -360,7 +368,7 @@ export function RunDialog({
           </TabsList>
           <TabsContent value="environment" className="min-h-0 overflow-auto pr-1">
             <div className="grid gap-6 py-1">
-              <EnvironmentForm config={config} onChange={setConfig} />
+              <EnvironmentForm config={launchConfig} onChange={setConfig} real={real} />
               <ProjectSettingsForm />
             </div>
           </TabsContent>

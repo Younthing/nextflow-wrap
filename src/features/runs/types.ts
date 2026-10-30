@@ -1,8 +1,15 @@
 import type { LaunchConfig } from "@/features/project/launch";
 import type { PipelineParams, WorkflowDoc } from "@/features/workflow/types";
 
-export type RunStatus = "submitted" | "running" | "succeeded" | "failed" | "cancelled";
+export type RunStatus = "submitted" | "running" | "succeeded" | "failed" | "cancelled" | "interrupted";
 export type TaskStatus = "pending" | "submitted" | "running" | "completed" | "cached" | "failed" | "aborted";
+
+export interface ResultFile {
+  path: string;
+  size: number;
+  preview: "text" | "html" | null;
+  nodeId?: string;
+}
 
 export interface RunProgress {
   total: number;
@@ -15,6 +22,7 @@ export interface RunProgress {
 }
 
 export interface RunSummary {
+  phase?: "queued" | "preparing" | "executing" | "finalizing" | "cancelling";
   id: string;
   /** Nextflow run name, e.g. `tender_curie`. */
   runName: string;
@@ -38,6 +46,7 @@ export interface ProjectSnapshot {
 
 /** POST /api/runs */
 export interface LaunchRequest {
+  modulesSha?: string;
   workflow: WorkflowDoc;
   project: ProjectSnapshot;
   params: PipelineParams;
@@ -47,6 +56,9 @@ export interface LaunchRequest {
 }
 
 export interface RunDetail extends RunSummary {
+  nextflowSessionId?: string;
+  resumeFromRunId?: string;
+  exitCode?: number;
   command: string;
   launch: LaunchConfig;
   params: PipelineParams;
@@ -57,6 +69,9 @@ export interface RunDetail extends RunSummary {
 }
 
 export interface TaskRecord {
+  id?: string;
+  taskId?: string;
+  attempt?: number;
   /** Nextflow task hash, e.g. `3f/a1b2c3`. */
   hash: string;
   nodeId: string;

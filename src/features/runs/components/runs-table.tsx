@@ -110,7 +110,7 @@ const columns = helper.columns([
         <div className="grid w-36 gap-1">
           <ProgressBar progress={p} />
           <span className="font-mono text-[11px] text-muted-foreground">
-            {p.completed + p.cached}/{p.total} 个任务{p.failed > 0 && ` · ${p.failed} 失败`}
+            已发现 {p.total} · 完成 {p.completed + p.cached}{p.failed > 0 && ` · ${p.failed} 失败`}
             {p.aborted > 0 && ` · ${p.aborted} 中止`}
           </span>
         </div>

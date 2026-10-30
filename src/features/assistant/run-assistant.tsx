@@ -26,6 +26,8 @@ export function runSummary(run: RunDetail, tasks: TaskRecord[]) {
     params: run.params,
     progress: run.progress,
     failedTasks: failed.map((t) => ({
+      id: t.id ?? t.hash,
+      attempt: t.attempt,
       name: t.name,
       hash: t.hash,
       node: alias.get(t.nodeId),
@@ -55,9 +57,9 @@ function RunTools({ run, tasks }: { run: RunDetail; tasks: TaskRecord[] }) {
       description: "读取这次运行中某个任务的 .command.log（任务名或哈希）。",
       parameters: z.object({ task: z.string().describe("任务哈希（如 3f/a1b2c3）或任务名（如 FASTQC (S1)）") }),
       handler: async ({ task }) => {
-        const match = tasks.find((t) => t.hash === task || t.name === task);
+        const match = tasks.find((t) => t.id === task || t.hash === task || t.name === task);
         if (!match) return { error: `找不到任务 ${task}` };
-        const { text } = await api<{ text: string }>(`/runs/${run.id}/task-log?hash=${encodeURIComponent(match.hash)}`);
+        const { text } = await api<{ text: string }>(`/runs/${run.id}/task-log?hash=${encodeURIComponent(match.id ?? match.hash)}`);
         return { task: match.name, status: match.status, exitStatus: match.exitStatus, log: text };
       },
     },

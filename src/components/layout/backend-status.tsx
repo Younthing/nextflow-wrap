@@ -1,20 +1,15 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 
 import { Badge } from "@/components/ui/badge";
-import { api } from "@/lib/api";
-import type { HealthStatus } from "@/lib/api-types";
+import { useHealthStatus } from "@/features/runs/queries";
 
 export function BackendStatus() {
-  const { data, isError, isPending } = useQuery({
-    queryKey: ["health"],
-    queryFn: () => api<HealthStatus>("/health"),
-    refetchInterval: 60_000,
-  });
+  const { data, isError, isPending } = useHealthStatus();
 
   if (isPending) return <Badge variant="secondary">连接中…</Badge>;
   if (isError) return <Badge variant="destructive">后端不可用</Badge>;
+  if (data.status === "degraded") return <Badge variant="warning" title={data.diagnostics}>Runner 未就绪</Badge>;
 
   return (
     <Badge variant={data.mocked ? "warning" : "success"}>
