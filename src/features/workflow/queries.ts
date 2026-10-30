@@ -33,19 +33,14 @@ export interface JsonSchema {
   hidden?: boolean;
   required?: string[];
   pattern?: string;
+  exists?: boolean;
+  schema?: string;
+  mimetype?: string;
   fa_icon?: string;
   help_text?: string;
   properties?: Record<string, JsonSchema>;
   $defs?: Record<string, JsonSchema>;
   allOf?: { $ref: string }[];
-}
-
-export function usePipelineSchema() {
-  return useQuery({
-    queryKey: ["schemas", "pipeline"],
-    queryFn: () => api<JsonSchema>("/schemas/pipeline"),
-    staleTime: Infinity,
-  });
 }
 
 export function useWorkflows() {

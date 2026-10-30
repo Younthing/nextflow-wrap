@@ -19,6 +19,7 @@ import { checkCompatibility, findPort, type Compatibility } from "@/features/wor
 import type {
   ModuleDef,
   PipelineParams,
+  ProjectSettings,
   WidgetValue,
   WorkflowDoc,
   WorkflowNodeData,
@@ -31,7 +32,17 @@ interface Snapshot {
   nodes: FlowNode[];
   edges: FlowEdge[];
   params: PipelineParams;
+  name: string;
+  project?: ProjectSettings;
 }
+
+const snapshotOf = (s: Snapshot): Snapshot => ({
+  nodes: s.nodes,
+  edges: s.edges,
+  params: s.params,
+  name: s.name,
+  project: s.project,
+});
 
 const HISTORY_LIMIT = 100;
 
@@ -39,6 +50,7 @@ interface EditorState {
   docId: string;
   name: string;
   description?: string;
+  project?: ProjectSettings;
   params: PipelineParams;
   nodes: FlowNode[];
   edges: FlowEdge[];
@@ -46,6 +58,8 @@ interface EditorState {
   /** Bumped on every content change, compared against the last saved value. */
   revision: number;
   savedRevision: number;
+  /** Bumped by every load, so async work can tell whether its document is still open. */
+  generation: number;
   past: Snapshot[];
   future: Snapshot[];
   lastSnapshotKey?: string;
@@ -64,6 +78,7 @@ interface EditorState {
   setWidget: (id: string, name: string, value: WidgetValue) => void;
   removeNodes: (ids: string[]) => void;
   setName: (name: string) => void;
+  setProject: (project: ProjectSettings) => void;
   setParam: (key: string, value: WidgetValue | undefined) => void;
 
   beginChange: (key?: string) => void;
@@ -90,16 +105,19 @@ export const useEditorStore = create<EditorState>()((set, get) => {
     index: new Map(),
     revision: 0,
     savedRevision: 0,
+    generation: 0,
     past: [],
     future: [],
 
     setIndex: (index) => set({ index }),
 
     load: (doc) =>
-      set({
+      set((s) => ({
+        generation: s.generation + 1,
         docId: doc.id,
         name: doc.name,
         description: doc.description,
+        project: doc.project,
         params: doc.params,
         nodes: doc.nodes.map(toFlowNode),
         edges: doc.edges.map((e) => ({ ...e })),
@@ -108,7 +126,7 @@ export const useEditorStore = create<EditorState>()((set, get) => {
         past: [],
         future: [],
         lastSnapshotKey: undefined,
-      }),
+      })),
 
     toDoc: () => {
       const s = get();
@@ -116,6 +134,7 @@ export const useEditorStore = create<EditorState>()((set, get) => {
         id: s.docId,
         name: s.name,
         description: s.description,
+        project: s.project,
         version: 1,
         params: s.params,
         nodes: s.nodes.map((n) => ({ id: n.id, position: n.position, data: n.data })),
@@ -136,7 +155,7 @@ export const useEditorStore = create<EditorState>()((set, get) => {
       const s = get();
       // Consecutive edits to the same field collapse into one undo step.
       if (key && key === s.lastSnapshotKey) return;
-      const snap: Snapshot = { nodes: s.nodes, edges: s.edges, params: s.params };
+      const snap = snapshotOf(s);
       set({
         past: [...s.past, snap].slice(-HISTORY_LIMIT),
         future: [],
@@ -151,7 +170,7 @@ export const useEditorStore = create<EditorState>()((set, get) => {
       commit({
         ...prev,
         past: s.past.slice(0, -1),
-        future: [{ nodes: s.nodes, edges: s.edges, params: s.params }, ...s.future],
+        future: [snapshotOf(s), ...s.future],
         lastSnapshotKey: undefined,
       });
     },
@@ -162,7 +181,7 @@ export const useEditorStore = create<EditorState>()((set, get) => {
       if (!next) return;
       commit({
         ...next,
-        past: [...s.past, { nodes: s.nodes, edges: s.edges, params: s.params }],
+        past: [...s.past, snapshotOf(s)],
         future: s.future.slice(1),
         lastSnapshotKey: undefined,
       });
@@ -260,6 +279,11 @@ export const useEditorStore = create<EditorState>()((set, get) => {
     setName: (name) => {
       get().beginChange("name");
       commit({ name });
+    },
+
+    setProject: (project) => {
+      get().beginChange("project");
+      commit({ project });
     },
 
     setParam: (key, value) => {

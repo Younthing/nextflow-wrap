@@ -8,6 +8,7 @@ import { BUILTIN_MODULES } from "@/features/workflow/builtins";
 import { emptyWorkflow, parseWorkflowDoc } from "@/features/workflow/document";
 import { useModuleCatalog, useSaveWorkflow, useWorkflow } from "@/features/workflow/queries";
 import { validateWorkflow } from "@/features/workflow/validate";
+import { RunDialog } from "@/features/runs/components/run-dialog";
 import { selectIsDirty, useEditorStore } from "../store";
 import { toast } from "../toast";
 import { EditorToolbar } from "./editor-toolbar";
@@ -29,7 +30,7 @@ function readCurrentId() {
   }
 }
 
-function rememberCurrentId(id: string) {
+export function rememberCurrentId(id: string) {
   try {
     localStorage.setItem(CURRENT_KEY, id);
   } catch {
@@ -53,6 +54,7 @@ function Editor() {
   const { fitView, setCenter, screenToFlowPosition } = useReactFlow();
   const canvasRef = React.useRef<HTMLDivElement>(null);
   const [search, setSearch] = React.useState<SearchRequest | null>(null);
+  const [runOpen, setRunOpen] = React.useState(false);
 
   const store = useEditorStore;
   const docId = useEditorStore((s) => s.docId);
@@ -82,9 +84,12 @@ function Editor() {
     (silent = false) => {
       const state = store.getState();
       const rev = state.revision;
+      const generation = state.generation;
       save.mutate(state.toDoc(), {
         onSuccess: (saved) => {
           const s = store.getState();
+          // Another workflow was opened while saving: leave its identity alone.
+          if (s.generation !== generation) return;
           if (!s.docId) useEditorStore.setState({ docId: saved.id });
           s.markSaved(rev);
           setCurrentId(saved.id);
@@ -170,7 +175,19 @@ function Editor() {
     setSearch(null);
   };
 
+  /** Saves (or confirms discarding) the open workflow before replacing it. */
+  const leaveCurrent = () => {
+    const state = store.getState();
+    if (!selectIsDirty(state)) return true;
+    if (state.docId) {
+      doSave(true);
+      return true;
+    }
+    return window.confirm("当前流程还没保存，确定要放弃这些修改吗？");
+  };
+
   const onImport = async (file: File) => {
+    if (!leaveCurrent()) return;
     try {
       const doc = parseWorkflowDoc(JSON.parse(await file.text()));
       store.getState().load({ ...doc, id: "" });
@@ -207,10 +224,12 @@ function Editor() {
           saving={save.isPending}
           onSave={() => doSave()}
           onOpen={(id) => {
+            if (id === store.getState().docId || !leaveCurrent()) return;
             setCurrentId(id);
             rememberCurrentId(id);
           }}
           onNew={() => {
+            if (!leaveCurrent()) return;
             store.getState().load(emptyWorkflow(""));
             setCurrentId("");
           }}
@@ -218,6 +237,10 @@ function Editor() {
           onExport={() => {
             const doc = store.getState().toDoc();
             downloadJson(doc.name || "workflow", doc);
+          }}
+          onRun={() => {
+            if (store.getState().docId && selectIsDirty(store.getState())) doSave(true);
+            setRunOpen(true);
           }}
           onFocusNode={(id) => {
             const node = store.getState().nodes.find((n) => n.id === id);
@@ -242,6 +265,7 @@ function Editor() {
       </div>
       <Inspector className="w-80 shrink-0" />
       <NodeSearchDialog request={search} modules={modules} onPick={onPick} onClose={() => setSearch(null)} />
+      <RunDialog open={runOpen} onOpenChange={setRunOpen} issues={issues} modulesSha={catalog.data?.gitSha ?? ""} />
       <Toaster />
     </div>
   );

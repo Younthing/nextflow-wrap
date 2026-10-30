@@ -35,6 +35,8 @@ export interface Compatibility {
   /** Set when the link is allowed but probably wrong (format mismatch). */
   warning?: string;
   reason?: string;
+  /** Input elements filled with `[]` by the `pad` adapter. */
+  padded?: string[];
 }
 
 function sameKind(a: ChannelElement, b: ChannelElement) {
@@ -77,6 +79,7 @@ export function checkCompatibility(source: PortDef, target: PortDef): Compatibil
   return {
     ok: true,
     adapter,
+    padded: adapter === "pad" ? rest.map((el) => el.name) : undefined,
     warning: mismatches.length ? `文件格式可能不匹配：${mismatches.join("，")}` : undefined,
   };
 }

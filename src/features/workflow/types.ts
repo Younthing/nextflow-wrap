@@ -45,6 +45,8 @@ export interface ModuleDef {
   tools: ToolInfo[];
   label?: string;
   container?: string;
+  /** How the module reports tool versions: the `versions` topic or a versions.yml emit. */
+  versions?: "topic" | "emit";
   inputs: PortDef[];
   outputs: PortDef[];
   builtin?: boolean;
@@ -52,6 +54,8 @@ export interface ModuleDef {
 
 export interface ModuleCatalog {
   source: string;
+  /** nf-core/modules commit the catalog was read from. */
+  gitSha: string;
   syncedAt: string;
   modules: ModuleDef[];
 }
@@ -98,6 +102,14 @@ export interface WorkflowEdge {
 
 export type PipelineParams = Record<string, WidgetValue>;
 
+/** How the workflow is published as an nf-core style pipeline. */
+export interface ProjectSettings {
+  /** Repository-style name, e.g. `studio/rnaseq`. */
+  name: string;
+  version: string;
+  author: string;
+}
+
 export interface WorkflowDoc {
   id: string;
   name: string;
@@ -106,6 +118,7 @@ export interface WorkflowDoc {
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
   params: PipelineParams;
+  project?: ProjectSettings;
   updatedAt: string;
 }
 

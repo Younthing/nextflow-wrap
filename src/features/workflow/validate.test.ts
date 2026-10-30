@@ -29,3 +29,14 @@ describe("validateWorkflow", () => {
     expect(issues.some((i) => i.level === "error" && i.message.includes("--input"))).toBe(true);
   });
 });
+
+describe("validateWorkflow padded inputs", () => {
+  it("warns when a link leaves a required-looking tuple file empty", () => {
+    const doc = demoRnaseqWorkflow("w");
+    const star = doc.nodes.find((n) => n.data.alias === "STAR_ALIGN")!;
+    const fc = { id: "fc", position: { x: 0, y: 0 }, data: { moduleId: "nf-core/subread/featurecounts", alias: "SUBREAD_FEATURECOUNTS", widgets: {}, config: {} } };
+    const edge = { id: "e_fc", source: star.id, sourceHandle: "out:bam", target: "fc", targetHandle: "in:bams" };
+    const issues = validateWorkflow([...doc.nodes, fc], [...doc.edges, edge], doc.params, index);
+    expect(issues.some((i) => i.nodeId === "fc" && i.message.includes("annotation"))).toBe(true);
+  });
+});

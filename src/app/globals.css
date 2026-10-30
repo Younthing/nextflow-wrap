@@ -204,3 +204,37 @@
 .nf-canvas .react-flow__edge.selected .react-flow__edge-path {
   stroke-width: 3;
 }
+
+/* Code viewer tokens */
+.tok-comment {
+  color: var(--muted-foreground);
+  font-style: italic;
+}
+.tok-string {
+  color: oklch(0.55 0.14 150);
+}
+.tok-keyword {
+  color: oklch(0.55 0.2 300);
+}
+.tok-number {
+  color: oklch(0.6 0.16 50);
+}
+.tok-process {
+  color: var(--primary);
+  font-weight: 600;
+}
+.tok-key {
+  color: oklch(0.52 0.15 230);
+}
+.dark .tok-string {
+  color: oklch(0.78 0.13 150);
+}
+.dark .tok-keyword {
+  color: oklch(0.75 0.15 300);
+}
+.dark .tok-number {
+  color: oklch(0.8 0.13 60);
+}
+.dark .tok-key {
+  color: oklch(0.78 0.12 230);
+}

@@ -1,5 +1,6 @@
 {
-  "source": "https://github.com/nf-core/modules/tree/master",
+  "source": "https://github.com/nf-core/modules/tree/8bc51f2971a284eba5629c9e7c53474933a339aa",
+  "gitSha": "8bc51f2971a284eba5629c9e7c53474933a339aa",
   "syncedAt": "2026-10-30",
   "modules": [
     {
@@ -27,6 +28,7 @@
       ],
       "label": "process_low",
       "container": "community.wave.seqera.io/library/fastqc:0.13.0--b342db7b694c9af4",
+      "versions": "topic",
       "inputs": [
         {
           "name": "reads",
@@ -114,6 +116,7 @@
       ],
       "label": "process_single",
       "container": "community.wave.seqera.io/library/multiqc:1.35--c17fb751507e9dfc",
+      "versions": "emit",
       "inputs": [
         {
           "name": "multiqc_files",
@@ -249,6 +252,7 @@
       ],
       "label": "process_medium",
       "container": "community.wave.seqera.io/library/fastp:1.4.0--df415eab5e33cb11",
+      "versions": "topic",
       "inputs": [
         {
           "name": "reads",
@@ -464,6 +468,7 @@
       ],
       "label": "process_medium",
       "container": "community.wave.seqera.io/library/trim-galore:2.3.0--6a38a479b4972363",
+      "versions": "topic",
       "inputs": [
         {
           "name": "reads",
@@ -634,6 +639,7 @@
       ],
       "label": "process_medium",
       "container": "community.wave.seqera.io/library/cutadapt:5.2--efafca34ac3f6c8a",
+      "versions": "topic",
       "inputs": [
         {
           "name": "reads",
@@ -724,6 +730,7 @@
       ],
       "label": "process_low",
       "container": "community.wave.seqera.io/library/seqkit:2.13.0--3bacfb68370dd835",
+      "versions": "topic",
       "inputs": [
         {
           "name": "reads",
@@ -794,6 +801,7 @@
       ],
       "label": "process_medium",
       "container": "community.wave.seqera.io/library/qualimap:2.3--e70af3f76915782f",
+      "versions": "topic",
       "inputs": [
         {
           "name": "bam",
@@ -905,6 +913,7 @@
       ],
       "label": "process_high",
       "container": "community.wave.seqera.io/library/htslib_samtools_star_gawk:3ffb3e46ac3bf2ea",
+      "versions": "topic",
       "inputs": [
         {
           "name": "fasta",
@@ -993,6 +1002,7 @@
       ],
       "label": "process_high",
       "container": "community.wave.seqera.io/library/htslib_samtools_star_gawk:ae438e9a604351a4",
+      "versions": "topic",
       "inputs": [
         {
           "name": "reads",
@@ -1413,6 +1423,7 @@
       ],
       "label": "process_high",
       "container": "community.wave.seqera.io/library/hisat2:2.2.3--2616fa83d3b9d8f8",
+      "versions": "topic",
       "inputs": [
         {
           "name": "fasta",
@@ -1511,6 +1522,7 @@
       ],
       "label": "process_high",
       "container": "community.wave.seqera.io/library/hisat2_samtools:a0c9b8ccf8116a89",
+      "versions": "topic",
       "inputs": [
         {
           "name": "reads",
@@ -1669,6 +1681,7 @@
         }
       ],
       "container": "community.wave.seqera.io/library/bwa_htslib_samtools:83b50ff84ead50d0",
+      "versions": "topic",
       "inputs": [
         {
           "name": "fasta",
@@ -1740,6 +1753,7 @@
       ],
       "label": "process_high",
       "container": "community.wave.seqera.io/library/bwa_htslib_samtools:83b50ff84ead50d0",
+      "versions": "topic",
       "inputs": [
         {
           "name": "reads",
@@ -1942,6 +1956,7 @@
       ],
       "label": "process_high",
       "container": "community.wave.seqera.io/library/bowtie2_htslib_samtools_pigz:dbd18842ad7cb278",
+      "versions": "topic",
       "inputs": [
         {
           "name": "fasta",
@@ -2014,6 +2029,7 @@
       ],
       "label": "process_high",
       "container": "community.wave.seqera.io/library/bowtie2_htslib_samtools_pigz:dbd18842ad7cb278",
+      "versions": "topic",
       "inputs": [
         {
           "name": "reads",
@@ -2268,6 +2284,7 @@
       ],
       "label": "process_medium",
       "container": "community.wave.seqera.io/library/salmon:2.7.0--74784226202c61b9",
+      "versions": "topic",
       "inputs": [
         {
           "name": "transcript_fasta",
@@ -2344,6 +2361,7 @@
       ],
       "label": "process_medium",
       "container": "community.wave.seqera.io/library/salmon:2.7.0--74784226202c61b9",
+      "versions": "topic",
       "inputs": [
         {
           "name": "reads",
@@ -2484,6 +2502,7 @@
       ],
       "label": "process_medium",
       "container": "quay.io/biocontainers/subread:2.1.1--h577a1d6_0",
+      "versions": "topic",
       "inputs": [
         {
           "name": "bams",
@@ -2582,6 +2601,7 @@
       ],
       "label": "process_medium",
       "container": "community.wave.seqera.io/library/stringtie:3.0.3--e8043d00caecd051",
+      "versions": "topic",
       "inputs": [
         {
           "name": "srbam",
@@ -2747,6 +2767,7 @@
       ],
       "label": "process_medium",
       "container": "community.wave.seqera.io/library/htslib_samtools:1.25--704fb80d75745bd4",
+      "versions": "topic",
       "inputs": [
         {
           "name": "bam",
@@ -2920,6 +2941,7 @@
       ],
       "label": "process_low",
       "container": "community.wave.seqera.io/library/htslib_samtools:1.25--704fb80d75745bd4",
+      "versions": "topic",
       "inputs": [
         {
           "name": "input",
@@ -2991,6 +3013,7 @@
       ],
       "label": "process_single",
       "container": "community.wave.seqera.io/library/htslib_samtools:1.25--704fb80d75745bd4",
+      "versions": "topic",
       "inputs": [
         {
           "name": "bam",
@@ -3070,6 +3093,7 @@
       ],
       "label": "process_single",
       "container": "community.wave.seqera.io/library/htslib_samtools:1.25--704fb80d75745bd4",
+      "versions": "topic",
       "inputs": [
         {
           "name": "input",
@@ -3177,6 +3201,7 @@
       ],
       "label": "process_medium",
       "container": "community.wave.seqera.io/library/picard:3.5.0--be20f299a1924f0d",
+      "versions": "topic",
       "inputs": [
         {
           "name": "reads",
@@ -3335,6 +3360,7 @@
       ],
       "label": "process_low",
       "container": "community.wave.seqera.io/library/deeptools_samtools:22ef5f45259c4336",
+      "versions": "topic",
       "inputs": [
         {
           "name": "input",
@@ -3481,6 +3507,7 @@
       ],
       "label": "process_low",
       "container": "community.wave.seqera.io/library/gatk4-lite:4.7.0.0--79918b8b2632f4b1",
+      "versions": "topic",
       "inputs": [
         {
           "name": "input",
@@ -3728,6 +3755,7 @@
       ],
       "label": "process_single",
       "container": "community.wave.seqera.io/library/bcftools_htslib:1.25--130aa7603bf3bf5c",
+      "versions": "topic",
       "inputs": [
         {
           "name": "vcf",
@@ -3897,6 +3925,7 @@
       ],
       "label": "process_high",
       "container": "community.wave.seqera.io/library/kraken2_coreutils_pigz:920ecc6b96e2ba71",
+      "versions": "topic",
       "inputs": [
         {
           "name": "reads",
@@ -4061,6 +4090,7 @@
       ],
       "label": "process_single",
       "container": "community.wave.seqera.io/library/coreutils_grep_gzip_lbzip2_pruned:838ba80435a629f8",
+      "versions": "topic",
       "inputs": [
         {
           "name": "archive",
@@ -4130,6 +4160,7 @@
       ],
       "label": "process_single",
       "container": "community.wave.seqera.io/library/coreutils_grep_gzip_lbzip2_pruned:838ba80435a629f8",
+      "versions": "topic",
       "inputs": [
         {
           "name": "reads",
