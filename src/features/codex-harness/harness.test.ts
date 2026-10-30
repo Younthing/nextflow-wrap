@@ -183,7 +183,7 @@ describe("codex harness", () => {
       cwd: "/work/pipeline",
       model: "gpt-test",
       approvalPolicy: "never",
-      sandbox: "readOnly",
+      sandbox: "read-only",
       serviceName: "nextflow-wrap",
     });
     expect(child.received[3]?.params).toMatchObject({
@@ -218,12 +218,12 @@ describe("codex harness", () => {
       "turn/start",
     ]);
     expect(children[0].received[2]?.params).toMatchObject({
-      approvalPolicy: "onRequest",
-      sandbox: "workspaceWrite",
+      approvalPolicy: "on-request",
+      sandbox: "workspace-write",
     });
     expect(children[0].received[3]?.params).toMatchObject({
       sandboxPolicy: { type: "workspaceWrite" },
-      approvalPolicy: "onRequest",
+      approvalPolicy: "on-request",
     });
     await session.close();
 
@@ -234,8 +234,27 @@ describe("codex harness", () => {
     });
     await aliased.ensureThread();
     const thread = children[1].received.find((message) => message.method === "thread/start");
-    expect(thread?.params).toMatchObject({ approvalPolicy: "onRequest", sandbox: "workspaceWrite" });
+    expect(thread?.params).toMatchObject({ approvalPolicy: "on-request", sandbox: "workspace-write" });
     await aliased.close();
+
+    const camel = await harness.open({
+      cwd: "/work",
+      approvalPolicy: "unlessTrusted",
+      sandboxPolicy: "readOnly",
+    });
+    const finished = takeUntil(camel, (event) => event.type === "turn.end");
+    await camel.startTurn("ping");
+    await finished;
+    const camelChild = children[2];
+    expect(camelChild.received.find((message) => message.method === "thread/start")?.params).toMatchObject({
+      approvalPolicy: "untrusted",
+      sandbox: "read-only",
+    });
+    expect(camelChild.received.find((message) => message.method === "turn/start")?.params).toMatchObject({
+      approvalPolicy: "untrusted",
+      sandboxPolicy: { type: "readOnly" },
+    });
+    await camel.close();
   });
 
   it("streams tool output and a failed turn", async () => {

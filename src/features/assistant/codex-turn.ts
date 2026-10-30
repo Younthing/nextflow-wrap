@@ -80,14 +80,17 @@ export function parseToolReply(raw: string, toolNames: readonly string[]): Parse
 export async function* interpretCodexEvents(
   events: AsyncIterable<CodexEvent>,
   toolNames: readonly string[],
-  newId: () => string = () => crypto.randomUUID(),
+  newId?: () => string,
+  signal?: AbortSignal,
 ): AsyncGenerator<CodexAguiEvent> {
+  const nextId = newId ?? (() => crypto.randomUUID());
   let raw = "";
   let streamed = false;
   let failure: string | undefined;
   let ended = false;
-  const messageId = newId();
+  const messageId = nextId();
   for await (const event of events) {
+    throwIfAborted(signal);
     if (event.type === "text.delta") {
       raw += event.delta;
       if (!streamed && shouldStream(raw)) {
@@ -108,11 +111,12 @@ export async function* interpretCodexEvents(
       break;
     }
   }
+  throwIfAborted(signal);
   if (!ended) throw new Error(failure ?? "Codex 会话在回合结束前关闭了");
   if (streamed) return;
   const call = parseToolReply(raw, toolNames);
   if (call) {
-    const toolCallId = newId();
+    const toolCallId = nextId();
     const args = JSON.stringify(call.arguments);
     yield { type: "TOOL_CALL_START", toolCallId, toolCallName: call.name, parentMessageId: messageId };
     yield { type: "TOOL_CALL_ARGS", toolCallId, delta: args };
@@ -167,7 +171,7 @@ export async function* runCodexAssistant(input: PromptInput, options: CodexAssis
     );
     const names = (input.tools ?? []).map((tool) => tool.name);
     try {
-      yield* interpretCodexEvents(session.events, names);
+      yield* interpretCodexEvents(session.events, names, undefined, options.signal);
     } catch (error) {
       const started = await pending;
       if (!started.ok) throw started.error;
@@ -179,6 +183,10 @@ export async function* runCodexAssistant(input: PromptInput, options: CodexAssis
     options.signal?.removeEventListener("abort", onAbort);
     await session.close();
   }
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) throw new Error("Codex 回合已取消");
 }
 
 function textEvent(messageId: string, delta: string): CodexAguiEvent {
