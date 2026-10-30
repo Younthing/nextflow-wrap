@@ -216,13 +216,13 @@ export function simulateRun(
 
   if (cancelledAt !== undefined && now >= cancelledAt && (failedAt === undefined || cancelledAt < failedAt)) {
     status = "cancelled";
-    completedAt = cancelledAt + SECOND;
+    completedAt = cancelledAt;
     errorMessage = "运行已被手动停止";
-  } else if (failedAt !== undefined && now >= lastEnd) {
+  } else if (failedAt !== undefined && now >= lastEnd + SECOND) {
     status = "failed";
     completedAt = lastEnd + SECOND;
     errorMessage = `Process \`${failedTask?.name}\` terminated with an error exit status (1)`;
-  } else if (failedAt === undefined && now >= lastEnd && now >= startedAt) {
+  } else if (failedAt === undefined && now >= lastEnd + SECOND && now >= startedAt) {
     status = "succeeded";
     completedAt = lastEnd + SECOND;
   }

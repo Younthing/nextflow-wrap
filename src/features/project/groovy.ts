@@ -27,7 +27,9 @@ export function gvalue(value: string | number | boolean | undefined): string {
  * `ext.prefix`/`ext.args` may reference task variables (`${meta.id}`); those
  * need a closure with a GString, plain text a simple string literal.
  */
-export function gdynamic(value: string): string {
+export function gdynamic(raw: string): string {
+  // Values are command-line fragments; Groovy string literals can't span lines.
+  const value = raw.trim().replace(/\s*\n\s*/g, " ");
   if (!value.includes("${")) return gstr(value);
   return `{ "${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}" }`;
 }

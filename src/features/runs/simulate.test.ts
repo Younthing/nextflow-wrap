@@ -56,3 +56,14 @@ describe("simulateRun", () => {
     expect(sim.tasks.some((t) => t.process === "MULTIQC" && t.status === "pending")).toBe(true);
   });
 });
+
+describe("simulateRun terminal states", () => {
+  it("always reports completedAt together with a terminal status", () => {
+    for (let t = 0; t < 120_000; t += 250) {
+      const sim = simulateRun(run({ cancelledAt: T0 + 9000 }), index, T0 + t);
+      if (sim.status === "cancelled") expect(sim.completedAt).toBeLessThanOrEqual(T0 + t);
+      const ok = simulateRun(run(), index, T0 + t);
+      if (ok.status === "succeeded") expect(ok.completedAt).toBeLessThanOrEqual(T0 + t);
+    }
+  });
+});

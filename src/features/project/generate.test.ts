@@ -106,3 +106,11 @@ describe("generateProject", () => {
     expect(() => generate(cyclic)).toThrow(/循环/);
   });
 });
+
+describe("groovy literals", () => {
+  it("keeps multi-line ext.args on one line", async () => {
+    const { gdynamic } = await import("./groovy");
+    expect(gdynamic("--a 1\n  --b 2\n")).toBe("'--a 1 --b 2'");
+    expect(gdynamic("--sample ${meta.id}\n--x")).toBe('{ "--sample ${meta.id} --x" }');
+  });
+});
