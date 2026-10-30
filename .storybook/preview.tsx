@@ -1,6 +1,7 @@
 import * as React from "react";
 import type { Decorator, Preview } from "@storybook/nextjs-vite";
 
+import { jetbrainsMono, notoSansSC, notoSerifSC } from "../src/app/fonts";
 import { TooltipProvider } from "../src/components/ui/tooltip";
 import "../src/app/globals.css";
 
@@ -12,7 +13,10 @@ function ThemeFrame({
   children: React.ReactNode;
 }) {
   React.useEffect(() => {
-    document.documentElement.classList.toggle("dark", theme === "dark");
+    const root = document.documentElement;
+    root.classList.toggle("dark", theme === "dark");
+    // Font variables live on <html> in the app; mirror that here so portals get them too.
+    root.classList.add(notoSansSC.variable, notoSerifSC.variable, jetbrainsMono.variable);
   }, [theme]);
   return (
     <TooltipProvider>
