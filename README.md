@@ -73,15 +73,23 @@ ComfyUI 式的 Nextflow 可视化前端：在画布上用 nf-core 模块搭建�
 - **编辑器**：助手能看到当前流程（节点、端口、连线、参数和校验问题），可以搜索模块、添加节点、连线和断开、删除节点，修改别名、模块参数、`ext.args`/`ext.prefix`/资源标签/是否发布，以及设置流程参数。工具出错时会把原因返回给模型，模型据此修正后重试。
 - **运行详情页**：助手能看到这次运行的状态、参数、命令和失败任务，可以读取任务的 `.command.log` 和 Nextflow 主日志来解释失败原因。它不能启动或停止运行。
 
-在 `.env.local` 里配置模型：
+助手默认优先使用本机已经 `codex login` 的 Codex CLI（`COPILOT_BACKEND=auto`）。认证留在 `~/.codex`，服务端不读取 token，这条路径也不需要 `OPENAI_API_KEY`。Codex 不可用时才退回下面的 API key 模型。顶栏按钮的提示会写明当前后端；`GET /api/copilotkit/status` 返回 `backend` 是 `codex` 还是 `builtin`，未启用时 `message` 说明原因。
+
+在 `.env.local` 里配置：
 
 ```bash
+# auto（默认）| codex | builtin
+COPILOT_BACKEND=auto
+# 可选：CODEX_MODEL=gpt-5.4
+# 可选：CODEX_BIN=/usr/local/bin/codex
+
+# builtin 后端。COPILOT_MODEL 形如 <provider>/<model>
 ANTHROPIC_API_KEY=sk-ant-...
-# 可选，默认 anthropic/claude-sonnet-5-5；也支持 openai/<model>（OPENAI_API_KEY）和 google/<model>（GOOGLE_API_KEY）
+# 也支持 openai/<model>（OPENAI_API_KEY）和 google/<model>（GOOGLE_API_KEY）
 COPILOT_MODEL=anthropic/claude-sonnet-5-5
 ```
 
-没有配置 key 时，按钮会变灰并提示缺少哪个变量，应用的其他功能不受影响。代码在 `src/features/assistant`，系统提示词在 `src/features/assistant/prompt.ts`。
+没有 Codex 登录、也没有对应 key 时，按钮会变灰并提示原因，应用的其他功能不受影响。代码在 `src/features/assistant`，系统提示词在 `src/features/assistant/prompt.ts`。浏览器里的工具仍在浏览器执行。
 
 ## 开发
 
@@ -126,6 +134,17 @@ pnpm dev:real    # 另一个终端，http://127.0.0.1:3000
 ```bash
 pnpm smoke:runner # 幂等提交 → 实时任务 → 成功/下载 → 缓存续跑 → 运行中取消 → 缺失输入失败
 ```
+
+### Codex harness
+
+`src/features/codex-harness` 用本机 `codex app-server` 的 stdio JSON-RPC 开一个会话，方便以后用已经 `codex login` 的订阅驱动助手。认证留在 `~/.codex`，代码不读取 token。没有安装 CLI 时 `pnpm test` 仍通过（测试使用假的 stdio）。对真实登录跑一轮：
+
+```bash
+pnpm codex:smoke
+pnpm codex:smoke -- Reply with the single word pong
+```
+
+说明见 `src/features/codex-harness/README.md`。
 
 生产模式先 `pnpm build:real`，再分别运行 `pnpm runner` 和 `pnpm start`。公共环境变量在构建时固化，因此真实生产构建必须使用 `build:real`。
 

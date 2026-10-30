@@ -1,60 +1,78 @@
 import { BuiltInAgent, CopilotRuntime, createCopilotRuntimeHandler } from "@copilotkit/runtime/v2";
 
+import { createAssistantResolver, type AssistantChoice } from "@/features/assistant/backend";
+import { createCodexAgent } from "@/features/assistant/codex-agent";
 import { ASSISTANT_PROMPT } from "@/features/assistant/prompt";
+import { createCodexHarness, type ProbeResult } from "@/features/codex-harness";
 
 /*
- * CopilotKit runtime for the AI assistant. The model runs here so the API key
- * stays on the server; the tools it calls (add a module, connect nodes, read a
- * task log, …) are registered by the browser and run there.
+ * CopilotKit runtime for the AI assistant. Tools stay in the browser.
  *
- * COPILOT_MODEL picks the model as `<provider>/<model>`; the matching key
- * (ANTHROPIC_API_KEY, OPENAI_API_KEY or GOOGLE_API_KEY) must be set. Without
- * one every request answers 503 and the UI hides the assistant; the UI asks
- * GET /api/copilotkit/status first so it never has to hit that error.
+ * COPILOT_BACKEND=auto (default) uses a local `codex` CLI when `codex login`
+ * has already succeeded, and otherwise the BuiltInAgent selected by
+ * COPILOT_MODEL plus its API key. `codex` and `builtin` force one path.
+ * Codex auth stays in ~/.codex; this route never reads it and does not need
+ * OPENAI_API_KEY for that path. GET /api/copilotkit/status reports which
+ * backend is active before the UI opens the assistant.
  */
 
-const MODEL = process.env.COPILOT_MODEL || "anthropic/claude-sonnet-5-5";
+const harness = createCodexHarness({
+  binaryPath: process.env.CODEX_BIN,
+  requestTimeoutMs: 20_000,
+});
 
-const KEY_ENV: Record<string, string> = {
-  anthropic: "ANTHROPIC_API_KEY",
-  openai: "OPENAI_API_KEY",
-  google: "GOOGLE_API_KEY",
-  gemini: "GOOGLE_API_KEY",
-};
+const resolveAssistant = createAssistantResolver({
+  env: process.env,
+  probe: () => probeCodex(),
+});
 
-function missingKey() {
-  const env = KEY_ENV[MODEL.split("/")[0]];
-  return env && !process.env[env] ? env : null;
-}
+const handlers = new Map<"codex" | "builtin", (request: Request) => Promise<Response>>();
 
-let handler: ((request: Request) => Promise<Response>) | null = null;
-
-function getHandler() {
-  handler ??= createCopilotRuntimeHandler({
-    runtime: new CopilotRuntime({
-      agents: {
-        default: new BuiltInAgent({ model: MODEL, prompt: ASSISTANT_PROMPT, maxSteps: 12 }),
-      },
-    }),
+function handlerFor(choice: Extract<AssistantChoice, { enabled: true }>) {
+  const cached = handlers.get(choice.backend);
+  if (cached) return cached;
+  const agent = choice.backend === "codex"
+    ? createCodexAgent({
+      harness,
+      prompt: ASSISTANT_PROMPT,
+      cwd: process.cwd(),
+      model: choice.model,
+    })
+    : new BuiltInAgent({ model: choice.model, prompt: ASSISTANT_PROMPT, maxSteps: 12 });
+  const handler = createCopilotRuntimeHandler({
+    runtime: new CopilotRuntime({ agents: { default: agent } }),
     basePath: "/api/copilotkit",
   });
+  handlers.set(choice.backend, handler);
   return handler;
 }
 
-async function handle(request: Request) {
-  const missing = missingKey();
-  if (new URL(request.url).pathname === "/api/copilotkit/status") {
-    return Response.json(
-      missing ? { enabled: false, message: `AI 助手未启用：服务端没有设置 ${missing}` } : { enabled: true, model: MODEL },
-    );
+async function probeCodex(): Promise<ProbeResult> {
+  try {
+    return await withDeadline(harness.probe(), 8_000);
+  } catch {
+    // A timeout still means the CLI was invoked. Don't claim it is missing.
+    return { installed: true };
   }
-  if (missing) {
+}
+
+function withDeadline<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("codex probe timed out")), ms);
+    promise.then(resolve, reject).finally(() => clearTimeout(timer));
+  });
+}
+
+async function handle(request: Request) {
+  const choice = await resolveAssistant();
+  if (new URL(request.url).pathname === "/api/copilotkit/status") return Response.json(choice);
+  if (!choice.enabled) {
     return Response.json(
-      { message: `AI 助手未启用：服务端没有设置 ${missing}`, missing },
+      { message: choice.message, reason: choice.reason, ...(choice.missing ? { missing: choice.missing } : {}) },
       { status: 503 },
     );
   }
-  return getHandler()(request);
+  return handlerFor(choice)(request);
 }
 
 export const GET = handle;

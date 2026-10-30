@@ -20,7 +20,7 @@ const LABELS = {
   sidebarLabel: "AI 助手侧边栏",
 };
 
-export type AssistantStatus = { enabled: true } | { enabled: false; message: string };
+export type AssistantStatus = { enabled: true; detail: string } | { enabled: false; message: string };
 
 interface AssistantContextValue {
   status: AssistantStatus;
@@ -45,15 +45,19 @@ async function fetchStatus(): Promise<AssistantStatus> {
   try {
     const res = await fetch(`${RUNTIME_URL}/status`);
     if (!res.ok) return { enabled: false, message: `AI 助手不可用（${res.status}）` };
-    const body = (await res.json()) as { enabled: boolean; message?: string };
-    return body.enabled ? { enabled: true } : { enabled: false, message: body.message ?? "AI 助手未启用" };
+    const body = (await res.json()) as { enabled: boolean; message?: string; backend?: string; model?: string };
+    if (!body.enabled) return { enabled: false, message: body.message ?? "AI 助手未启用" };
+    const detail = body.backend === "codex"
+      ? (body.model ? `本机 Codex（${body.model}）` : "本机 Codex")
+      : (body.model ?? "API");
+    return { enabled: true, detail };
   } catch {
     return { enabled: false, message: "AI 助手不可用：连不上服务端" };
   }
 }
 
 /**
- * Wraps the app in CopilotKit when the server reports a model. The status is
+ * Wraps the app in CopilotKit when the server has a backend. The status is
  * settled before children render, so the tree (and editor state) never
  * remounts when the provider appears.
  */
