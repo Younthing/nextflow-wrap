@@ -139,14 +139,27 @@ export async function* runCodexAssistant(input: PromptInput, options: CodexAssis
     sandboxPolicy: "readOnly",
     autoApproval: "decline",
   });
-  const interrupt = () => {
-    void session.interrupt().catch(() => undefined);
+  // interrupt() rejects until startTurn has a turn id. Closing is what
+  // actually stops a run cancelled during thread/start.
+  let turnReady = false;
+  const stop = () => {
+    const cancel = turnReady
+      ? session.interrupt().catch(() => session.close())
+      : session.close();
+    void cancel;
   };
-  options.signal?.addEventListener("abort", interrupt, { once: true });
+  const onAbort = () => {
+    stop();
+  };
+  options.signal?.addEventListener("abort", onAbort);
   try {
     if (options.signal?.aborted) return;
     const pending = session.startTurn(renderCodexPrompt(options.prompt, input)).then(
-      () => ({ ok: true as const }),
+      () => {
+        turnReady = true;
+        if (options.signal?.aborted) stop();
+        return { ok: true as const };
+      },
       (error: unknown) => {
         void session.close();
         return { ok: false as const, error };
@@ -163,7 +176,7 @@ export async function* runCodexAssistant(input: PromptInput, options: CodexAssis
     const started = await pending;
     if (!started.ok) throw started.error;
   } finally {
-    options.signal?.removeEventListener("abort", interrupt);
+    options.signal?.removeEventListener("abort", onAbort);
     await session.close();
   }
 }
@@ -175,7 +188,9 @@ function textEvent(messageId: string, delta: string): CodexAguiEvent {
 function shouldStream(raw: string): boolean {
   const trimmed = raw.trimStart();
   if (!trimmed) return false;
-  return !trimmed.startsWith("{") && !trimmed.startsWith("```");
+  if (trimmed.startsWith("{") || trimmed.startsWith("```")) return false;
+  // One or two backticks can still become an opening ``` fence.
+  return trimmed !== "`" && trimmed !== "``";
 }
 
 function renderMessage(message: PromptMessage): string {

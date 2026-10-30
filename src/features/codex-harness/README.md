@@ -36,7 +36,7 @@ await session.close();
 
 `approvalPolicy` and `sandboxPolicy` are normalized to the current app-server tokens (`onRequest`, `unlessTrusted`, `readOnly`, `workspaceWrite`, `dangerFullAccess`). `on-request`, `untrusted`, and kebab-case sandbox names are accepted. Both the thread `sandbox` field and the turn `sandboxPolicy.type` use those camelCase tokens. Unknown strings are forwarded unchanged. Stream errors with `willRetry: true` are ignored; `turn/completed` is the end of the turn.
 
-`probe()` checks `codex --version`, then opens a short-lived app-server only to read account status and `model/list`. It does not call `thread/start`.
+`probe()` checks `codex --version`, then opens a short-lived app-server only to read account status and, briefly, `model/list`. A slow model catalog cannot hide an auth result that already came back. It does not call `thread/start`.
 
 ## Smoke test against a real login
 

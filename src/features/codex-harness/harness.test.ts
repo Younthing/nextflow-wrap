@@ -455,6 +455,40 @@ describe("codex harness", () => {
     await expect(harness.probe()).resolves.toEqual({ installed: true, authed: false });
   });
 
+  it("returns auth when model/list stalls", async () => {
+    const harness = createCodexHarness({
+      requestTimeoutMs: 5_000,
+      spawn(spec) {
+        const child = new ScriptedChild(spec.args, spec.cwd);
+        children.push(child);
+        if (spec.args[0] === "--version") {
+          child.emit("codex-cli 0.0.0-test");
+          child.finish(0);
+          return child;
+        }
+        void child.eachInput(async (message) => {
+          if (message.method === "initialize" && message.id !== undefined) {
+            child.emit(rpc({ id: message.id, result: { userAgent: "codex/test" } }));
+            return;
+          }
+          if (message.method === "initialized") return;
+          if (message.method === "account/read") {
+            child.emit(rpc({
+              id: message.id,
+              result: { account: { type: "chatgpt" }, requiresOpenaiAuth: true },
+            }));
+          }
+        });
+        return child;
+      },
+    });
+    const started = Date.now();
+    await expect(harness.probe()).resolves.toEqual({ installed: true, authed: true });
+    expect(Date.now() - started).toBeLessThan(1_500);
+    expect(children[1].received.some((message) => message.method === "thread/start")).toBe(false);
+    expect(children[1].received.some((message) => message.method === "model/list")).toBe(true);
+  });
+
   it("reports installed when the handshake fails and still skips thread/start", async () => {
     const { harness } = createFake((child, message) => {
       if (message.method === "account/read") {

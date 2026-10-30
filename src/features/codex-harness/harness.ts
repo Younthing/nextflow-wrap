@@ -5,6 +5,9 @@ import { isRecord, readString } from "./record";
 import { CodexAppSession, type ResolvedSessionOptions } from "./session";
 import type { CodexHarness, CodexHarnessOptions, OpenSessionOptions, ProbeResult } from "./types";
 
+/** Optional catalog lookup. A stall must not hide an auth result already in hand. */
+const MODEL_LIST_PROBE_MS = 400;
+
 const CLIENT_INFO = {
   clientInfo: {
     name: "nextflow_wrap",
@@ -66,14 +69,19 @@ export function createCodexHarness(options: CodexHarnessOptions = {}): CodexHarn
         // refreshToken stays false so a probe cannot rotate credentials.
         // The account payload is reduced to a boolean and then discarded.
         const account = await rpc.request("account/read", { refreshToken: false }, requestTimeoutMs);
+        const authed = readAuthed(account);
         let models: string[] | undefined;
         try {
-          const listed = await rpc.request("model/list", { limit: 50, includeHidden: false }, requestTimeoutMs);
+          const listed = await rpc.request(
+            "model/list",
+            { limit: 50, includeHidden: false },
+            Math.min(requestTimeoutMs, MODEL_LIST_PROBE_MS),
+          );
           models = readModelIds(listed);
         } catch {
           models = undefined;
         }
-        const result: ProbeResult = { installed: true, authed: readAuthed(account) };
+        const result: ProbeResult = { installed: true, authed };
         if (models) result.models = models;
         return result;
       } catch {
