@@ -8,9 +8,12 @@ export interface LaunchStorage {
   setItem(key: string, value: string): void;
 }
 
-export function readLaunchConfig(docId: string, storage: LaunchStorage = localStorage): LaunchConfig {
+export function readLaunchConfig(docId: string, storage?: LaunchStorage): LaunchConfig {
   try {
-    const raw = storage.getItem(launchKey(docId));
+    // Resolve localStorage inside the try. A default parameter runs first, so a
+    // SecurityError from reading the property would escape this catch.
+    const store = storage ?? localStorage;
+    const raw = store.getItem(launchKey(docId));
     if (!raw) return defaultLaunchConfig();
     return { ...defaultLaunchConfig(), ...(JSON.parse(raw) as Partial<LaunchConfig>), runName: undefined };
   } catch {
@@ -18,10 +21,11 @@ export function readLaunchConfig(docId: string, storage: LaunchStorage = localSt
   }
 }
 
-export function rememberLaunchConfig(docId: string, config: LaunchConfig, storage: LaunchStorage = localStorage) {
+export function rememberLaunchConfig(docId: string, config: LaunchConfig, storage?: LaunchStorage) {
   try {
-    storage.setItem(launchKey(docId), JSON.stringify({ ...config, runName: undefined }));
+    const store = storage ?? localStorage;
+    store.setItem(launchKey(docId), JSON.stringify({ ...config, runName: undefined }));
   } catch {
-    // Non-essential.
+    // Non-essential. A blocked localStorage must not crash the run dialog.
   }
 }

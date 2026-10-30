@@ -165,6 +165,26 @@ describe("confirmThenRun", () => {
     expect(ask).toHaveBeenCalledOnce();
   });
 
+  it("does not open the dialog when the assistant was already stopped", async () => {
+    const execute = vi.fn(success);
+    const ask = vi.fn(async (): Promise<true | null> => true);
+    const close = vi.fn();
+    const result = await confirmThenRun({
+      isReplay: false,
+      aborted: () => true,
+      ask,
+      close,
+      view,
+      problems: () => [],
+      execute,
+      interruptedMessage: "确认被中断，没有启动。",
+    });
+    expect(result).toEqual(declinedResult("确认被中断，没有启动。"));
+    expect(ask).not.toHaveBeenCalled();
+    expect(execute).not.toHaveBeenCalled();
+    expect(close).toHaveBeenCalledOnce();
+  });
+
   it("does not call the API when confirm is interrupted or the plan becomes blocked", async () => {
     const execute = vi.fn(success);
     let aborted = false;

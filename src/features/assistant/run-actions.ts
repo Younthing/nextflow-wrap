@@ -117,6 +117,12 @@ export async function confirmThenRun(options: ConfirmThenRunOptions): Promise<Ru
   if (options.isReplay) {
     return declinedResult("页面恢复了未完成的确认，没有再次执行。请再说一次。");
   }
+  // Preparation (save, health, catalog) can be aborted before ask opens the modal.
+  // Close without asking so a stop does not leave that dialog on screen.
+  if (options.aborted()) {
+    options.close();
+    return declinedResult(options.interruptedMessage);
+  }
   const decision = await options.ask(options.view);
   if (options.aborted()) {
     options.close();
