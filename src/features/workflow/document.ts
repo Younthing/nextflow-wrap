@@ -32,8 +32,17 @@ export function parseWorkflowDoc(value: unknown): WorkflowDoc {
     id: doc.id ?? "",
     name: doc.name ?? "导入的流程",
     description: doc.description,
+    project: doc.project,
     version: WORKFLOW_FILE_VERSION,
-    nodes: doc.nodes,
+    // Fill fields older or hand-written files may lack, so the canvas can always render them.
+    nodes: doc.nodes.map((n) => ({
+      id: n.id,
+      position: {
+        x: Number.isFinite(n.position?.x) ? n.position.x : 0,
+        y: Number.isFinite(n.position?.y) ? n.position.y : 0,
+      },
+      data: { ...n.data, widgets: n.data.widgets ?? {}, config: n.data.config ?? {} },
+    })),
     edges: doc.edges,
     params: doc.params ?? {},
     updatedAt: doc.updatedAt ?? new Date().toISOString(),

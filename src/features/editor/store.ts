@@ -32,7 +32,17 @@ interface Snapshot {
   nodes: FlowNode[];
   edges: FlowEdge[];
   params: PipelineParams;
+  name: string;
+  project?: ProjectSettings;
 }
+
+const snapshotOf = (s: Snapshot): Snapshot => ({
+  nodes: s.nodes,
+  edges: s.edges,
+  params: s.params,
+  name: s.name,
+  project: s.project,
+});
 
 const HISTORY_LIMIT = 100;
 
@@ -48,6 +58,8 @@ interface EditorState {
   /** Bumped on every content change, compared against the last saved value. */
   revision: number;
   savedRevision: number;
+  /** Bumped by every load, so async work can tell whether its document is still open. */
+  generation: number;
   past: Snapshot[];
   future: Snapshot[];
   lastSnapshotKey?: string;
@@ -93,13 +105,15 @@ export const useEditorStore = create<EditorState>()((set, get) => {
     index: new Map(),
     revision: 0,
     savedRevision: 0,
+    generation: 0,
     past: [],
     future: [],
 
     setIndex: (index) => set({ index }),
 
     load: (doc) =>
-      set({
+      set((s) => ({
+        generation: s.generation + 1,
         docId: doc.id,
         name: doc.name,
         description: doc.description,
@@ -112,7 +126,7 @@ export const useEditorStore = create<EditorState>()((set, get) => {
         past: [],
         future: [],
         lastSnapshotKey: undefined,
-      }),
+      })),
 
     toDoc: () => {
       const s = get();
@@ -141,7 +155,7 @@ export const useEditorStore = create<EditorState>()((set, get) => {
       const s = get();
       // Consecutive edits to the same field collapse into one undo step.
       if (key && key === s.lastSnapshotKey) return;
-      const snap: Snapshot = { nodes: s.nodes, edges: s.edges, params: s.params };
+      const snap = snapshotOf(s);
       set({
         past: [...s.past, snap].slice(-HISTORY_LIMIT),
         future: [],
@@ -156,7 +170,7 @@ export const useEditorStore = create<EditorState>()((set, get) => {
       commit({
         ...prev,
         past: s.past.slice(0, -1),
-        future: [{ nodes: s.nodes, edges: s.edges, params: s.params }, ...s.future],
+        future: [snapshotOf(s), ...s.future],
         lastSnapshotKey: undefined,
       });
     },
@@ -167,7 +181,7 @@ export const useEditorStore = create<EditorState>()((set, get) => {
       if (!next) return;
       commit({
         ...next,
-        past: [...s.past, { nodes: s.nodes, edges: s.edges, params: s.params }],
+        past: [...s.past, snapshotOf(s)],
         future: s.future.slice(1),
         lastSnapshotKey: undefined,
       });

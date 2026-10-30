@@ -84,9 +84,12 @@ function Editor() {
     (silent = false) => {
       const state = store.getState();
       const rev = state.revision;
+      const generation = state.generation;
       save.mutate(state.toDoc(), {
         onSuccess: (saved) => {
           const s = store.getState();
+          // Another workflow was opened while saving: leave its identity alone.
+          if (s.generation !== generation) return;
           if (!s.docId) useEditorStore.setState({ docId: saved.id });
           s.markSaved(rev);
           setCurrentId(saved.id);
@@ -172,7 +175,19 @@ function Editor() {
     setSearch(null);
   };
 
+  /** Saves (or confirms discarding) the open workflow before replacing it. */
+  const leaveCurrent = () => {
+    const state = store.getState();
+    if (!selectIsDirty(state)) return true;
+    if (state.docId) {
+      doSave(true);
+      return true;
+    }
+    return window.confirm("当前流程还没保存，确定要放弃这些修改吗？");
+  };
+
   const onImport = async (file: File) => {
+    if (!leaveCurrent()) return;
     try {
       const doc = parseWorkflowDoc(JSON.parse(await file.text()));
       store.getState().load({ ...doc, id: "" });
@@ -209,10 +224,12 @@ function Editor() {
           saving={save.isPending}
           onSave={() => doSave()}
           onOpen={(id) => {
+            if (id === store.getState().docId || !leaveCurrent()) return;
             setCurrentId(id);
             rememberCurrentId(id);
           }}
           onNew={() => {
+            if (!leaveCurrent()) return;
             store.getState().load(emptyWorkflow(""));
             setCurrentId("");
           }}
