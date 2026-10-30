@@ -1,9 +1,11 @@
 "use client";
 
+import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
-import type { LaunchRequest, RunDetail, RunStatus, RunSummary } from "./types";
+import type { ResultFile } from "./outputs";
+import type { LaunchRequest, RunDetail, RunStatus, RunSummary, TaskRecord } from "./types";
 
 export const runKeys = {
   all: ["runs"] as const,
@@ -62,5 +64,71 @@ export function useDeleteRun() {
       qc.removeQueries({ queryKey: runKeys.detail(id) });
       void qc.invalidateQueries({ queryKey: ["runs", "list"] });
     },
+  });
+}
+
+// Detail data for a run. Each polls while the run is still active.
+const pollWhile = (active: boolean) => (active ? POLL_MS : false);
+
+/**
+ * Polling stops as soon as the run turns inactive, which can be between two
+ * polls of the detail data; fetch tasks, logs and results once more then so
+ * they show the final state.
+ */
+export function useRefreshWhenDone(id: string, active: boolean) {
+  const qc = useQueryClient();
+  const wasActive = React.useRef(active);
+  React.useEffect(() => {
+    if (wasActive.current && !active) {
+      const detail = runKeys.detail(id);
+      void qc.invalidateQueries({ queryKey: detail, predicate: (q) => q.queryKey.length > detail.length });
+    }
+    wasActive.current = active;
+  }, [qc, id, active]);
+}
+
+export function useRunTasks(id: string, active: boolean) {
+  return useQuery({
+    queryKey: [...runKeys.detail(id), "tasks"],
+    queryFn: () => api<TaskRecord[]>(`/runs/${id}/tasks`),
+    refetchInterval: pollWhile(active),
+  });
+}
+
+export function useRunLog(id: string, active: boolean) {
+  return useQuery({
+    queryKey: [...runKeys.detail(id), "log"],
+    queryFn: () => api<{ lines: string[] }>(`/runs/${id}/log`),
+    refetchInterval: pollWhile(active),
+  });
+}
+
+export function useTaskLog(id: string, hash: string | null, active: boolean) {
+  return useQuery({
+    queryKey: [...runKeys.detail(id), "task-log", hash],
+    queryFn: () => api<{ text: string }>(`/runs/${id}/task-log?hash=${encodeURIComponent(hash ?? "")}`),
+    enabled: !!hash,
+    refetchInterval: pollWhile(active),
+  });
+}
+
+export function useRunResults(id: string, active: boolean) {
+  return useQuery({
+    queryKey: [...runKeys.detail(id), "results"],
+    queryFn: () => api<ResultFile[]>(`/runs/${id}/results`),
+    refetchInterval: pollWhile(active),
+  });
+}
+
+export function useResultContent(id: string, path: string | null) {
+  return useQuery({
+    queryKey: [...runKeys.detail(id), "content", path],
+    queryFn: async () => {
+      const res = await fetch(`/api/runs/${id}/results/content?path=${encodeURIComponent(path ?? "")}`);
+      if (!res.ok) throw new Error((await res.json().catch(() => null))?.message ?? res.statusText);
+      return { contentType: res.headers.get("content-type") ?? "text/plain", body: await res.text() };
+    },
+    enabled: !!path,
+    staleTime: Infinity,
   });
 }
