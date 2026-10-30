@@ -14,7 +14,7 @@ import { ENGINE_LABELS, executorDef } from "@/features/project/launch";
 import { ApiError } from "@/lib/api";
 import { formatDuration, formatTime, runDuration } from "../format";
 import { useModuleCatalog } from "@/features/workflow/queries";
-import { isActive, useCancelRun, useDeleteRun, useRun, useRunTasks } from "../queries";
+import { isActive, useCancelRun, useDeleteRun, useRefreshWhenDone, useRun, useRunTasks } from "../queries";
 import type { RunDetail } from "../types";
 import { RunGraph } from "./run-graph";
 import { RunConsole, RunResults } from "./run-results";
@@ -154,6 +154,7 @@ function RunBody({ run: data }: { run: RunDetail }) {
   const active = isActive(data.status);
   const catalog = useModuleCatalog();
   const tasks = useRunTasks(data.id, active);
+  useRefreshWhenDone(data.id, active);
   const [tab, setTab] = React.useState("graph");
   const [nodeFilter, setNodeFilter] = React.useState<string | null>(null);
   const index = catalog.data?.index;

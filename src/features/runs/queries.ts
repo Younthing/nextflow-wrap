@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
@@ -68,6 +69,23 @@ export function useDeleteRun() {
 
 // Detail data for a run. Each polls while the run is still active.
 const pollWhile = (active: boolean) => (active ? POLL_MS : false);
+
+/**
+ * Polling stops as soon as the run turns inactive, which can be between two
+ * polls of the detail data; fetch tasks, logs and results once more then so
+ * they show the final state.
+ */
+export function useRefreshWhenDone(id: string, active: boolean) {
+  const qc = useQueryClient();
+  const wasActive = React.useRef(active);
+  React.useEffect(() => {
+    if (wasActive.current && !active) {
+      const detail = runKeys.detail(id);
+      void qc.invalidateQueries({ queryKey: detail, predicate: (q) => q.queryKey.length > detail.length });
+    }
+    wasActive.current = active;
+  }, [qc, id, active]);
+}
 
 export function useRunTasks(id: string, active: boolean) {
   return useQuery({
