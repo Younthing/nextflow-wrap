@@ -4,7 +4,7 @@ import catalog from "@/data/nf-core-modules.json";
 import { indexModules } from "@/features/workflow/catalog";
 import { demoRnaseqWorkflow } from "@/features/workflow/demo";
 import type { ModuleCatalog, WorkflowDoc } from "@/features/workflow/types";
-import { GenerateError, generateProject } from "./generate";
+import { GenerateError, generateProject, projectMeta } from "./generate";
 
 const typed = catalog as ModuleCatalog;
 const index = indexModules(typed.modules);
@@ -112,5 +112,12 @@ describe("groovy literals", () => {
     const { gdynamic } = await import("./groovy");
     expect(gdynamic("--a 1\n  --b 2\n")).toBe("'--a 1 --b 2'");
     expect(gdynamic("--sample ${meta.id}\n--x")).toBe('{ "--sample ${meta.id} --x" }');
+  });
+});
+
+describe("project naming", () => {
+  it("keeps workflow identifiers starting with a letter", () => {
+    const meta = projectMeta({ name: "x", project: { name: "studio/10xrnaseq", version: "1.0", author: "a" } });
+    expect(meta.workflowName).toBe("NF10XRNASEQ");
   });
 });

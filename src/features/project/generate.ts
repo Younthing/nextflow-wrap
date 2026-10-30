@@ -59,7 +59,9 @@ export function defaultProjectSettings(doc: Pick<WorkflowDoc, "name">): ProjectS
 
 export function projectMeta(doc: Pick<WorkflowDoc, "name" | "description" | "project">): ProjectMeta {
   const settings = doc.project ?? defaultProjectSettings(doc);
-  const shortName = slugify(settings.name.split("/").pop() ?? "") || "pipeline";
+  const slug = slugify(settings.name.split("/").pop() ?? "") || "pipeline";
+  // Becomes a Nextflow workflow identifier, which can't start with a digit.
+  const shortName = /^\d/.test(slug) ? `nf${slug}` : slug;
   return {
     name: settings.name.includes("/") ? settings.name : `studio/${settings.name}`,
     shortName,

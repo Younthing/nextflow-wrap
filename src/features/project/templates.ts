@@ -253,6 +253,11 @@ def validateInputParameters() {
 def validateInputSamplesheet(input) {
     def (metas, fastqs) = input[1..2]
 
+    // Generated pipelines have no lane-merging step, so modules expect one or two FastQ files per sample
+    if (metas.size() > 1) {
+        error("Please check input samplesheet -> Sample @{metas[0].id} has @{metas.size()} rows. Merge its lanes into one FastQ (pair) per sample first.")
+    }
+
     // Check that multiple runs of the same sample are of the same datatype i.e. single-end / paired-end
     def endedness_ok = metas.collect{ meta -> meta.single_end }.unique().size == 1
     if (!endedness_ok) {
