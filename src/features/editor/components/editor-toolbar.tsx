@@ -28,7 +28,9 @@ import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useDeleteWorkflow, useWorkflows } from "@/features/workflow/queries";
 import type { Issue } from "@/features/workflow/validate";
+import { useShortcutLabel } from "@/lib/use-action-shortcuts";
 import { cn } from "@/lib/utils";
+import { EDITOR_ACTIONS } from "../commands";
 import { selectIsDirty, useEditorStore } from "../store";
 
 function IconButton({
@@ -184,6 +186,9 @@ export function EditorToolbar({
   const undo = useEditorStore((s) => s.undo);
   const redo = useEditorStore((s) => s.redo);
   const dirty = useEditorStore(selectIsDirty);
+  const saveShortcut = useShortcutLabel(EDITOR_ACTIONS.save.shortcut);
+  const undoShortcut = useShortcutLabel(EDITOR_ACTIONS.undo.shortcut);
+  const redoShortcut = useShortcutLabel(EDITOR_ACTIONS.redo.shortcut);
   const [openDialog, setOpenDialog] = React.useState(false);
   const fileInput = React.useRef<HTMLInputElement>(null);
 
@@ -203,13 +208,13 @@ export function EditorToolbar({
       <IconButton label="打开" onClick={() => setOpenDialog(true)}>
         <FolderOpen />
       </IconButton>
-      <IconButton label="保存" shortcut="Ctrl+S" onClick={onSave} disabled={saving}>
+      <IconButton label={EDITOR_ACTIONS.save.label} shortcut={saveShortcut} onClick={onSave} disabled={saving}>
         <Save />
       </IconButton>
-      <IconButton label="撤销" shortcut="Ctrl+Z" onClick={undo} disabled={!canUndo}>
+      <IconButton label={EDITOR_ACTIONS.undo.label} shortcut={undoShortcut} onClick={undo} disabled={!canUndo}>
         <Undo2 />
       </IconButton>
-      <IconButton label="重做" shortcut="Ctrl+Shift+Z" onClick={redo} disabled={!canRedo}>
+      <IconButton label={EDITOR_ACTIONS.redo.label} shortcut={redoShortcut} onClick={redo} disabled={!canRedo}>
         <Redo2 />
       </IconButton>
       <Separator orientation="vertical" className="mx-1 !h-5" />

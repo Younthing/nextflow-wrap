@@ -11,6 +11,7 @@ import { useModuleCatalog, useSaveWorkflow, useWorkflow } from "@/features/workf
 import { validateWorkflow } from "@/features/workflow/validate";
 import { EditorAssistant } from "@/features/assistant/editor-assistant";
 import { RunDialog } from "@/features/runs/components/run-dialog";
+import { useEditorCommands } from "../use-editor-commands";
 import { selectIsDirty, useEditorStore } from "../store";
 import { toast } from "../toast";
 import { EditorToolbar } from "./editor-toolbar";
@@ -111,28 +112,7 @@ function Editor() {
     return () => clearTimeout(t);
   }, [dirty, docId, revision, doSave]);
 
-  React.useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
-      const typing = target.closest("input, textarea, [contenteditable=true]");
-      const mod = e.ctrlKey || e.metaKey;
-      if (!mod) return;
-      const key = e.key.toLowerCase();
-      if (key === "s") {
-        e.preventDefault();
-        doSave();
-      } else if (!typing && key === "z") {
-        e.preventDefault();
-        if (e.shiftKey) store.getState().redo();
-        else store.getState().undo();
-      } else if (!typing && key === "y") {
-        e.preventDefault();
-        store.getState().redo();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [doSave, store]);
+  useEditorCommands(doSave);
 
   const issues = React.useMemo(
     () =>
