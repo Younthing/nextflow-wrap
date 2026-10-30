@@ -1,0 +1,69 @@
+import type { Meta, StoryObj } from "@storybook/nextjs-vite";
+import { fn } from "storybook/test";
+
+import pipelineSchema from "@/data/pipeline-schema.json";
+import { SAMPLESHEET_ID } from "@/features/workflow/builtins";
+import type { JsonSchema } from "@/features/workflow/queries";
+import { ModuleLibrary } from "../components/module-library";
+import { NodeSearchDialog } from "../components/node-search-dialog";
+import { SchemaForm } from "../components/schema-form";
+import { storyCatalog, storyModules } from "./fixtures";
+
+const meta = {
+  title: "Editor/Panels",
+} satisfies Meta;
+
+export default meta;
+type Story = StoryObj<typeof meta>;
+
+export const Library: Story = {
+  render: () => (
+    <ModuleLibrary
+      modules={storyModules}
+      syncedAt={storyCatalog.syncedAt}
+      onAdd={fn()}
+      className="h-[600px] w-64"
+    />
+  ),
+};
+
+export const PipelineParams: Story = {
+  render: () => (
+    <div className="glass w-96 rounded-xl p-4">
+      <SchemaForm
+        schema={pipelineSchema as JsonSchema}
+        values={{ input: "assets/samplesheet.csv", outdir: "results" }}
+        onChange={fn()}
+        extraFields={[{ name: "gtf", spec: { type: "string", format: "file-path", description: "参考注释" } }]}
+      />
+    </div>
+  ),
+};
+
+export const NodeSearch: Story = {
+  render: () => (
+    <NodeSearchDialog
+      request={{ position: { x: 0, y: 0 } }}
+      modules={storyModules}
+      onPick={fn()}
+      onClose={fn()}
+    />
+  ),
+};
+
+const samplesheet = storyModules.find((m) => m.id === SAMPLESHEET_ID)!;
+
+export const NodeSearchFromPort: Story = {
+  name: "Node search (from a dropped link)",
+  render: () => (
+    <NodeSearchDialog
+      request={{
+        position: { x: 0, y: 0 },
+        from: { nodeId: "input", port: samplesheet.outputs[0], side: "source" },
+      }}
+      modules={storyModules}
+      onPick={fn()}
+      onClose={fn()}
+    />
+  ),
+};

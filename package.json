@@ -9,7 +9,9 @@
     "lint": "eslint",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
-    "typecheck": "next typegen && tsc --noEmit"
+    "typecheck": "next typegen && tsc --noEmit",
+    "test": "vitest run",
+    "sync:modules": "node scripts/sync-nf-core-modules.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.105.0",
@@ -44,7 +46,9 @@
     "storybook": "^10.6.5",
     "tailwindcss": "^4",
     "typescript": "^5",
-    "vite": "latest"
+    "vite": "latest",
+    "vitest": "^5.0.5",
+    "yaml": "^2.9.1"
   },
   "packageManager": "pnpm@10.28.0",
   "msw": {
