@@ -11,6 +11,7 @@ ComfyUI 式的 Nextflow 可视化前端：在画布上用 nf-core 模块搭建�
 - TanStack Query 取数，MSW 在浏览器里模拟 `/api`
 - Storybook 10（`@storybook/nextjs-vite`）
 - React Flow 画布，TanStack Table 表格，Tiptap 编辑器
+- CopilotKit v2 AI 助手（`@copilotkit/react-core/v2` + `@copilotkit/runtime/v2`）
 
 ## 流程编辑器
 
@@ -63,6 +64,23 @@ ComfyUI 式的 Nextflow 可视化前端：在画布上用 nf-core 模块搭建�
 
 类型定义在 `src/features/runs/types.ts` 和 `src/features/runs/outputs.ts`。模拟后端（`src/mocks/runs.ts`）按流程结构确定性地推演任务进度；参数里设置 `simulate_failure: true` 可以模拟任务失败。
 
+## AI 助手
+
+顶栏的「AI 助手」打开 CopilotKit 侧边栏。模型在 Next.js 的 `/api/copilotkit` 路由里调用，API key 只在服务端；助手能用的工具在浏览器里注册和执行，所以它改画布和手动编辑一样，每一步都能撤销。
+
+- **编辑器**：助手能看到当前流程（节点、端口、连线、参数和校验问题），可以搜索模块、添加节点、连线和断开、删除节点，修改别名、模块参数、`ext.args`/`ext.prefix`/资源标签/是否发布，以及设置流程参数。工具出错时会把原因返回给模型，模型据此修正后重试。
+- **运行详情页**：助手能看到这次运行的状态、参数、命令和失败任务，可以读取任务的 `.command.log` 和 Nextflow 主日志来解释失败原因。它不能启动或停止运行。
+
+在 `.env.local` 里配置模型：
+
+```bash
+ANTHROPIC_API_KEY=sk-ant-...
+# 可选，默认 anthropic/claude-sonnet-5-5；也支持 openai/<model>（OPENAI_API_KEY）和 google/<model>（GOOGLE_API_KEY）
+COPILOT_MODEL=anthropic/claude-sonnet-5-5
+```
+
+没有配置 key 时，按钮会变灰并提示缺少哪个变量，应用的其他功能不受影响。代码在 `src/features/assistant`，系统提示词在 `src/features/assistant/prompt.ts`。
+
 ## 开发
 
 ```bash
@@ -73,4 +91,4 @@ pnpm test              # 端口兼容性、校验、项目生成、运行模拟�
 pnpm typecheck && pnpm lint && pnpm build
 ```
 
-目前还没有真实后端，所有 `/api` 请求都由 MSW（`src/mocks`）在浏览器里应答。接入真实后端后，设置 `NEXT_PUBLIC_API_MOCKING=disabled` 即可关闭模拟。
+目前还没有真实后端，除 `/api/copilotkit` 外的 `/api` 请求都由 MSW（`src/mocks`）在浏览器里应答。接入真实后端后，设置 `NEXT_PUBLIC_API_MOCKING=disabled` 即可关闭模拟。

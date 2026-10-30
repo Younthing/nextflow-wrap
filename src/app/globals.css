@@ -238,3 +238,21 @@
 .dark .tok-key {
   color: oklch(0.78 0.12 230);
 }
+
+/* CopilotKit sidebar: app fonts and a quieter welcome line. */
+.copilotKitSidebar {
+  --cpk-font-sans: var(--font-noto-sans-sc), ui-sans-serif, system-ui, sans-serif;
+}
+.copilotKitSidebar h1 {
+  padding-inline: 2rem;
+  font-size: 0.95rem;
+  line-height: 1.7;
+  color: var(--muted-foreground);
+}
+/* The sidebar pushes the page aside on wide screens; below that the editor
+   would be too narrow, so it floats over the inspector instead. */
+@media (max-width: 1799px) {
+  body {
+    margin-inline-end: 0 !important;
+  }
+}

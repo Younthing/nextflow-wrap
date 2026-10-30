@@ -193,7 +193,7 @@ export function EditorToolbar({
         value={name}
         onChange={(e) => setName(e.target.value)}
         aria-label="流程名称"
-        className="h-8 w-56 rounded-md bg-transparent px-2 font-serif text-sm font-semibold outline-none hover:bg-accent focus:bg-accent"
+        className="h-8 w-56 min-w-20 shrink rounded-md bg-transparent px-2 font-serif text-sm font-semibold outline-none hover:bg-accent focus:bg-accent"
       />
       <span
         className={cn("size-1.5 rounded-full", dirty ? "bg-warning" : "bg-success")}
@@ -230,7 +230,7 @@ export function EditorToolbar({
           e.target.value = "";
         }}
       />
-      <div className="ml-auto flex items-center gap-2">
+      <div className="ml-auto flex shrink-0 items-center gap-2 whitespace-nowrap">
         <IssuesBadge issues={issues} onFocus={onFocusNode} />
         <Button size="sm" onClick={onRun}>
           <Play /> 运行

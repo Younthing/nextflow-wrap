@@ -14,6 +14,7 @@ import { ENGINE_LABELS, executorDef } from "@/features/project/launch";
 import { ApiError } from "@/lib/api";
 import { formatDuration, formatTime, runDuration } from "../format";
 import { useModuleCatalog } from "@/features/workflow/queries";
+import { RunAssistant } from "@/features/assistant/run-assistant";
 import { isActive, useCancelRun, useDeleteRun, useRefreshWhenDone, useRun, useRunTasks } from "../queries";
 import type { RunDetail } from "../types";
 import { RunGraph } from "./run-graph";
@@ -162,6 +163,7 @@ function RunBody({ run: data }: { run: RunDetail }) {
   return (
     <section className="glass flex size-full flex-col gap-5 overflow-hidden rounded-xl p-5">
       <RunHeader run={data} />
+      <RunAssistant run={data} tasks={tasks.data} />
       <Tabs value={tab} onValueChange={setTab} className="min-h-0 flex-1">
         <TabsList>
           <TabsTrigger value="graph">流程图</TabsTrigger>
