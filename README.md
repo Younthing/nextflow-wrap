@@ -127,6 +127,17 @@ pnpm dev:real    # 另一个终端，http://127.0.0.1:3000
 pnpm smoke:runner # 幂等提交 → 实时任务 → 成功/下载 → 缓存续跑 → 运行中取消 → 缺失输入失败
 ```
 
+### Codex harness
+
+`src/features/codex-harness` 用本机 `codex app-server` 的 stdio JSON-RPC 开一个会话，方便以后用已经 `codex login` 的订阅驱动助手。认证留在 `~/.codex`，代码不读取 token。没有安装 CLI 时 `pnpm test` 仍通过（测试使用假的 stdio）。对真实登录跑一轮：
+
+```bash
+pnpm codex:smoke
+pnpm codex:smoke -- Reply with the single word pong
+```
+
+说明见 `src/features/codex-harness/README.md`。
+
 生产模式先 `pnpm build:real`，再分别运行 `pnpm runner` 和 `pnpm start`。公共环境变量在构建时固化，因此真实生产构建必须使用 `build:real`。
 
 旧演示工作流仍保存在浏览器 `nf-studio-mock-db`，不会自动导入为真实数据。可以先在 `pnpm dev` 演示模式导出 JSON，再在真实模式导入并保存；模拟运行历史不会冒充真实执行记录。

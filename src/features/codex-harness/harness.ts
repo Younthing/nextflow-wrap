@@ -1,0 +1,173 @@
+import { CodexHarnessError } from "./errors";
+import { createJsonRpc } from "./jsonrpc";
+import { spawnCodexChild } from "./process";
+import { isRecord, readString } from "./record";
+import { CodexAppSession, type ResolvedSessionOptions } from "./session";
+import type { CodexHarness, CodexHarnessOptions, OpenSessionOptions, ProbeResult } from "./types";
+
+const CLIENT_INFO = {
+  clientInfo: {
+    name: "nextflow_wrap",
+    title: "Nextflow Studio",
+    version: "0.1.0",
+  },
+};
+
+/** Current app-server sandbox tokens. Kebab-case aliases are normalized. */
+const SANDBOX = {
+  "read-only": { thread: "readOnly", turn: "readOnly" },
+  readonly: { thread: "readOnly", turn: "readOnly" },
+  readOnly: { thread: "readOnly", turn: "readOnly" },
+  "workspace-write": { thread: "workspaceWrite", turn: "workspaceWrite" },
+  workspaceWrite: { thread: "workspaceWrite", turn: "workspaceWrite" },
+  "danger-full-access": { thread: "dangerFullAccess", turn: "dangerFullAccess" },
+  dangerFullAccess: { thread: "dangerFullAccess", turn: "dangerFullAccess" },
+} as const;
+
+/** Current approval-policy tokens, plus the older names t3code sent. */
+const APPROVAL = {
+  never: "never",
+  "on-request": "onRequest",
+  onRequest: "onRequest",
+  untrusted: "unlessTrusted",
+  unlessTrusted: "unlessTrusted",
+} as const;
+
+export function createCodexHarness(options: CodexHarnessOptions = {}): CodexHarness {
+  const spawn = options.spawn ?? spawnCodexChild;
+  const binaryPath = options.binaryPath ?? "codex";
+  const requestTimeoutMs = options.requestTimeoutMs ?? 30_000;
+
+  return {
+    async probe() {
+      const version = spawn({ binaryPath, args: ["--version"] });
+      let installed = false;
+      try {
+        const result = await withTimeout(version.exited, Math.min(requestTimeoutMs, 5_000), "codex --version");
+        if (isMissing(version.spawnError()?.code)) return { installed: false };
+        installed = result.code === 0;
+      } catch {
+        if (isMissing(version.spawnError()?.code)) return { installed: false };
+        // The binary started but did not exit in time. Treat it as installed
+        // and let the short app-server handshake below report auth.
+        installed = true;
+      } finally {
+        await version.close();
+      }
+      if (!installed) return { installed: false };
+
+      const child = spawn({ binaryPath, args: ["app-server"] });
+      const rpc = createJsonRpc(child);
+      const session = new CodexAppSession(rpc, child, idleOptions(requestTimeoutMs));
+      session.bind();
+      try {
+        await rpc.request("initialize", CLIENT_INFO, requestTimeoutMs);
+        rpc.notify("initialized", {});
+        // refreshToken stays false so a probe cannot rotate credentials.
+        // The account payload is reduced to a boolean and then discarded.
+        const account = await rpc.request("account/read", { refreshToken: false }, requestTimeoutMs);
+        let models: string[] | undefined;
+        try {
+          const listed = await rpc.request("model/list", { limit: 50, includeHidden: false }, requestTimeoutMs);
+          models = readModelIds(listed);
+        } catch {
+          models = undefined;
+        }
+        const result: ProbeResult = { installed: true, authed: readAuthed(account) };
+        if (models) result.models = models;
+        return result;
+      } catch {
+        return { installed: true };
+      } finally {
+        await session.close();
+      }
+    },
+
+    async open(opts) {
+      const cwd = opts.cwd?.trim();
+      if (!cwd) throw new CodexHarnessError("cwd is required");
+      const executable = opts.binaryPath ?? binaryPath;
+      const child = spawn({ binaryPath: executable, args: ["app-server"], cwd });
+      const rpc = createJsonRpc(child);
+      const session = new CodexAppSession(rpc, child, resolveOptions(opts, cwd, requestTimeoutMs));
+      session.bind();
+      try {
+        await rpc.request("initialize", CLIENT_INFO, requestTimeoutMs);
+        rpc.notify("initialized", {});
+        return session;
+      } catch (error) {
+        await session.close();
+        if (isMissing(child.spawnError()?.code)) {
+          throw new CodexHarnessError(
+            `Cannot find ${executable}. Install the Codex CLI or pass binaryPath.`,
+            { cause: error },
+          );
+        }
+        throw error;
+      }
+    },
+  };
+}
+
+function idleOptions(requestTimeoutMs: number): ResolvedSessionOptions {
+  return {
+    cwd: process.cwd(),
+    approvalPolicy: "never",
+    sandbox: "readOnly",
+    sandboxPolicyType: "readOnly",
+    autoApproval: "decline",
+    requestTimeoutMs,
+  };
+}
+
+function resolveOptions(opts: OpenSessionOptions, cwd: string, requestTimeoutMs: number): ResolvedSessionOptions {
+  const sandbox = resolveSandbox(opts.sandboxPolicy ?? "workspace-write");
+  return {
+    cwd,
+    model: opts.model?.trim() || undefined,
+    approvalPolicy: resolveApproval(opts.approvalPolicy?.trim() || "onRequest"),
+    sandbox: sandbox.thread,
+    sandboxPolicyType: sandbox.turn,
+    autoApproval: opts.autoApproval ?? "decline",
+    requestTimeoutMs,
+  };
+}
+
+function resolveApproval(value: string): string {
+  return APPROVAL[value as keyof typeof APPROVAL] ?? value;
+}
+
+function resolveSandbox(value: string): { thread: string; turn: string } {
+  const known = SANDBOX[value as keyof typeof SANDBOX];
+  if (known) return known;
+  return { thread: value, turn: value };
+}
+
+function readAuthed(result: unknown): boolean {
+  if (!isRecord(result)) return false;
+  const account = result.account;
+  if (isRecord(account) && typeof account.type === "string") return true;
+  return result.requiresOpenaiAuth === false;
+}
+
+function readModelIds(result: unknown): string[] {
+  if (!isRecord(result) || !Array.isArray(result.data)) return [];
+  const ids: string[] = [];
+  for (const entry of result.data) {
+    const id = readString(entry, "id") ?? readString(entry, "model");
+    if (id) ids.push(id);
+  }
+  return ids;
+}
+
+function isMissing(code: string | undefined): boolean {
+  return code === "ENOENT" || code === "ENOTDIR";
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new CodexHarnessError(`${label} timed out after ${ms}ms`)), ms);
+    timer.unref();
+    promise.then(resolve, reject).finally(() => clearTimeout(timer));
+  });
+}
