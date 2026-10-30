@@ -2,9 +2,10 @@ import { delay, http, HttpResponse } from "msw";
 
 import catalog from "@/data/nf-core-modules.json";
 import { randomRunName } from "@/features/runs/names";
+import { consoleLog, resultContent, resultFiles, taskLog } from "@/features/runs/outputs";
 import { simulateRun } from "@/features/runs/simulate";
 import type { LaunchRequest, RunDetail, RunSummary } from "@/features/runs/types";
-import { indexModules } from "@/features/workflow/catalog";
+import { indexModules, resolveNodeDef } from "@/features/workflow/catalog";
 import type { ModuleCatalog } from "@/features/workflow/types";
 import { newId } from "@/features/workflow/nodes";
 import { profileList } from "@/features/project/launch";
@@ -12,8 +13,12 @@ import { readDb, writeDb, type StoredRun } from "./db";
 
 const index = indexModules((catalog as ModuleCatalog).modules);
 
-export function materialize(run: StoredRun, now = Date.now()): RunDetail {
+function simulate(run: StoredRun, now = Date.now()) {
   const sim = simulateRun(run, index, now);
+  return { sim, detail: materialize(run, now, sim) };
+}
+
+export function materialize(run: StoredRun, now = Date.now(), sim = simulateRun(run, index, now)): RunDetail {
   const iso = (ms?: number) => (ms !== undefined && ms <= now ? new Date(ms).toISOString() : undefined);
   return {
     ...run,
@@ -84,6 +89,49 @@ export const runHandlers = [
     await delay(80);
     const run = readDb().runs[params.id as string];
     return run ? HttpResponse.json(materialize(run)) : notFound();
+  }),
+
+  http.get("/api/runs/:id/tasks", async ({ params }) => {
+    await delay(60);
+    const run = readDb().runs[params.id as string];
+    return run ? HttpResponse.json(simulate(run).sim.tasks) : notFound();
+  }),
+
+  http.get("/api/runs/:id/log", async ({ params }) => {
+    await delay(60);
+    const run = readDb().runs[params.id as string];
+    if (!run) return notFound();
+    const { sim, detail } = simulate(run);
+    return HttpResponse.json({ lines: consoleLog(detail, sim.tasks) });
+  }),
+
+  http.get("/api/runs/:id/task-log", async ({ params, request }) => {
+    const run = readDb().runs[params.id as string];
+    if (!run) return notFound();
+    const hash = new URL(request.url).searchParams.get("hash");
+    const task = simulate(run).sim.tasks.find((t) => t.hash === hash);
+    if (!task) return HttpResponse.json({ message: "任务不存在" }, { status: 404 });
+    const node = run.workflow.nodes.find((n) => n.id === task.nodeId);
+    return HttpResponse.json({ text: taskLog(task, node && resolveNodeDef(index, node.data)) });
+  }),
+
+  http.get("/api/runs/:id/results", async ({ params }) => {
+    await delay(80);
+    const run = readDb().runs[params.id as string];
+    if (!run) return notFound();
+    const { sim, detail } = simulate(run);
+    return HttpResponse.json(resultFiles(detail, sim.tasks, index));
+  }),
+
+  http.get("/api/runs/:id/results/content", async ({ params, request }) => {
+    await delay(120);
+    const run = readDb().runs[params.id as string];
+    if (!run) return notFound();
+    const { sim, detail } = simulate(run);
+    const path = new URL(request.url).searchParams.get("path") ?? "";
+    const content = resultContent(detail, sim.tasks, index, path);
+    if (!content) return HttpResponse.json({ message: "文件不存在或无法预览" }, { status: 404 });
+    return new HttpResponse(content.body, { headers: { "content-type": content.contentType } });
   }),
 
   http.post("/api/runs/:id/cancel", async ({ params }) => {

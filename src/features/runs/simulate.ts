@@ -103,7 +103,7 @@ export function planTasks(run: Pick<RunDetail, "id" | "workflow" | "params">, in
       });
       const [lo, hi] = profile.dur;
       const [mlo, mhi] = profile.mem;
-      const tag = sample ?? (def.id === "nf-core/multiqc" ? undefined : node.data.alias.toLowerCase());
+      const tag = sample;
       const task: PlannedTask = {
         hash: `${hex(2)}/${hex(6)}`,
         nodeId: node.id,
