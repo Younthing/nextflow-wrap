@@ -5,7 +5,7 @@ import { indexModules } from "@/features/workflow/catalog";
 import { emptyWorkflow } from "@/features/workflow/document";
 import type { WorkflowNodeData } from "@/features/workflow/types";
 import { PASTE_GAP } from "./clipboard";
-import { useEditorStore, type FlowEdge, type FlowNode } from "./store";
+import { selectHasSelection, useEditorStore, type FlowEdge, type FlowNode } from "./store";
 
 function node(
   id: string,
@@ -88,6 +88,7 @@ describe("editor clipboard", () => {
     const clip = useEditorStore.getState().clipboard;
     expect(clip?.nodes.map((n) => n.id)).toEqual(["n1", "n2"]);
     expect(clip?.edges.map((e) => e.id)).toEqual(["e12"]);
+    expect(clip?.params).toEqual({});
     expect(useEditorStore.getState().revision).toBe(before);
     expect(useEditorStore.getState().past).toHaveLength(0);
 
@@ -157,8 +158,10 @@ describe("editor clipboard", () => {
     expect(copy?.data.alias).toBe("SAMPLESHEET_6");
   });
 
-  it("gives a duplicated reference node its own param name", () => {
+  it("gives a duplicated reference node its own param name and path", () => {
+    const fasta = "s3://bucket/genome.fa";
     useEditorStore.setState({
+      params: { ...useEditorStore.getState().params, fasta },
       nodes: [
         node("r1", "REFERENCE", { x: 0, y: 0 }, true, {
           moduleId: REFERENCE_ID,
@@ -171,15 +174,100 @@ describe("editor clipboard", () => {
     const copy = useEditorStore.getState().nodes.find((n) => n.selected);
     expect(copy?.data.alias).toBe("REFERENCE_2");
     expect(copy?.data.settings).toMatchObject({ param: "fasta_2", format: "fasta" });
+    expect(useEditorStore.getState().params.fasta).toBe(fasta);
+    expect(useEditorStore.getState().params.fasta_2).toBe(fasta);
+    useEditorStore.getState().undo();
+    expect(useEditorStore.getState().params.fasta).toBe(fasta);
+    expect(useEditorStore.getState().params.fasta_2).toBeUndefined();
+    expect(useEditorStore.getState().nodes).toHaveLength(1);
   });
 
-  it("selects and clears selection without a history step", () => {
+  it("does not invent a path when the reference param was unset", () => {
+    useEditorStore.setState({
+      params: {},
+      nodes: [
+        node("r1", "REFERENCE", { x: 0, y: 0 }, true, {
+          moduleId: REFERENCE_ID,
+          settings: { param: "fasta", format: "fasta" },
+        }),
+      ],
+      edges: [],
+    });
+    useEditorStore.getState().duplicateSelected();
+    expect(useEditorStore.getState().nodes.find((n) => n.selected)?.data.settings?.param).toBe("fasta_2");
+    expect(useEditorStore.getState().params).toEqual({});
+  });
+
+  it("pastes reference paths into another workflow under the remapped names", () => {
+    const fasta = "s3://bucket/genome.fa";
+    const gtf = "s3://bucket/genes.gtf";
+    const reference = (id: string, alias: string, param: string, format: string, y: number): FlowNode =>
+      node(id, alias, { x: 0, y }, true, { moduleId: REFERENCE_ID, settings: { param, format } });
+    useEditorStore.setState({
+      params: { fasta, gtf, input: "assets/samplesheet.csv" },
+      nodes: [reference("r1", "REFERENCE", "fasta", "fasta", 0), reference("r2", "REFERENCE_2", "gtf", "gtf", 200)],
+      edges: [],
+    });
+    useEditorStore.getState().copySelected();
+    useEditorStore.getState().setParam("fasta", "s3://changed/genome.fa");
+    expect(useEditorStore.getState().clipboard?.params).toEqual({ fasta, gtf });
+
+    useEditorStore.getState().load(emptyWorkflow("other", "另一个"));
+    useEditorStore.setState({
+      params: { fasta: "s3://destination/genome.fa", input: "other.csv" },
+      nodes: [
+        node("kept", "REFERENCE", { x: 0, y: 0 }, false, {
+          moduleId: REFERENCE_ID,
+          settings: { param: "fasta", format: "fasta" },
+        }),
+      ],
+      edges: [],
+    });
+    useEditorStore.getState().pasteFromClipboard();
+    const pasted = useEditorStore.getState().nodes.filter((n) => n.selected);
+    expect(pasted.find((n) => n.data.settings?.format === "fasta")?.data.settings?.param).toBe("fasta_2");
+    expect(pasted.find((n) => n.data.settings?.format === "gtf")?.data.settings?.param).toBe("gtf");
+    expect(useEditorStore.getState().params).toEqual({
+      fasta: "s3://destination/genome.fa",
+      fasta_2: fasta,
+      gtf,
+      input: "other.csv",
+    });
+    useEditorStore.getState().undo();
+    expect(useEditorStore.getState().params).toEqual({
+      fasta: "s3://destination/genome.fa",
+      input: "other.csv",
+    });
+    expect(useEditorStore.getState().nodes.map((n) => n.id)).toEqual(["kept"]);
+  });
+
+  it("selects and clears nodes and edges without a history step", () => {
     const revision = useEditorStore.getState().revision;
     useEditorStore.getState().clearSelection();
     useEditorStore.getState().selectAllNodes();
+    useEditorStore.setState({
+      edges: useEditorStore.getState().edges.map((edge) => ({ ...edge, selected: true })),
+    });
     expect(useEditorStore.getState().nodes.every((n) => n.selected)).toBe(true);
+    expect(selectHasSelection(useEditorStore.getState())).toBe(true);
     useEditorStore.getState().clearSelection();
     expect(useEditorStore.getState().nodes.some((n) => n.selected)).toBe(false);
+    expect(useEditorStore.getState().edges.some((e) => e.selected)).toBe(false);
+    expect(useEditorStore.getState().revision).toBe(revision);
+    expect(useEditorStore.getState().past).toHaveLength(0);
+  });
+
+  it("clears a selection that is only edges", () => {
+    useEditorStore.getState().clearSelection();
+    useEditorStore.setState({
+      edges: useEditorStore.getState().edges.map((edge) => ({ ...edge, selected: edge.id === "e23" })),
+    });
+    expect(selectHasSelection(useEditorStore.getState())).toBe(true);
+    expect(selectHasSelection({ nodes: [{ selected: false }], edges: [{ selected: false }] })).toBe(false);
+    const revision = useEditorStore.getState().revision;
+    useEditorStore.getState().clearSelection();
+    expect(selectHasSelection(useEditorStore.getState())).toBe(false);
+    expect(useEditorStore.getState().edges.every((edge) => !edge.selected)).toBe(true);
     expect(useEditorStore.getState().revision).toBe(revision);
     expect(useEditorStore.getState().past).toHaveLength(0);
   });

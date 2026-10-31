@@ -129,6 +129,7 @@ export const useEditorStore = create<EditorState>()((set, get) => {
         ...created.nodes.map(pastedNode),
       ],
       edges: [...get().edges, ...created.edges.map(pastedEdge)],
+      params: { ...get().params, ...created.params },
       ...extra,
     });
   };
@@ -228,7 +229,8 @@ export const useEditorStore = create<EditorState>()((set, get) => {
     },
 
     copySelected: () => {
-      const clip = selectionClipboard(get().nodes, get().edges);
+      const { nodes, edges, params } = get();
+      const clip = selectionClipboard(nodes, edges, params);
       if (!clip) return;
       set({ clipboard: clip, clipboardPastes: 0 });
     },
@@ -240,7 +242,8 @@ export const useEditorStore = create<EditorState>()((set, get) => {
     },
 
     duplicateSelected: () => {
-      const clip = selectionClipboard(get().nodes, get().edges);
+      const { nodes, edges, params } = get();
+      const clip = selectionClipboard(nodes, edges, params);
       if (!clip) return;
       applyClipboard(clip, 1);
     },
@@ -252,9 +255,16 @@ export const useEditorStore = create<EditorState>()((set, get) => {
     },
 
     clearSelection: () => {
-      const nodes = get().nodes;
-      if (!nodes.some((node) => node.selected)) return;
-      set({ nodes: nodes.map((node) => (node.selected ? { ...node, selected: false } : node)) });
+      const { nodes, edges } = get();
+      if (!selectHasSelection({ nodes, edges })) return;
+      set({
+        nodes: nodes.some((node) => node.selected)
+          ? nodes.map((node) => (node.selected ? { ...node, selected: false } : node))
+          : nodes,
+        edges: edges.some((edge) => edge.selected)
+          ? edges.map((edge) => (edge.selected ? { ...edge, selected: false } : edge))
+          : edges,
+      });
     },
 
     onNodesChange: (changes) => {
@@ -367,6 +377,15 @@ export const useEditorStore = create<EditorState>()((set, get) => {
 });
 
 export const selectIsDirty = (s: EditorState) => s.revision !== s.savedRevision;
+
+/** True when Escape should clear the canvas. Edges count, so a selected link is not left behind. */
+export function selectHasSelection(state: {
+  nodes: readonly { selected?: boolean }[];
+  edges: readonly { selected?: boolean }[];
+}): boolean {
+  return state.nodes.some((node) => node.selected) || state.edges.some((edge) => edge.selected);
+}
+
 export const selectSelectedNode = (s: EditorState) => {
   const selected = s.nodes.filter((n) => n.selected);
   return selected.length === 1 ? selected[0] : undefined;

@@ -14,9 +14,12 @@ export const storyModules = [...BUILTIN_MODULES, ...storyCatalog.modules];
 /** Seeds the editor store so editor components render outside the app. */
 export function EditorFixture({
   doc = demoRnaseqWorkflow("wf_story"),
+  selectedNodeIds = [],
   children,
 }: {
   doc?: WorkflowDoc;
+  /** Node ids to mark selected after the document loads. */
+  selectedNodeIds?: readonly string[];
   children: React.ReactNode;
 }) {
   // Seed synchronously on first render so children never see an empty store.
@@ -24,6 +27,14 @@ export function EditorFixture({
     const s = useEditorStore.getState();
     s.setIndex(indexModules(storyCatalog.modules));
     s.load(doc);
+    if (selectedNodeIds.length > 0) {
+      const selected = new Set(selectedNodeIds);
+      useEditorStore.setState({
+        nodes: useEditorStore.getState().nodes.map((node) =>
+          selected.has(node.id) ? { ...node, selected: true } : node,
+        ),
+      });
+    }
     return true;
   });
   return <ReactFlowProvider>{children}</ReactFlowProvider>;

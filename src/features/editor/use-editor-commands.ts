@@ -5,7 +5,7 @@ import * as React from "react";
 import { actionRegistry } from "@/lib/actions";
 import { useActionShortcuts } from "@/lib/use-action-shortcuts";
 import { editorActions } from "./commands";
-import { useEditorStore } from "./store";
+import { selectHasSelection, useEditorStore } from "./store";
 
 export type EditorCanvasCommands = {
   save: () => void;
@@ -13,7 +13,7 @@ export type EditorCanvasCommands = {
   fitView: () => void;
 };
 
-function hasSelection() {
+function hasSelectedNodes() {
   return useEditorStore.getState().nodes.some((node) => node.selected);
 }
 
@@ -40,11 +40,11 @@ export function useEditorCommands({ save, openNodeSearch, fitView }: EditorCanva
         fitView: () => commandsRef.current.fitView(),
         canUndo: () => useEditorStore.getState().past.length > 0,
         canRedo: () => useEditorStore.getState().future.length > 0,
-        canCopy: hasSelection,
+        canCopy: hasSelectedNodes,
         canPaste: () => (useEditorStore.getState().clipboard?.nodes.length ?? 0) > 0,
-        canDuplicate: hasSelection,
+        canDuplicate: hasSelectedNodes,
         canSelectAll: () => useEditorStore.getState().nodes.length > 0,
-        canDeselect: hasSelection,
+        canDeselect: () => selectHasSelection(useEditorStore.getState()),
         canFitView: () => useEditorStore.getState().nodes.length > 0,
       }),
     );

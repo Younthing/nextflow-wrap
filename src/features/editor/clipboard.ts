@@ -1,6 +1,6 @@
 import { resolveNodeDef, type ModuleIndex } from "@/features/workflow/catalog";
 import { newId, uniqueAlias } from "@/features/workflow/nodes";
-import type { WorkflowNodeData } from "@/features/workflow/types";
+import type { PipelineParams, WorkflowNodeData } from "@/features/workflow/types";
 
 /** Distance from the source nodes to each paste or duplicate, in flow units. */
 export const PASTE_GAP = 40;
@@ -19,10 +19,15 @@ export type ClipboardEdge = {
   targetHandle?: string | null;
 };
 
-/** Selected nodes plus links whose two ends are both in that selection. */
+/**
+ * Selected nodes, links whose two ends are both in that selection, and the
+ * reference-param values those nodes point at. The values stay with the
+ * clipboard so a paste into another workflow can keep the paths.
+ */
 export type NodeClipboard = {
   nodes: ClipboardNode[];
   edges: ClipboardEdge[];
+  params: PipelineParams;
 };
 
 type GraphNode = ClipboardNode & { selected?: boolean };
@@ -36,23 +41,42 @@ function aliasStem(alias: string, fallback: string): string {
   return stem || fallback;
 }
 
+function paramName(data: WorkflowNodeData): string | undefined {
+  const param = data.settings?.param;
+  return typeof param === "string" && param ? param : undefined;
+}
+
+/** Param values named by the copied nodes, keyed by the name still on the node. */
+function captureParams(nodes: readonly { data: WorkflowNodeData }[], params: PipelineParams): PipelineParams {
+  const captured: PipelineParams = {};
+  for (const node of nodes) {
+    const name = paramName(node.data);
+    if (!name || !(name in params)) continue;
+    captured[name] = params[name];
+  }
+  return captured;
+}
+
 /**
  * Copies the selection the way ComfyUI's plain paste does: links that leave
  * the selection are dropped. Returns null when nothing is selected.
+ * `params` is the workflow's param map; reference paths are copied by value.
  */
 export function selectionClipboard(
   nodes: readonly GraphNode[],
   edges: readonly ClipboardEdge[],
+  params: PipelineParams = {},
 ): NodeClipboard | null {
   const selected = nodes.filter((node) => node.selected);
   if (selected.length === 0) return null;
   const ids = new Set(selected.map((node) => node.id));
+  const copied = selected.map((node) => ({
+    id: node.id,
+    position: { x: node.position.x, y: node.position.y },
+    data: cloneData(node.data),
+  }));
   return {
-    nodes: selected.map((node) => ({
-      id: node.id,
-      position: { x: node.position.x, y: node.position.y },
-      data: cloneData(node.data),
-    })),
+    nodes: copied,
     edges: edges
       .filter((edge) => ids.has(edge.source) && ids.has(edge.target))
       .map((edge) => ({
@@ -62,19 +86,21 @@ export function selectionClipboard(
         sourceHandle: edge.sourceHandle,
         targetHandle: edge.targetHandle,
       })),
+    params: captureParams(copied, params),
   };
 }
 
 /**
  * New ids, unique process aliases, and a stair-step offset.
- * `step` is 1 for the first paste or a duplicate, then 2, 3, …
+ * Reference param names are remapped, and `params` holds their values under
+ * those new names. `step` is 1 for the first paste or a duplicate, then 2, 3, …
  */
 export function materializeClipboard(
   clipboard: NodeClipboard,
   existing: readonly { data: WorkflowNodeData }[],
   index: ModuleIndex,
   step: number,
-): { nodes: ClipboardNode[]; edges: ClipboardEdge[] } {
+): { nodes: ClipboardNode[]; edges: ClipboardEdge[]; params: PipelineParams } {
   const offset = PASTE_GAP * step;
   const takenAliases = new Set(existing.map((node) => node.data.alias));
   const takenParams = new Set(
@@ -84,6 +110,7 @@ export function materializeClipboard(
     }),
   );
   const idMap = new Map<string, string>();
+  const params: PipelineParams = {};
 
   const nodes = clipboard.nodes.map((node) => {
     const id = newId("n");
@@ -92,11 +119,12 @@ export function materializeClipboard(
     const def = resolveNodeDef(index, data);
     data.alias = uniqueAlias(aliasStem(data.alias, def?.process ?? "NODE"), takenAliases);
     takenAliases.add(data.alias);
-    const param = data.settings?.param;
-    if (typeof param === "string" && param) {
+    const param = paramName(data);
+    if (param) {
       const next = uniqueAlias(aliasStem(param, param), takenParams);
       data.settings = { ...data.settings, param: next };
       takenParams.add(next);
+      if (param in clipboard.params) params[next] = clipboard.params[param];
     }
     return {
       id,
@@ -120,5 +148,5 @@ export function materializeClipboard(
     ];
   });
 
-  return { nodes, edges };
+  return { nodes, edges, params };
 }
