@@ -22,6 +22,17 @@ export function editorConflictIsOwnWrite(id: string, serverUpdatedAt: string): b
   return saveAck.get(id) === serverUpdatedAt;
 }
 
+/**
+ * A query-cache document produced by this editor's own save must not replace
+ * a canvas the user has edited since that save was snapshotted.
+ */
+export function editorEchoKeepsLocalEdits(
+  local: { docId: string; dirty: boolean },
+  incoming: { id: string; updatedAt: string },
+): boolean {
+  return local.dirty && local.docId === incoming.id && editorConflictIsOwnWrite(incoming.id, incoming.updatedAt);
+}
+
 /** Keep the captured document. Only its server revision moves forward after our own save of the same workflow. */
 export function withAcknowledgedRevision(snapshot: EditorSaveRead): EditorSaveRead {
   const ack = snapshot.docId ? saveAck.get(snapshot.docId) : undefined;
@@ -29,13 +40,15 @@ export function withAcknowledgedRevision(snapshot: EditorSaveRead): EditorSaveRe
   return { ...snapshot, doc: { ...snapshot.doc, updatedAt: ack } };
 }
 
-export function enqueueEditorSave(silent: boolean, task: (announceSave: boolean) => Promise<void>): void {
+export function enqueueEditorSave(silent: boolean, task: (announceSave: boolean) => Promise<void>): Promise<void> {
   if (!silent) announce = true;
-  tail = tail.then(async () => {
+  const run = tail.then(async () => {
     const loud = announce;
     announce = false;
     await task(loud);
-  }).catch(() => {});
+  });
+  tail = run.then(() => {}, () => {});
+  return run;
 }
 
 export function editorSaveSettled(): Promise<void> {

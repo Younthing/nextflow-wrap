@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { noteEditorRevision } from "@/features/editor/editor-save";
 import { api, ApiError } from "@/lib/api";
 import { indexModules } from "./catalog";
 import { duplicateWorkflowName, WORKFLOW_NAME_MAX } from "./library";
@@ -72,6 +73,9 @@ export function useSaveWorkflow() {
         ? api<WorkflowDoc>(`/workflows/${doc.id}`, { method: "PUT", body: JSON.stringify(doc) })
         : api<WorkflowDoc>("/workflows", { method: "POST", body: JSON.stringify(doc) }),
     onSuccess: (doc) => {
+      // Note the revision before the cache update so the open editor can tell
+      // this echo from a library rename before its updatedAt effect runs.
+      noteEditorRevision(doc.id, doc.updatedAt);
       qc.setQueryData(workflowKeys.detail(doc.id), doc);
       void qc.invalidateQueries({ queryKey: workflowKeys.all, exact: true });
     },

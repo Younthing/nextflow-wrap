@@ -6,6 +6,7 @@ import type { WorkflowDoc } from "@/features/workflow/types";
 
 import {
   editorConflictIsOwnWrite,
+  editorEchoKeepsLocalEdits,
   editorSaveSettled,
   enqueueEditorSave,
   noteEditorRevision,
@@ -153,5 +154,12 @@ describe("editor save queue", () => {
     });
     expect(save).toHaveBeenCalledOnce();
     expect(load).toHaveBeenCalledWith(server);
+  });
+
+  it("keeps dirty local edits when the cache echoes this editor's own save", () => {
+    noteEditorRevision("wf", "t1");
+    expect(editorEchoKeepsLocalEdits({ docId: "wf", dirty: true }, { id: "wf", updatedAt: "t1" })).toBe(true);
+    expect(editorEchoKeepsLocalEdits({ docId: "wf", dirty: false }, { id: "wf", updatedAt: "t1" })).toBe(false);
+    expect(editorEchoKeepsLocalEdits({ docId: "wf", dirty: true }, { id: "wf", updatedAt: "t2" })).toBe(false);
   });
 });

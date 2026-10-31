@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import catalog from "@/data/nf-core-modules.json";
+import { enqueueEditorSave, resetEditorSaveQueueForTests, runEditorSave, type EditorSaveRead } from "@/features/editor/editor-save";
 import { useEditorStore, selectIsDirty } from "@/features/editor/store";
 import { defaultLaunchConfig } from "@/features/project/launch";
 import { indexModules } from "@/features/workflow/catalog";
@@ -291,6 +292,53 @@ describe("confirm queue and saving", () => {
     const again = vi.fn();
     await expect(ensureWorkflowSaved(again)).resolves.toEqual({ error: "请先保存流程（Ctrl+S）" });
     expect(again).not.toHaveBeenCalled();
+  });
+
+  it("waits for an in-flight editor save and then uses the revision it stored", async () => {
+    resetEditorSaveQueueForTests();
+    const base = qcDemoWorkflow();
+    base.updatedAt = "2020-01-01T00:00:00.000Z";
+    useEditorStore.getState().load(base);
+    useEditorStore.getState().setName("autosaved");
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const sent: string[] = [];
+    const state = useEditorStore.getState();
+    const snapshot: EditorSaveRead = {
+      docId: state.docId,
+      revision: state.revision,
+      generation: state.generation,
+      dirty: true,
+      doc: state.toDoc(),
+      issues: [],
+    };
+    enqueueEditorSave(true, (announce) => runEditorSave({
+      announce,
+      snapshot,
+      save: async (doc) => {
+        sent.push(doc.updatedAt);
+        await gate;
+        return { ...doc, updatedAt: "2020-01-02T00:00:00.000Z" };
+      },
+      markSaved: (revision, updatedAt) => useEditorStore.getState().markSaved(revision, updatedAt),
+      stillOpen: () => true,
+      fetchCurrent: async () => useEditorStore.getState().toDoc(),
+      load: () => {},
+      toastSaved: () => {},
+      toastError: () => {},
+    }));
+    useEditorStore.getState().setName("and-then");
+    const pending = ensureWorkflowSaved(async (doc) => {
+      sent.push(`assistant:${doc.updatedAt}:${doc.name}`);
+      return { ...doc, updatedAt: "2020-01-03T00:00:00.000Z" };
+    });
+    await Promise.resolve();
+    release();
+    const result = await pending;
+    expect(sent[0]).toBe("2020-01-01T00:00:00.000Z");
+    expect(sent[1]).toBe("assistant:2020-01-02T00:00:00.000Z:and-then");
+    expect(result).toMatchObject({ doc: { name: "and-then" } });
+    expect("error" in result).toBe(false);
   });
 });
 

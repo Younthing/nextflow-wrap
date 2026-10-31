@@ -16,7 +16,7 @@ import { validateWorkflow } from "@/features/workflow/validate";
 import { api } from "@/lib/api";
 import { useShortcutLabels } from "@/lib/use-action-shortcuts";
 import { EDITOR_ACTIONS } from "../commands";
-import { enqueueEditorSave, runEditorSave, type EditorSaveRead } from "../editor-save";
+import { editorEchoKeepsLocalEdits, enqueueEditorSave, runEditorSave, type EditorSaveRead } from "../editor-save";
 import { fitViewOptions } from "../fit-view";
 import { selectIsDirty, useEditorStore } from "../store";
 import { toast } from "../toast";
@@ -132,6 +132,14 @@ function Editor({ workflowId }: { workflowId: string }) {
     const appliedThisMount = applied.id === workflowId && applied.token === mountToken;
     // A save echo for the revision we already have must not reload the canvas.
     if (appliedThisMount && state.updatedAt === doc.updatedAt) return;
+    // Our own departing save minted this revision. It is not an external edit.
+    if (editorEchoKeepsLocalEdits(
+      { docId: state.docId, dirty: selectIsDirty(state) },
+      doc,
+    )) {
+      markWorkflowApplied(workflowId, mountToken);
+      return;
+    }
     // Dirty edits stay only while the server revision they were based on is still current.
     if (!keepLocalWorkflowEdits(
       { docId: state.docId, updatedAt: state.updatedAt, dirty: selectIsDirty(state) },
