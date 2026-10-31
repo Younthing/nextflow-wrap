@@ -5,6 +5,7 @@ import { indexModules } from "@/features/workflow/catalog";
 import { emptyWorkflow } from "@/features/workflow/document";
 import type { WorkflowNodeData } from "@/features/workflow/types";
 import { PASTE_GAP } from "./clipboard";
+import { PLACEMENT_CLEAR_X, placeWithoutOverlap } from "./placement";
 import { selectHasSelection, useEditorStore, type FlowEdge, type FlowNode } from "./store";
 
 function node(
@@ -445,5 +446,27 @@ describe("editor clipboard", () => {
     expect(useEditorStore.getState().edges.every((edge) => !edge.selected)).toBe(true);
     expect(useEditorStore.getState().revision).toBe(revision);
     expect(useEditorStore.getState().past).toHaveLength(0);
+  });
+});
+
+describe("add node placement", () => {
+  beforeEach(() => {
+    useEditorStore.getState().load(emptyWorkflow("wf", "画布"));
+    useEditorStore.getState().setIndex(indexModules(BUILTIN_MODULES));
+  });
+
+  it("keeps a free spot and shifts a node dropped on an existing card", () => {
+    const def = BUILTIN_MODULES[0]!;
+    const requested = { x: 40, y: 60 };
+    const first = useEditorStore.getState().addNode(def, requested);
+    expect(first.position).toEqual(requested);
+
+    const stacked = useEditorStore.getState().addNode(def, requested);
+    expect(stacked.position).toEqual(placeWithoutOverlap(requested, [requested]));
+    expect(stacked.position).toEqual({ x: requested.x + PLACEMENT_CLEAR_X, y: requested.y });
+    const stored = useEditorStore.getState().nodes.find((n) => n.id === stacked.id);
+    expect(stored?.position).toEqual(stacked.position);
+    expect(stored?.selected).toBe(true);
+    expect(useEditorStore.getState().nodes.find((n) => n.id === first.id)?.selected).toBe(false);
   });
 });
