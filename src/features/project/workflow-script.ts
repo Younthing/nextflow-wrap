@@ -1,7 +1,10 @@
 import { REFERENCE_ID, SAMPLESHEET_ID } from "@/features/workflow/builtins";
 import { resolveNodeDef, type ModuleIndex } from "@/features/workflow/catalog";
-import { checkCompatibility, findPort, portFromHandle } from "@/features/workflow/ports";
+import { isOperator, operatorChannel } from "@/features/workflow/operators";
+import { renderTemporaryProcesses } from "@/features/workflow/test-modules";
+import { checkCompatibility, findPort, portFromHandle, socketInputs } from "@/features/workflow/ports";
 import type { ModuleDef, PortDef, WorkflowDoc, WorkflowEdge, WorkflowNode } from "@/features/workflow/types";
+import { ChannelOpError, paren, renderOperator } from "./channel-ops";
 import { gvalue, indent, nf, section } from "./groovy";
 
 export const MULTIQC_ID = "nf-core/multiqc";
@@ -63,17 +66,6 @@ export function planNodes(doc: WorkflowDoc, index: ModuleIndex): { order: Planne
 
 const refParam = (node: WorkflowNode) => String(node.data.settings?.param ?? "");
 
-/** Groovy expression for the channel behind an output handle. */
-function sourceExpr(src: PlannedNode, handle: string): string {
-  const port = portFromHandle(handle);
-  if (src.def.id === SAMPLESHEET_ID) return "ch_samplesheet";
-  if (src.def.id === REFERENCE_ID) {
-    const p = refParam(src.node);
-    return port === "with_meta" ? `ch_${p}_meta` : `ch_${p}`;
-  }
-  return `${src.node.data.alias}.out.${port}`;
-}
-
 /** Shapes an upstream tuple to what the input expects (see `Adapter`). */
 function adapt(expr: string, from: PortDef, to: PortDef): string {
   const compat = checkCompatibility(from, to);
@@ -90,87 +82,244 @@ function adapt(expr: string, from: PortDef, to: PortDef): string {
   return expr;
 }
 
-/** Placeholder for an optional input nobody feeds: `[]` or `[ [:], [] ]`. */
+/**
+ * An unconnected secondary input still emits one empty value, so the process
+ * runs. `channel.empty()` would emit nothing and the task would never start.
+ * `.first()` makes that one empty list a value channel, reused for every sample.
+ */
 function emptyInput(port: PortDef): string {
+  if (port.elements.length === 1 && port.elements[0]?.kind !== "meta") return "Channel.of([]).first()";
   const parts = port.elements.map((el) => (el.kind === "meta" ? "[:]" : "[]"));
-  return parts.length === 1 ? parts[0] : `[ ${parts.join(", ")} ]`;
+  return `Channel.of([ ${parts.join(", ")} ]).first()`;
+}
+
+/** Value emitted when an optional output produced no file, so join and collect can finish. */
+function emptyMarker(port: PortDef): string {
+  if (port.elements.length === 1 && port.elements[0].kind === "value") return "'EMPTY'";
+  if (port.elements.length === 1 && port.elements[0].kind !== "meta") return "[]";
+  const parts = port.elements.map((el) => (el.kind === "meta" ? "[id: 'empty']" : el.kind === "value" ? "''" : "[]"));
+  return `[ ${parts.join(", ")} ]`;
+}
+
+function optionalOutputs(node: WorkflowNode): Set<string> {
+  return new Set(
+    String(node.data.config.optionalOutputs ?? "")
+      .split(",")
+      .map((part) => part.trim())
+      .filter(Boolean),
+  );
+}
+
+function sameShape(left: PortDef, right: PortDef): boolean {
+  if (left.elements.length !== right.elements.length) return false;
+  return left.elements.every((el, index) => {
+    const other = right.elements[index];
+    if (el.kind !== other.kind) return false;
+    if (el.format && other.format && el.format !== other.format) return false;
+    return true;
+  });
+}
+
+interface Feed {
+  expr: string;
+  from: PortDef;
+  bypass: boolean;
+  adapted: boolean;
+  srcId: string;
+  builtin: boolean;
 }
 
 interface Context {
   planned: Map<string, PlannedNode>;
-  edges: WorkflowEdge[];
+  disabled: Map<string, PlannedNode>;
+  docEdges: WorkflowEdge[];
   /** Nodes downstream of the samplesheet, i.e. one task per sample. */
   perSample: Set<string>;
   shortName: string;
+  order: PlannedNode[];
 }
 
-function samplesScope(order: PlannedNode[], edges: WorkflowEdge[]): Set<string> {
-  const scoped = new Set<string>();
-  for (const { node, def } of order) {
-    if (def.id === SAMPLESHEET_ID || edges.some((e) => e.target === node.id && scoped.has(e.source))) {
-      scoped.add(node.id);
+function samplesScope(doc: WorkflowDoc, order: PlannedNode[]): Set<string> {
+  const disabled = new Set(doc.nodes.filter((node) => node.data.disabled).map((node) => node.id));
+  const active = new Set(order.map((planned) => planned.node.id));
+  const scoped = new Set(order.filter((planned) => planned.def.id === SAMPLESHEET_ID).map((planned) => planned.node.id));
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const edge of doc.edges) {
+      if (!scoped.has(edge.source) || scoped.has(edge.target)) continue;
+      if (disabled.has(edge.target) || active.has(edge.target)) {
+        scoped.add(edge.target);
+        grew = true;
+      }
     }
   }
   return scoped;
 }
 
-function sourcesFor(ctx: Context, node: WorkflowNode, port: PortDef) {
-  return ctx.edges
-    .filter((e) => e.target === node.id && portFromHandle(e.targetHandle) === port.name)
-    .map((e) => {
-      const src = ctx.planned.get(e.source)!;
-      const out = findPort(src.def, e.sourceHandle, "out");
-      if (!out) throw new GenerateError(`${src.node.data.alias} 没有输出 ${portFromHandle(e.sourceHandle)}`, src.node.id);
-      return { edge: e, src, out };
+function buildContext(doc: WorkflowDoc, index: ModuleIndex, shortName: string): Context {
+  const { order } = planNodes(doc, index);
+  const disabled = new Map<string, PlannedNode>();
+  for (const node of doc.nodes) {
+    if (!node.data.disabled) continue;
+    const def = resolveNodeDef(index, node.data);
+    if (!def) throw new GenerateError(`未知模块 ${node.data.moduleId}`, node.id);
+    disabled.set(node.id, { node, def });
+  }
+  return {
+    planned: new Map(order.map((planned) => [planned.node.id, planned])),
+    disabled,
+    docEdges: doc.edges,
+    perSample: samplesScope(doc, order),
+    shortName,
+    order,
+  };
+}
+
+function mixExpr(parts: string[]): string {
+  return `channel.empty().mix(\n${parts.map((part) => indent(part, 4)).join(",\n")}\n)`;
+}
+
+function baseSource(src: PlannedNode, handle: string): string {
+  const port = portFromHandle(handle);
+  if (src.def.id === SAMPLESHEET_ID) return "ch_samplesheet";
+  if (src.def.id === REFERENCE_ID) {
+    const param = refParam(src.node);
+    return port === "with_meta" ? `ch_${param}_meta` : `ch_${param}`;
+  }
+  if (isOperator(src.def.id)) return operatorChannel(src.node.data.alias, port, src.def.outputs.length);
+  return `${src.node.data.alias}.out.${port}`;
+}
+
+function shouldMixSkip(src: PlannedNode, out: PortDef): boolean {
+  if (!src.node.data.config.skip) return false;
+  const main = socketInputs(src.def)[0];
+  return !!main && sameShape(main, out);
+}
+
+/** Groovy expression for the channel behind an output handle. */
+function sourceExpr(ctx: Context, src: PlannedNode, handle: string): string {
+  const out = findPort(src.def, handle, "out");
+  if (!out) throw new GenerateError(`${src.node.data.alias} 没有输出 ${portFromHandle(handle)}`, src.node.id);
+  let expr = baseSource(src, handle);
+  if (shouldMixSkip(src, out)) expr = `${expr}.mix(ch_${src.node.data.alias.toLowerCase()}_bypass)`;
+  if (optionalOutputs(src.node).has(out.name)) expr = `${expr}.ifEmpty(${emptyMarker(out)})`;
+  return expr;
+}
+
+function feedsFor(ctx: Context, node: WorkflowNode, port: PortDef, seen = new Set<string>()): Feed[] {
+  if (seen.has(node.id)) throw new GenerateError("禁用节点形成了环", node.id);
+  const nextSeen = new Set(seen);
+  nextSeen.add(node.id);
+  const feeds: Feed[] = [];
+  for (const edge of ctx.docEdges) {
+    if (edge.target !== node.id || portFromHandle(edge.targetHandle) !== port.name) continue;
+    const src = ctx.planned.get(edge.source) ?? ctx.disabled.get(edge.source);
+    if (!src) throw new GenerateError(`连线来源 ${edge.source} 不存在`, node.id);
+    if (ctx.disabled.has(edge.source)) {
+      const bypass = passthrough(ctx, src, edge.sourceHandle, port, nextSeen);
+      if (bypass) feeds.push(bypass);
+      continue;
+    }
+    const out = findPort(src.def, edge.sourceHandle, "out");
+    if (!out) throw new GenerateError(`${src.node.data.alias} 没有输出 ${portFromHandle(edge.sourceHandle)}`, src.node.id);
+    feeds.push({
+      expr: sourceExpr(ctx, src, edge.sourceHandle),
+      from: out,
+      bypass: false,
+      adapted: false,
+      srcId: src.node.id,
+      builtin: !!src.def.builtin,
     });
+  }
+  return feeds;
+}
+
+/** A disabled pass-through hands its upstream channel to whatever it used to feed. */
+function passthrough(
+  ctx: Context,
+  disabled: PlannedNode,
+  sourceHandle: string,
+  downstream: PortDef,
+  seen: Set<string>,
+): Feed | null {
+  const out = findPort(disabled.def, sourceHandle, "out");
+  const main = socketInputs(disabled.def)[0];
+  if (!out || !main || !sameShape(main, out)) return null;
+  const compat = checkCompatibility(out, downstream);
+  if (!compat.ok || compat.adapter === "strip-meta") return null;
+  const upstream = feedsFor(ctx, disabled.node, main, seen);
+  if (!upstream.length) return null;
+  if (downstream.collect) {
+    return {
+      expr: upstream.length === 1 ? upstream[0].expr : mixExpr(upstream.map((feed) => feed.expr)),
+      from: upstream[0].from,
+      bypass: true,
+      adapted: false,
+      srcId: disabled.node.id,
+      builtin: true,
+    };
+  }
+  const parts = upstream.map((feed) => (feed.adapted ? feed.expr : adapt(feed.expr, feed.from, downstream)));
+  return {
+    expr: parts.length === 1 ? parts[0] : mixExpr(parts),
+    from: downstream,
+    bypass: true,
+    adapted: true,
+    srcId: disabled.node.id,
+    builtin: true,
+  };
 }
 
 function inputArgument(ctx: Context, { node }: PlannedNode, port: PortDef, isMain: boolean): string {
   if (port.widget) return gvalue(node.data.widgets[port.name]);
 
-  const sources = sourcesFor(ctx, node, port);
-  if (sources.length === 0) {
+  const feeds = feedsFor(ctx, node, port);
+  if (feeds.length === 0) {
+    if (isMain && node.data.config.whenEmpty) return "channel.empty().ifEmpty('EMPTY')";
     if (isMain) throw new GenerateError(`${node.data.alias} 的主输入 ${port.name} 没有连接`, node.id);
     return emptyInput(port);
   }
 
+  let expr: string;
   if (port.collect) {
-    const parts = sources.map(({ src, edge, out }) => {
-      const expr = sourceExpr(src, edge.sourceHandle);
-      return out.elements[0]?.kind === "meta" ? `${expr}.map { tuple -> tuple[1..-1] }` : expr;
-    });
+    const parts = feeds.map((feed) =>
+      feed.from.elements[0]?.kind === "meta" ? `${feed.expr}.map { tuple -> tuple[1..-1] }` : feed.expr,
+    );
     const fileSlot = port.elements.findIndex((el) => el.kind === "file");
     const rest = port.elements.length - fileSlot - 1;
     const metaFirst = port.elements[0]?.kind === "meta";
-    const mixed = `channel.empty()\n    .mix(\n${parts.map((p) => `        ${p}`).join(",\n")}\n    )\n    .flatten()\n    .collect()`;
-    if (!metaFirst && rest === 0) return mixed;
-    const tuple = [metaFirst ? `[ id: '${node.data.alias.toLowerCase()}' ]` : null, "files", ...Array(rest).fill("[]")]
-      .filter(Boolean)
-      .join(", ");
-    return `${mixed}\n    .map { files -> [ ${tuple} ] }`;
+    const mixed = `channel.empty()\n    .mix(\n${parts.map((part) => `        ${part}`).join(",\n")}\n    )\n    .flatten()\n    .collect()`;
+    expr =
+      !metaFirst && rest === 0
+        ? mixed
+        : `${mixed}\n    .map { files -> [ ${[metaFirst ? `[ id: '${node.data.alias.toLowerCase()}' ]` : null, "files", ...Array(rest).fill("[]")].filter(Boolean).join(", ")} ] }`;
+  } else {
+    const parts = feeds.map((feed) => (feed.adapted ? feed.expr : adapt(feed.expr, feed.from, port)));
+    if (parts.length > 1 || feeds.some((feed) => feed.bypass)) {
+      expr = mixExpr(parts);
+    } else {
+      const feed = feeds[0];
+      expr = parts[0];
+      // A one-off product (e.g. a genome index) feeding a per-sample process must
+      // become a value channel, or the process would only run for the first sample.
+      if (!feed.bypass && !isMain && ctx.perSample.has(node.id) && !ctx.perSample.has(feed.srcId) && !feed.builtin) {
+        expr += ".first()";
+      }
+    }
   }
 
-  if (sources.length > 1) {
-    throw new GenerateError(`${node.data.alias} 的输入 ${port.name} 只能接一条连线`, node.id);
-  }
-  const [{ src, edge, out }] = sources;
-  let expr = adapt(sourceExpr(src, edge.sourceHandle), out, port);
-  // A one-off product (e.g. a genome index) feeding a per-sample process must
-  // become a value channel, or the process would only run for the first sample.
-  if (!isMain && ctx.perSample.has(node.id) && !ctx.perSample.has(src.node.id) && !src.def.builtin) {
-    expr += ".first()";
-  }
+  if (isMain && node.data.config.whenEmpty && !expr.includes(".ifEmpty(")) expr = `${paren(expr)}.ifEmpty('EMPTY')`;
   return expr;
 }
 
 function multiqcCall(ctx: Context, planned: PlannedNode): string {
   const { node, def } = planned;
   const port = def.inputs[0];
-  const sources = sourcesFor(ctx, node, port);
-  const mixes = sources.map(({ src, edge, out }) => {
-    const expr = sourceExpr(src, edge.sourceHandle);
-    return out.elements[0]?.kind === "meta" ? `${expr}.map { tuple -> tuple[1..-1] }` : expr;
-  });
+  const feeds = feedsFor(ctx, node, port);
+  const mixes = feeds.map((feed) =>
+    feed.from.elements[0]?.kind === "meta" ? `${feed.expr}.map { tuple -> tuple[1..-1] }` : feed.expr,
+  );
   const alias = node.data.alias;
   return nf`//
 // MODULE: ${alias} (nf-core/multiqc) — collects reports, software versions and the run summary
@@ -205,34 +354,85 @@ ${alias} (
 }
 
 function referenceChannels(ctx: Context, planned: PlannedNode): string {
-  const p = refParam(planned.node);
+  const param = refParam(planned.node);
+  const optional = planned.node.data.settings?.optional === true;
   const used = new Set(
-    ctx.edges.filter((e) => e.source === planned.node.id).map((e) => portFromHandle(e.sourceHandle)),
+    ctx.docEdges.filter((edge) => edge.source === planned.node.id).map((edge) => portFromHandle(edge.sourceHandle)),
   );
-  const lines = [`// Reference --${p} (${planned.node.data.alias})`];
-  if (used.has("file") || used.size === 0) {
-    lines.push(`def ch_${p} = channel.value(file(params.${p}, checkIfExists: true))`);
-  }
-  if (used.has("with_meta")) {
-    lines.push(
-      `def ch_${p}_meta = channel.value([ [ id: file(params.${p}).baseName ], file(params.${p}, checkIfExists: true) ])`,
-    );
-  }
+  const lines = [`// Reference --${param} (${planned.node.data.alias})`];
+  const fileExpr = optional
+    ? `params.${param} ? channel.value(file(params.${param}, checkIfExists: true)) : channel.value([])`
+    : `channel.value(file(params.${param}, checkIfExists: true))`;
+  const metaExpr = optional
+    ? `params.${param} ? channel.value([ [ id: file(params.${param}).baseName ], file(params.${param}, checkIfExists: true) ]) : channel.value([])`
+    : `channel.value([ [ id: file(params.${param}).baseName ], file(params.${param}, checkIfExists: true) ])`;
+  if (used.has("file") || used.size === 0) lines.push(`def ch_${param} = ${fileExpr}`);
+  if (used.has("with_meta")) lines.push(`def ch_${param}_meta = ${metaExpr}`);
   return lines.join("\n");
+}
+
+function skipPrelude(ctx: Context, planned: PlannedNode, port: PortDef): string {
+  const raw = inputArgument(ctx, planned, port, true);
+  const name = planned.node.data.alias.toLowerCase();
+  return [
+    `def ch_${name}_upstream = ${paren(raw)}`,
+    `def ch_${name}_in = params.skip_${name}?.toString() == 'true' ? channel.empty() : ch_${name}_upstream`,
+    `def ch_${name}_bypass = params.skip_${name}?.toString() == 'true' ? ch_${name}_upstream : channel.empty()`,
+    "",
+  ].join("\n");
 }
 
 function moduleCall(ctx: Context, planned: PlannedNode): string {
   const { node, def } = planned;
-  const firstSocket = def.inputs.findIndex((p) => !p.widget);
-  const args = def.inputs.map((port, i) => {
-    const arg = indent(inputArgument(ctx, planned, port, i === firstSocket), 4).trimStart();
-    const comma = i < def.inputs.length - 1 ? "," : "";
+  const firstSocket = def.inputs.findIndex((port) => !port.widget);
+  const skip = !!node.data.config.skip && firstSocket >= 0;
+  const name = node.data.alias.toLowerCase();
+  const args = def.inputs.map((port, index) => {
+    const value = skip && index === firstSocket ? `ch_${name}_in` : inputArgument(ctx, planned, port, index === firstSocket);
+    const arg = indent(value, 4).trimStart();
+    const comma = index < def.inputs.length - 1 ? "," : "";
     // The comment goes after the comma, or it would swallow it.
     return `${arg}${comma}${port.widget ? ` // ${port.name}` : ""}`;
   });
+  const prelude = skip ? skipPrelude(ctx, planned, def.inputs[firstSocket]) : "";
   const header = `//\n// MODULE: ${node.data.alias} (${def.id})\n//`;
-  if (args.length === 0) return `${header}\n${node.data.alias} ()`;
-  return `${header}\n${node.data.alias} (\n${args.map((a) => `    ${a}`).join("\n")}\n)`;
+  const call = args.length === 0 ? `${node.data.alias} ()` : `${node.data.alias} (\n${args.map((arg) => `    ${arg}`).join("\n")}\n)`;
+  return `${prelude}${header}\n${call}`;
+}
+
+function operatorCall(ctx: Context, planned: PlannedNode): string {
+  try {
+    return renderOperator(planned.node, planned.def, (name) => {
+      const port = planned.def.inputs.find((item) => item.name === name);
+      if (!port) throw new GenerateError(`${planned.node.data.alias} 没有输入 ${name}`, planned.node.id);
+      const first = planned.def.inputs.find((item) => !item.widget);
+      return inputArgument(ctx, planned, port, port === first);
+    });
+  } catch (error) {
+    if (error instanceof ChannelOpError) throw new GenerateError(error.message, planned.node.id);
+    throw error;
+  }
+}
+
+function renderSteps(ctx: Context): string[] {
+  const steps: string[] = [];
+  for (const planned of ctx.order) {
+    if (planned.def.id === SAMPLESHEET_ID || planned.def.id === MULTIQC_ID) continue;
+    if (planned.def.id === REFERENCE_ID) steps.push(referenceChannels(ctx, planned));
+    else if (isOperator(planned.def.id)) steps.push(operatorCall(ctx, planned));
+    else steps.push(moduleCall(ctx, planned));
+  }
+  return steps;
+}
+
+/** Channel and process calls, without the nf-core versions boilerplate. */
+export function renderDataflow(doc: WorkflowDoc, index: ModuleIndex): string {
+  return renderSteps(buildContext(doc, index, "pipeline")).join("\n\n");
+}
+
+/** Inline host-command processes. Empty when the canvas has none. */
+export function renderTemporaryModuleText(doc: WorkflowDoc, index: ModuleIndex): string {
+  return renderTemporaryProcesses(planNodes(doc, index).order);
 }
 
 export function workflowIncludes(order: PlannedNode[]): string[] {
@@ -249,24 +449,15 @@ export function generateWorkflowScript(
   index: ModuleIndex,
   opts: { shortName: string; workflowName: string },
 ): string {
-  const { order, edges } = planNodes(doc, index);
-  if (!order.some((p) => p.def.id === SAMPLESHEET_ID)) {
+  const ctx = buildContext(doc, index, opts.shortName);
+  const { order } = ctx;
+  if (!order.some((planned) => planned.def.id === SAMPLESHEET_ID)) {
     throw new GenerateError("流程需要一个「样本表」节点作为输入");
   }
-  const ctx: Context = {
-    planned: new Map(order.map((p) => [p.node.id, p])),
-    edges,
-    perSample: samplesScope(order, edges),
-    shortName: opts.shortName,
-  };
-  const multiqc = order.find((p) => p.def.id === MULTIQC_ID);
-  const legacyVersions = order.filter((p) => p.def.versions === "emit" && p.def.id !== MULTIQC_ID);
+  const multiqc = order.find((planned) => planned.def.id === MULTIQC_ID);
+  const legacyVersions = order.filter((planned) => planned.def.versions === "emit" && planned.def.id !== MULTIQC_ID);
 
-  const body: string[] = [];
-  for (const planned of order) {
-    if (planned.def.id === SAMPLESHEET_ID || planned === multiqc) continue;
-    body.push(planned.def.id === REFERENCE_ID ? referenceChannels(ctx, planned) : moduleCall(ctx, planned));
-  }
+  const body: string[] = [...renderSteps(ctx)];
   if (legacyVersions.length) {
     body.push(
       `// Modules that still emit versions.yml instead of using the versions topic\nch_versions = ch_versions.mix(\n${legacyVersions
@@ -327,6 +518,7 @@ ${section("IMPORT MODULES / SUBWORKFLOWS / FUNCTIONS")}
 
 ${includes.join("\n")}
 
+${renderTemporaryProcesses(order) ? `${section("TEMPORARY TEST MODULES — not nf-core")}\n\n${renderTemporaryProcesses(order)}\n` : ""}
 ${section("RUN MAIN WORKFLOW")}
 
 workflow ${opts.workflowName} {

@@ -47,3 +47,6 @@ storybook-static
 
 # CodeGraph local index (https://github.com/colbymchenry/codegraph)
 .codegraph/
+
+# Local Nextflow work directories for pattern checks
+.nf-verify/

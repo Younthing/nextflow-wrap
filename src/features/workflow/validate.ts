@@ -64,6 +64,7 @@ export function validateWorkflow(
     const linked = new Set(edges.filter((e) => e.target === node.id).map((e) => e.targetHandle));
     socketInputs(def).forEach((port, i) => {
       if (linked.has(`in:${port.name}`)) return;
+      if (i === 0 && data.config.whenEmpty) return;
       issues.push({
         nodeId: node.id,
         level: i === 0 ? "error" : "warning",

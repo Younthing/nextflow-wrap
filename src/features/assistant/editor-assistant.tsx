@@ -151,6 +151,16 @@ function EditorTools({ onCanvasChange }: { onCanvasChange: () => void }) {
             .string()
             .optional()
             .describe("资源标签，如 process_low、process_high"),
+          errorStrategy: z.string().optional().describe("errorStrategy，例如 ignore"),
+          when: z.string().optional().describe("when 指令的 Groovy 表达式"),
+          whenEmpty: z.boolean().optional().describe("上游为空时才执行"),
+          skip: z.boolean().optional().describe("用 params.skip_<别名> 跳过，并把输入 mix 给下游"),
+          memory: z.string().optional().describe("memory 闭包体"),
+          cpus: z.string().optional().describe("cpus 闭包体"),
+          optionalOutputs: z.string().optional().describe("可选输出端口，逗号分隔"),
+          publishPath: z.string().optional().describe("publishDir 路径表达式"),
+          publishPattern: z.string().optional().describe("publishDir pattern glob"),
+          publishSaveAs: z.string().optional().describe("saveAs 闭包体，例如 filename -> \"foo_$filename\""),
         })
         .optional(),
       disabled: z.boolean().optional(),

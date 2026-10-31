@@ -17,6 +17,7 @@ import {
   ENGINE_LABELS,
   EXECUTORS,
   executorDef,
+  isRealEngine,
   REGISTRIES,
   type ExecutorField,
   type ExecutorId,
@@ -180,7 +181,15 @@ export function EnvironmentForm({
           软件环境和存储
         </h3>
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="容器 / 环境（-profile）" htmlFor={`${formId}-engine`}>
+          <Field
+            label="容器 / 环境（-profile）"
+            htmlFor={`${formId}-engine`}
+            hint={
+              config.engine === "shell"
+                ? "不使用 -profile，进程在本机 shell 里直接执行"
+                : undefined
+            }
+          >
             <Select
               value={config.engine}
               onValueChange={(engine) =>
@@ -192,7 +201,7 @@ export function EnvironmentForm({
               </SelectTrigger>
               <SelectContent>
                 {def.engines
-                  .filter((e) => !real || e === "docker")
+                  .filter((e) => !real || isRealEngine(e))
                   .map((e) => (
                     <SelectItem key={e} value={e}>
                       {ENGINE_LABELS[e]}

@@ -1,9 +1,9 @@
 import samplesheetSchema from "@/data/samplesheet-schema.json";
 import emailTemplates from "./email-templates.json";
 import type { ModuleIndex } from "@/features/workflow/catalog";
-import type { ProjectSettings, WorkflowDoc } from "@/features/workflow/types";
+import type { NodeConfig, ProjectSettings, PublishDir, WorkflowDoc } from "@/features/workflow/types";
 import { gdynamic, gstr, section } from "./groovy";
-import { buildParamsSchema, paramsBlock, referenceParams } from "./schema";
+import { buildParamsSchema, paramsBlock, patternParams, referenceParams } from "./schema";
 import {
   LABEL_RESOURCES,
   METHODS_DESCRIPTION,
@@ -75,10 +75,58 @@ export function projectMeta(doc: Pick<WorkflowDoc, "name" | "description" | "pro
   };
 }
 
+const VERSION_SAVE = "filename -> filename.equals('versions.yml') ? null : filename";
+
+function directiveClosure(body: string): string {
+  const trimmed = body.trim();
+  return trimmed.startsWith("{") ? trimmed : `{ ${trimmed} }`;
+}
+
+function ruleBody(rule: PublishDir): string[] {
+  const path = `"${rule.path.trim().replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
+  const lines = [`    path: { ${path} },`, "    mode: params.publish_dir_mode,"];
+  if (rule.pattern?.trim()) lines.push(`    pattern: ${gstr(rule.pattern.trim())},`);
+  lines.push(`    saveAs: { ${rule.saveAs?.trim() || VERSION_SAVE} }`);
+  return lines;
+}
+
+function publishLines(alias: string, config: NodeConfig): string[] {
+  if (config.publish === false) return ["publishDir = [ enabled: false ]"];
+  const primary: PublishDir[] =
+    config.publishPath?.trim() || config.publishPattern?.trim() || config.publishSaveAs?.trim()
+      ? [
+          {
+            path: config.publishPath?.trim() || `\${params.outdir}/${alias.toLowerCase()}`,
+            pattern: config.publishPattern?.trim() || undefined,
+            saveAs: config.publishSaveAs?.trim() || undefined,
+          },
+        ]
+      : [];
+  const rules = [...primary, ...(config.publishDirs ?? [])];
+  if (!rules.length) {
+    return [
+      "publishDir = [",
+      `    path: { "\${params.outdir}/${alias.toLowerCase()}" },`,
+      "    mode: params.publish_dir_mode,",
+      `    saveAs: { ${VERSION_SAVE} }`,
+      "]",
+    ];
+  }
+  if (rules.length === 1) return ["publishDir = [", ...ruleBody(rules[0]), "]"];
+  const lines = ["publishDir = ["];
+  rules.forEach((rule, index) => {
+    lines.push("    [");
+    lines.push(...ruleBody(rule).map((line) => `    ${line}`));
+    lines.push(index === rules.length - 1 ? "    ]" : "    ],");
+  });
+  lines.push("]");
+  return lines;
+}
+
 function modulesConfig(doc: WorkflowDoc, index: ModuleIndex, meta: ProjectMeta): string {
   const { order } = planNodes(doc, index);
   const blocks = order
-    .filter((p) => !p.def.builtin)
+    .filter((p) => !p.def.builtin || p.def.temporary)
     .map(({ node, def }) => {
       const { config, alias } = { config: node.data.config, alias: node.data.alias };
       const lines: string[] = [];
@@ -93,17 +141,12 @@ function modulesConfig(doc: WorkflowDoc, index: ModuleIndex, meta: ProjectMeta):
         lines.push(`// Resources of ${config.label} (module default: ${def.label ?? "none"})`);
         lines.push(...(LABEL_RESOURCES[config.label] ?? []));
       }
-      if (config.publish === false) {
-        lines.push("publishDir = [ enabled: false ]");
-      } else {
-        lines.push(
-          "publishDir = [",
-          `    path: { "\${params.outdir}/${alias.toLowerCase()}" },`,
-          "    mode: params.publish_dir_mode,",
-          "    saveAs: { filename -> filename.equals('versions.yml') ? null : filename }",
-          "]",
-        );
-      }
+      if (config.errorStrategy?.trim()) lines.push(`errorStrategy = ${gstr(config.errorStrategy.trim())}`);
+      if (config.when?.trim()) lines.push(`when = { ${config.when.trim()} }`);
+      else if (config.whenEmpty) lines.push("when = { x == 'EMPTY' }");
+      if (config.memory?.trim()) lines.push(`memory = ${directiveClosure(config.memory)}`);
+      if (config.cpus?.trim()) lines.push(`cpus = ${directiveClosure(config.cpus)}`);
+      lines.push(...publishLines(alias, config));
       return `    withName: '${alias}' {\n${lines.map((l) => `        ${l}`).join("\n")}\n    }`;
     });
 
@@ -202,7 +245,7 @@ export function generateProject(doc: WorkflowDoc, index: ModuleIndex, opts: Gene
   const meta = projectMeta(doc);
   // Included processes and the pipeline workflow share one namespace.
   if (order.some((p) => p.node.data.alias === meta.workflowName)) meta.workflowName += "_PIPELINE";
-  const schema = buildParamsSchema(meta.name, meta.description, refs);
+  const schema = buildParamsSchema(meta.name, meta.description, refs, patternParams(doc));
 
   const moduleComponents = [...new Map(order.filter((p) => !p.def.builtin).map((p) => [p.def.path, p.def])).values()]
     .sort((a, b) => a.path.localeCompare(b.path))

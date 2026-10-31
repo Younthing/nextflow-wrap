@@ -81,6 +81,13 @@ describe("prepareStartRun", () => {
       config: { ...defaultLaunchConfig(), executor: "slurm", engine: "singularity", resume: true, settings: { queue: "normal" } },
     }));
     expect(plan.launch).toMatchObject({ executor: "local", engine: "docker", resume: false });
+    const shell = prepareStartRun(input({
+      real: true,
+      runnerReady: true,
+      config: { ...defaultLaunchConfig(), engine: "shell" },
+    }));
+    expect(shell.launch.engine).toBe("shell");
+    expect(shell.command).not.toContain("-profile");
     expect(plan.launch.settings).toMatchObject({ cpus: 2, memory: "2.GB", queue: "normal" });
     expect(plan.problems).toContain("Docker 没启动");
     expect(plan.request).toBeNull();

@@ -27,6 +27,8 @@ import {
   executorDef,
   launchCommand,
   launchProblems,
+  profileList,
+  realLaunchConfig,
   renderRunConfig,
   type LaunchConfig,
 } from "@/features/project/launch";
@@ -60,15 +62,7 @@ export function RunDialog({
   const [config, setConfig] = React.useState<LaunchConfig>(() =>
     readLaunchConfig(docId),
   );
-  const launchConfig: LaunchConfig = real
-    ? {
-        ...config,
-        settings: { cpus: 2, memory: "2.GB", ...config.settings },
-        executor: "local",
-        engine: "docker",
-        resume: false,
-      }
-    : config;
+  const launchConfig: LaunchConfig = real ? realLaunchConfig(config) : config;
   const [tab, setTab] = React.useState("environment");
 
   // Re-read the saved launch settings whenever the dialog opens for a workflow.
@@ -233,8 +227,10 @@ export function RunDialog({
               </span>
             ) : (
               <span className="font-mono text-muted-foreground">
-                {executorDef(config.executor).name} · -profile{" "}
-                {[config.engine, ...config.extraProfiles].join(",")}
+                {executorDef(launchConfig.executor).name}
+                {profileList(launchConfig)
+                  ? ` · -profile ${profileList(launchConfig)}`
+                  : " · Shell"}
               </span>
             )}
           </div>

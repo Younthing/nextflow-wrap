@@ -1,6 +1,6 @@
 import { access, realpath } from "node:fs/promises";
 import { constants } from "node:fs";
-import { homedir } from "node:os";
+import { arch, cpus, homedir, totalmem } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { runCommand } from "./command";
 
@@ -20,7 +20,7 @@ export async function preflight() {
   const nfCore = await executable("nf-core", process.env.NF_CORE_BIN, [
     join(homedir(), "miniconda3/bin/nf-core"), join(homedir(), "miniforge3/bin/nf-core"),
   ]);
-  const docker = await executable("docker", process.env.DOCKER_BIN);
+  const docker = await executable("docker", process.env.DOCKER_BIN).catch(() => undefined);
   const git = await executable("git", process.env.GIT_BIN);
   const javaOverride = process.env.NEXTFLOW_JAVA_HOME;
   const java = await executable("java", javaOverride ? join(javaOverride, "bin/java") : undefined, []);
@@ -44,7 +44,7 @@ export async function preflight() {
   }
   if (!javaHome) throw new Error("Nextflow needs a supported Java 17–26. Set NEXTFLOW_JAVA_HOME to an installed JDK.");
   const env: NodeJS.ProcessEnv = { ...process.env, JAVA_HOME: javaHome, NXF_JAVA_HOME: javaHome, NXF_ANSI_LOG: "false", NXF_VER: "26.10.4" };
-  env.PATH = [join(javaHome, "bin"), join(nfCore, ".."), join(docker, ".."), process.env.PATH].filter(Boolean).join(delimiter);
+  env.PATH = [join(javaHome, "bin"), join(nfCore, ".."), docker ? join(docker, "..") : "", process.env.PATH].filter(Boolean).join(delimiter);
   // Java's Nextflow launcher does not support SOCKS proxy URLs. Explicit HTTP overrides win.
   for (const key of ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"]) {
     if (process.env.NEXTFLOW_HTTP_PROXY) env[key] = process.env.NEXTFLOW_HTTP_PROXY;
@@ -54,20 +54,24 @@ export async function preflight() {
     }
   }
   const check = (bin: string, args: string[]) => runCommand(bin, args, { env, quiet: true, timeoutMs: 30_000 });
-  const [nextflowVersion, nfCoreVersion, gitVersion, dockerInfo] = await Promise.all([
+  const [nextflowVersion, nfCoreVersion, gitVersion] = await Promise.all([
     check(nextflow, ["-version"]), check(nfCore, ["--version"]), check(git, ["--version"]),
-    check(docker, ["info", "--format", "{{json .}}"]),
   ]);
-  const info = JSON.parse(dockerInfo.split("\n").find((line) => line.startsWith("{")) ?? dockerInfo) as { ServerVersion: string; Architecture: string; NCPU: number; MemTotal: number };
-  if (info.MemTotal < 2 * 1024 ** 3) throw new Error("Docker needs at least 2 GiB of memory for the QC smoke test.");
+  const dockerInfo = docker
+    ? JSON.parse((await check(docker, ["info", "--format", "{{json .}}"])).split("\n").find((line) => line.startsWith("{")) ?? "{}") as { ServerVersion: string; Architecture: string; NCPU: number; MemTotal: number }
+    : undefined;
+  if (dockerInfo && dockerInfo.MemTotal < 2 * 1024 ** 3) throw new Error("Docker needs at least 2 GiB of memory for the QC smoke test.");
+  const hostArch = arch() === "x64" ? "x86_64" : arch() === "arm64" ? "aarch64" : arch();
   return {
     nextflow, nfCore, docker, git, env,
     versions: {
       nextflow: nextflowVersion.match(/version\s+([\d.]+)/)?.[1] ?? nextflowVersion.trim(),
       nfCore: nfCoreVersion.match(/nf-core, version\s+([\d.]+)/)?.[1] ?? nfCoreVersion.trim(),
-      java: javaVersion, git: gitVersion.trim(), docker: info.ServerVersion,
+      java: javaVersion, git: gitVersion.trim(), ...(dockerInfo ? { docker: dockerInfo.ServerVersion } : {}),
     },
-    resources: { architecture: info.Architecture, cpus: info.NCPU, memoryBytes: info.MemTotal },
+    resources: dockerInfo
+      ? { architecture: dockerInfo.Architecture, cpus: dockerInfo.NCPU, memoryBytes: dockerInfo.MemTotal }
+      : { architecture: hostArch, cpus: cpus().length, memoryBytes: totalmem() },
   };
 }
 

@@ -1,4 +1,5 @@
 import type { JsonSchema } from "@/features/workflow/queries";
+import { declaredParam } from "@/features/workflow/operators";
 import type { WorkflowDoc } from "@/features/workflow/types";
 import { REFERENCE_ID } from "@/features/workflow/builtins";
 
@@ -45,7 +46,50 @@ const bool = (description: string, extra: Partial<JsonSchema> = {}): JsonSchema 
  * plus one group for reference files added on the canvas. The editor renders
  * its params form from this same schema.
  */
-export function buildParamsSchema(name: string, description: string, refs: ReferenceParam[]): JsonSchema & Record<string, unknown> {
+export interface ExtraParam {
+  name: string;
+  description: string;
+  kind: "boolean" | "file" | "string";
+}
+
+const PARAM_NAME = /^[a-z][a-z0-9_]*$/;
+
+/** Params introduced by channel operators and runtime skip flags. */
+export function patternParams(doc: Pick<WorkflowDoc, "nodes">): ExtraParam[] {
+  const out: ExtraParam[] = [];
+  const seen = new Set<string>();
+  const add = (param: ExtraParam) => {
+    if (!PARAM_NAME.test(param.name) || seen.has(param.name)) return;
+    seen.add(param.name);
+    out.push(param);
+  };
+  for (const node of doc.nodes) {
+    if (node.data.disabled) continue;
+    const declared = declaredParam(node.data.moduleId, node.data.settings);
+    if (declared) {
+      add({
+        name: declared.name,
+        description: `Input for ${node.data.alias}.`,
+        kind: declared.file ? "file" : "string",
+      });
+    }
+    if (node.data.config.skip) {
+      add({
+        name: `skip_${node.data.alias.toLowerCase()}`,
+        description: `Skip ${node.data.alias} and pass its input to the next process.`,
+        kind: "boolean",
+      });
+    }
+  }
+  return out;
+}
+
+export function buildParamsSchema(
+  name: string,
+  description: string,
+  refs: ReferenceParam[],
+  extras: ExtraParam[] = [],
+): JsonSchema & Record<string, unknown> {
   const defs: Record<string, JsonSchema & Record<string, unknown>> = {
     input_output_options: {
       title: "Input/output options",
@@ -97,6 +141,22 @@ export function buildParamsSchema(name: string, description: string, refs: Refer
       ),
     };
     defs.reference_files.properties!.genome = str("Name of iGenomes reference.", { fa_icon: "fas fa-book", hidden: true });
+  }
+
+  if (extras.length) {
+    defs.channel_inputs = {
+      title: "Channel inputs",
+      type: "object",
+      fa_icon: "fas fa-code-branch",
+      description: "Files and flags read by channel operators.",
+      properties: Object.fromEntries(
+        extras.map((extra) => {
+          if (extra.kind === "boolean") return [extra.name, bool(extra.description, { default: false })];
+          if (extra.kind === "file") return [extra.name, str(extra.description, { format: "file-path" })];
+          return [extra.name, str(extra.description)];
+        }),
+      ),
+    };
   }
 
   defs.institutional_config_options = {
