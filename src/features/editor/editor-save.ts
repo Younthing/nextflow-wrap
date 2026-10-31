@@ -22,6 +22,10 @@ export function editorConflictIsOwnWrite(id: string, serverUpdatedAt: string): b
   return saveAck.get(id) === serverUpdatedAt;
 }
 
+export function editorKnownRevision(id: string): string | undefined {
+  return saveAck.get(id);
+}
+
 /**
  * A query-cache document produced by this editor's own save must not replace
  * a canvas the user has edited since that save was snapshotted.

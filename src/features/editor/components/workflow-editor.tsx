@@ -10,13 +10,13 @@ import { EditorAssistant } from "@/features/assistant/editor-assistant";
 import { RunDialog } from "@/features/runs/components/run-dialog";
 import { BUILTIN_MODULES } from "@/features/workflow/builtins";
 import { useModuleCatalog, useSaveWorkflow, useWorkflow } from "@/features/workflow/queries";
-import { keepLocalWorkflowEdits } from "@/features/workflow/revision";
+import { keepLocalWorkflowEdits, revisionIsOlder } from "@/features/workflow/revision";
 import type { WorkflowDoc } from "@/features/workflow/types";
 import { validateWorkflow } from "@/features/workflow/validate";
 import { api } from "@/lib/api";
 import { useShortcutLabels } from "@/lib/use-action-shortcuts";
 import { EDITOR_ACTIONS } from "../commands";
-import { editorEchoKeepsLocalEdits, enqueueEditorSave, runEditorSave, type EditorSaveRead } from "../editor-save";
+import { editorEchoKeepsLocalEdits, editorKnownRevision, enqueueEditorSave, runEditorSave, type EditorSaveRead } from "../editor-save";
 import { fitViewOptions } from "../fit-view";
 import { selectIsDirty, useEditorStore } from "../store";
 import { toast } from "../toast";
@@ -132,6 +132,14 @@ function Editor({ workflowId }: { workflowId: string }) {
     const appliedThisMount = applied.id === workflowId && applied.token === mountToken;
     // A save echo for the revision we already have must not reload the canvas.
     if (appliedThisMount && state.updatedAt === doc.updatedAt) return;
+    // A background GET can still resolve with the revision from before this save.
+    if (state.docId === doc.id && (
+      revisionIsOlder(doc.updatedAt, state.updatedAt) ||
+      revisionIsOlder(doc.updatedAt, editorKnownRevision(doc.id))
+    )) {
+      markWorkflowApplied(workflowId, mountToken);
+      return;
+    }
     // Our own departing save minted this revision. It is not an external edit.
     if (editorEchoKeepsLocalEdits(
       { docId: state.docId, dirty: selectIsDirty(state) },

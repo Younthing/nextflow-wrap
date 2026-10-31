@@ -72,10 +72,11 @@ export function useSaveWorkflow() {
       doc.id
         ? api<WorkflowDoc>(`/workflows/${doc.id}`, { method: "PUT", body: JSON.stringify(doc) })
         : api<WorkflowDoc>("/workflows", { method: "POST", body: JSON.stringify(doc) }),
-    onSuccess: (doc) => {
+    onSuccess: async (doc) => {
       // Note the revision before the cache update so the open editor can tell
       // this echo from a library rename before its updatedAt effect runs.
       noteEditorRevision(doc.id, doc.updatedAt);
+      await qc.cancelQueries({ queryKey: workflowKeys.detail(doc.id) });
       qc.setQueryData(workflowKeys.detail(doc.id), doc);
       void qc.invalidateQueries({ queryKey: workflowKeys.all, exact: true });
     },

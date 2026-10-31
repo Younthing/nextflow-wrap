@@ -25,7 +25,23 @@ export function commitWorkflowPut(
 ): WorkflowPutResult {
   if (!current) return { status: "missing" };
   if (workflowWriteIsStale(current, incoming)) return { status: "stale" };
-  return { status: "ok", doc: { ...incoming, updatedAt: now } };
+  return { status: "ok", doc: { ...incoming, updatedAt: nextWorkflowRevision(current.updatedAt, now) } };
+}
+
+/**
+ * A successful write must move the token forward. Wall-clock time can repeat
+ * the stored millisecond, which would let the pre-write document pass the next check.
+ */
+export function nextWorkflowRevision(current: string | undefined, now = new Date().toISOString()): string {
+  if (!current || now > current) return now;
+  const parsed = Date.parse(current);
+  if (Number.isNaN(parsed)) return `${current}\u0001`;
+  return new Date(parsed + 1).toISOString();
+}
+
+/** True when `incoming` sorts before a revision the editor already holds. */
+export function revisionIsOlder(incoming: string, baseline: string | undefined): boolean {
+  return baseline != null && incoming < baseline;
 }
 
 /**
