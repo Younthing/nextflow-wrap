@@ -30,6 +30,11 @@ export type ShortcutGuard = {
   dialogOpen: boolean;
   /** An open menu or select popup should keep arrows, Enter, and Escape. */
   menuOpen?: boolean;
+  /**
+   * A non-collapsed text selection outside the canvas. Commands that yield
+   * leave Ctrl/⌘+C to the browser so it can copy that text.
+   */
+  textSelectionOutsideCanvas?: boolean;
 };
 
 export type Action = {
@@ -54,6 +59,11 @@ export type Action = {
    * already worked with a dialog up, so it is the one command that still does.
    */
   allowWhileDialog?: boolean;
+  /**
+   * Leave the chord to the browser when a text range outside the canvas is
+   * selected. Copy does this. Other chords still run.
+   */
+  yieldToTextSelection?: boolean;
 };
 
 export type ShortcutPlatform = "mac" | "other";
@@ -150,6 +160,7 @@ function isBlocked(action: Action, guard: ShortcutGuard): boolean {
   if (guard.menuOpen) return true;
   if (guard.typing && !action.allowWhileTyping) return true;
   if (guard.dialogOpen && !action.allowWhileDialog) return true;
+  if (guard.textSelectionOutsideCanvas && action.yieldToTextSelection) return true;
   return false;
 }
 
@@ -158,7 +169,8 @@ function isBlocked(action: Action, guard: ShortcutGuard): boolean {
  * Returns true when the chord belongs to a command, including a disabled one,
  * so the caller can preventDefault. Typing and open dialogs return false
  * unless that command opts out (save). An open menu always returns false
- * so it can handle Escape and arrows.
+ * so it can handle Escape and arrows. Copy also returns false while a text
+ * range outside the canvas is selected, so the browser can copy that text.
  */
 export function handleShortcutKey(actions: readonly Action[], event: KeyEvent, guard: ShortcutGuard): boolean {
   if (MODIFIER_KEYS.has(event.key.toLowerCase())) return false;
@@ -178,6 +190,39 @@ const OPEN_MENU = "[role='menu'][data-state='open'], [role='listbox'][data-state
 export function isEditableTarget(target: EventTarget | null): boolean {
   if (!target || typeof (target as Element).closest !== "function") return false;
   return Boolean((target as Element).closest("input, textarea, [contenteditable=true]"));
+}
+
+/** Flow surface. Text selections inside it still belong to the canvas copy command. */
+export const EDITOR_CANVAS_CLASS = "nf-canvas";
+export const EDITOR_CANVAS_SELECTOR = `.${EDITOR_CANVAS_CLASS}`;
+
+type SelectionNode = {
+  nodeType?: number;
+  closest?: (selector: string) => unknown;
+  parentElement?: { closest: (selector: string) => unknown } | null;
+};
+
+type SelectionLike = {
+  isCollapsed: boolean;
+  anchorNode: SelectionNode | null;
+};
+
+/**
+ * True when the user has a text range whose anchor sits outside the canvas.
+ * A caret, or a range inside `.nf-canvas`, leaves canvas copy in charge.
+ * ComfyUI's canvas hears keys while it is focused; this window listener
+ * yields the same copy when the selection is elsewhere on the page.
+ */
+export function isTextSelectionOutsideCanvas(
+  doc: { getSelection?: () => SelectionLike | null } | null,
+): boolean {
+  const selection = doc?.getSelection?.() ?? null;
+  if (!selection || selection.isCollapsed) return false;
+  const node = selection.anchorNode;
+  if (!node) return false;
+  const element = node.nodeType === 1 && typeof node.closest === "function" ? node : node.parentElement;
+  if (!element || typeof element.closest !== "function") return false;
+  return !element.closest(EDITOR_CANVAS_SELECTOR);
 }
 
 /** Radix dialogs expose this state. ComfyUI consults its dialog stack for the same decision. */

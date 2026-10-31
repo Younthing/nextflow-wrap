@@ -6,6 +6,7 @@ type CommandSpec = {
   shortcut: KeyCombo | readonly [KeyCombo, ...KeyCombo[]];
   allowWhileTyping?: boolean;
   allowWhileDialog?: boolean;
+  yieldToTextSelection?: boolean;
 };
 
 /**
@@ -53,6 +54,10 @@ export const EDITOR_ACTIONS: {
     id: "Comfy.Canvas.CopySelected",
     label: "复制",
     shortcut: { key: "c", ctrl: true },
+    // Inspector text (a module description, a container `<code>`) is outside
+    // the canvas. Ctrl/⌘+C copies that range. With no range, or a range inside
+    // the canvas, the chord copies the selected nodes.
+    yieldToTextSelection: true,
   },
   paste: {
     id: "Comfy.Canvas.PasteFromClipboard",

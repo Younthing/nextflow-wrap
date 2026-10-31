@@ -96,6 +96,28 @@ describe("editor clipboard", () => {
     expect(useEditorStore.getState().clipboard?.nodes[0]?.data.widgets.note).toBe("a");
   });
 
+  it("clears a selected edge when pasting or duplicating", () => {
+    useEditorStore.setState({
+      edges: useEditorStore.getState().edges.map((edge) => ({ ...edge, selected: edge.id === "e23" })),
+    });
+    useEditorStore.getState().duplicateSelected();
+    const duplicated = useEditorStore.getState();
+    expect(duplicated.edges.find((edge) => edge.id === "e23")?.selected).toBe(false);
+    expect(duplicated.edges.every((edge) => !edge.selected)).toBe(true);
+    expect(duplicated.nodes.some((node) => node.selected)).toBe(true);
+    expect(duplicated.edges.some((edge) => edge.id === "e23")).toBe(true);
+
+    useEditorStore.getState().undo();
+    expect(useEditorStore.getState().edges.find((edge) => edge.id === "e23")?.selected).toBe(true);
+
+    useEditorStore.getState().copySelected();
+    useEditorStore.getState().pasteFromClipboard();
+    const pasted = useEditorStore.getState();
+    expect(pasted.edges.find((edge) => edge.id === "e23")?.selected).toBe(false);
+    expect(pasted.edges.every((edge) => !edge.selected)).toBe(true);
+    expect(pasted.nodes.some((node) => node.selected)).toBe(true);
+  });
+
   it("pastes copies with new ids, unique aliases, and only internal links", () => {
     useEditorStore.getState().copySelected();
     useEditorStore.getState().pasteFromClipboard();

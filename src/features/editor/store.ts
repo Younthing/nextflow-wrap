@@ -128,7 +128,12 @@ export const useEditorStore = create<EditorState>()((set, get) => {
         ...get().nodes.map((node) => (node.selected ? { ...node, selected: false } : node)),
         ...created.nodes.map(pastedNode),
       ],
-      edges: [...get().edges, ...created.edges.map(pastedEdge)],
+      // The copies become the selection. Clear links that were already selected
+      // so Delete and Backspace remove the copies and leave the source graph.
+      edges: [
+        ...get().edges.map((edge) => (edge.selected ? { ...edge, selected: false } : edge)),
+        ...created.edges.map(pastedEdge),
+      ],
       params: { ...get().params, ...created.params },
       ...extra,
     });

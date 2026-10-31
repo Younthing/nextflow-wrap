@@ -1,12 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  EDITOR_CANVAS_SELECTOR,
   createActionRegistry,
   formatShortcut,
   handleShortcutKey,
   isDialogOpen,
   isEditableTarget,
   isMenuOpen,
+  isTextSelectionOutsideCanvas,
   shortcutHint,
   type Action,
 } from "./actions";
@@ -83,6 +85,36 @@ describe("handleShortcutKey", () => {
 });
 
 describe("guards", () => {
+  it("yields to a text selection outside the canvas and keeps one inside it", () => {
+    const range = (inside: boolean, collapsed = false) => ({
+      getSelection: () => ({
+        isCollapsed: collapsed,
+        anchorNode: {
+          nodeType: 3,
+          parentElement: {
+            closest: (selector: string) => {
+              expect(selector).toBe(EDITOR_CANVAS_SELECTOR);
+              return inside ? {} : null;
+            },
+          },
+        },
+      }),
+    });
+    expect(isTextSelectionOutsideCanvas(range(false))).toBe(true);
+    expect(isTextSelectionOutsideCanvas(range(true))).toBe(false);
+    expect(isTextSelectionOutsideCanvas(range(false, true))).toBe(false);
+    expect(isTextSelectionOutsideCanvas({ getSelection: () => null })).toBe(false);
+    expect(isTextSelectionOutsideCanvas(null)).toBe(false);
+    expect(
+      isTextSelectionOutsideCanvas({
+        getSelection: () => ({
+          isCollapsed: false,
+          anchorNode: { nodeType: 1, closest: () => null },
+        }),
+      }),
+    ).toBe(true);
+  });
+
   it("treats inputs, textareas, and contenteditable as typing", () => {
     const closest = (selector: string) => (selector.includes("input") ? {} : null);
     expect(isEditableTarget({ closest } as unknown as EventTarget)).toBe(true);

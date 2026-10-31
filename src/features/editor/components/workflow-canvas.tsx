@@ -15,6 +15,7 @@ import "@xyflow/react/dist/style.css";
 
 import { resolveNodeDef } from "@/features/workflow/catalog";
 import { checkCompatibility, findPort } from "@/features/workflow/ports";
+import { EDITOR_CANVAS_CLASS } from "@/lib/actions";
 import { useShortcutLabels } from "@/lib/use-action-shortcuts";
 import { EDITOR_ACTIONS } from "../commands";
 import { fitViewOptions } from "../fit-view";
@@ -107,7 +108,7 @@ export function WorkflowCanvas({
 
   return (
     <div
-      className="nf-canvas size-full"
+      className={`${EDITOR_CANVAS_CLASS} size-full`}
       onDoubleClick={(e) => {
         if ((e.target as HTMLElement).classList.contains("react-flow__pane")) {
           onRequestSearch({ position: screenToFlowPosition({ x: e.clientX, y: e.clientY }) });

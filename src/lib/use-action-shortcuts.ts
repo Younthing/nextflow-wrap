@@ -10,6 +10,7 @@ import {
   isDialogOpen,
   isEditableTarget,
   isMenuOpen,
+  isTextSelectionOutsideCanvas,
   primaryCombo,
   type KeyCombo,
   type ShortcutPlatform,
@@ -57,6 +58,7 @@ export function useActionShortcuts() {
         typing: isEditableTarget(event.target),
         dialogOpen: isDialogOpen(),
         menuOpen: isMenuOpen(),
+        textSelectionOutsideCanvas: isTextSelectionOutsideCanvas(document),
       });
       if (handled) event.preventDefault();
     };

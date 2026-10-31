@@ -174,6 +174,32 @@ describe("editor commands", () => {
     expect(save).toHaveBeenCalledTimes(2);
   });
 
+  it("leaves ctrl+c to the browser when text outside the canvas is selected", () => {
+    const copy = vi.fn();
+    const paste = vi.fn();
+    const fitView = vi.fn();
+    const actions = editorActions(handlers({ copy, paste, fitView }));
+    const outside = { typing: false, dialogOpen: false, textSelectionOutsideCanvas: true };
+    const inside = { typing: false, dialogOpen: false, textSelectionOutsideCanvas: false };
+
+    expect(handleShortcutKey(actions, press("c", { ctrlKey: true }), outside)).toBe(false);
+    expect(handleShortcutKey(actions, press("c", { metaKey: true }), outside)).toBe(false);
+    expect(copy).not.toHaveBeenCalled();
+    expect(handleShortcutKey(actions, press("v", { ctrlKey: true }), outside)).toBe(true);
+    expect(handleShortcutKey(actions, press("f"), outside)).toBe(true);
+    expect(paste).toHaveBeenCalledTimes(1);
+    expect(fitView).toHaveBeenCalledTimes(1);
+
+    const disabled = editorActions(handlers({ copy, canCopy: () => false }));
+    expect(handleShortcutKey(disabled, press("c", { ctrlKey: true }), outside)).toBe(false);
+    expect(handleShortcutKey(disabled, press("c", { ctrlKey: true }), inside)).toBe(true);
+    expect(copy).not.toHaveBeenCalled();
+
+    expect(handleShortcutKey(actions, press("c", { ctrlKey: true }), inside)).toBe(true);
+    expect(handleShortcutKey(actions, press("c", { ctrlKey: true }), { typing: true, dialogOpen: false, textSelectionOutsideCanvas: true })).toBe(false);
+    expect(copy).toHaveBeenCalledTimes(1);
+  });
+
   it("consumes copy, paste, and fit when they have nothing to do", () => {
     const copy = vi.fn();
     const paste = vi.fn();
