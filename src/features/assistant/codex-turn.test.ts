@@ -189,6 +189,97 @@ describe("Codex assistant turns", () => {
     expect(closed).toBeGreaterThan(0);
   });
 
+  it("does not emit a tool call that arrives after cancel", async () => {
+    const controller = new AbortController();
+    let started = false;
+    let closed = 0;
+    let rejectStart: (error: Error) => void = () => undefined;
+    let releaseEvents: () => void = () => undefined;
+    const yielded: string[] = [];
+    const session: CodexSession = {
+      events: {
+        async *[Symbol.asyncIterator]() {
+          await new Promise<void>((resolve) => {
+            releaseEvents = resolve;
+          });
+          yield {
+            type: "text.delta",
+            itemId: "m",
+            delta: '{"tool":"search_modules","arguments":{"query":"fastqc"}}',
+          };
+          yield { type: "turn.end", turnId: "turn_cancel", status: "completed" };
+        },
+      },
+      ensureThread: async () => ({ threadId: "thr_cancel" }),
+      startTurn: () => {
+        started = true;
+        return new Promise((_, reject) => {
+          rejectStart = reject;
+        });
+      },
+      interrupt: async () => {
+        throw new Error("no active turn to interrupt");
+      },
+      respondToApproval: async () => undefined,
+      close: async () => {
+        closed += 1;
+        releaseEvents();
+        rejectStart(new Error("codex session closed"));
+      },
+    };
+    const harness: CodexHarness = {
+      probe: async () => ({ installed: true, authed: true }),
+      open: async () => session,
+    };
+    const task = (async () => {
+      try {
+        for await (const event of runCodexAssistant({
+          messages: [{ role: "user", content: "ping" }],
+          tools,
+        }, {
+          harness,
+          prompt: "系统提示",
+          cwd: "/work",
+          signal: controller.signal,
+        })) {
+          yielded.push(event.type);
+        }
+        return "resolved" as const;
+      } catch (error) {
+        return error;
+      }
+    })();
+    for (let attempt = 0; attempt < 50 && !started; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    expect(started).toBe(true);
+    controller.abort();
+    const settled = await Promise.race([
+      task,
+      new Promise<Error>((resolve) => setTimeout(() => resolve(new Error("cancelled run did not stop")), 1_000)),
+    ]);
+    expect(settled).toBeInstanceOf(Error);
+    expect((settled as Error).message).not.toMatch(/did not stop/);
+    expect(yielded).not.toContain("TOOL_CALL_START");
+    expect(closed).toBeGreaterThan(0);
+  });
+
+  it("rejects a tool reply when the signal is already aborted", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const tool: CodexEvent[] = [
+      { type: "text.delta", itemId: "m", delta: '{"tool":"search_modules","arguments":{"query":"fastqc"}}' },
+      { type: "turn.end", turnId: "turn_abort", status: "completed" },
+    ];
+    const yielded: string[] = [];
+    await expect((async () => {
+      for await (const event of interpretCodexEvents(of(tool), ["search_modules"], ids(), controller.signal)) {
+        yielded.push(event.type);
+      }
+    })()).rejects.toThrow(/取消/);
+    expect(yielded).toEqual([]);
+  });
+
   it("reports a failed turn", async () => {
     const events: CodexEvent[] = [
       { type: "error", message: "boom", turnId: "turn_3" },

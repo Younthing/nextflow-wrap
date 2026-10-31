@@ -16,24 +16,28 @@ const CLIENT_INFO = {
   },
 };
 
-/** Current app-server sandbox tokens. Kebab-case aliases are normalized. */
+/**
+ * `thread/start.sandbox` is `SandboxMode` (kebab-case).
+ * `turn/start.sandboxPolicy.type` is `SandboxPolicy` (camelCase).
+ * Callers may pass either spelling.
+ */
 const SANDBOX = {
-  "read-only": { thread: "readOnly", turn: "readOnly" },
-  readonly: { thread: "readOnly", turn: "readOnly" },
-  readOnly: { thread: "readOnly", turn: "readOnly" },
-  "workspace-write": { thread: "workspaceWrite", turn: "workspaceWrite" },
-  workspaceWrite: { thread: "workspaceWrite", turn: "workspaceWrite" },
-  "danger-full-access": { thread: "dangerFullAccess", turn: "dangerFullAccess" },
-  dangerFullAccess: { thread: "dangerFullAccess", turn: "dangerFullAccess" },
+  "read-only": { thread: "read-only", turn: "readOnly" },
+  readonly: { thread: "read-only", turn: "readOnly" },
+  readOnly: { thread: "read-only", turn: "readOnly" },
+  "workspace-write": { thread: "workspace-write", turn: "workspaceWrite" },
+  workspaceWrite: { thread: "workspace-write", turn: "workspaceWrite" },
+  "danger-full-access": { thread: "danger-full-access", turn: "dangerFullAccess" },
+  dangerFullAccess: { thread: "danger-full-access", turn: "dangerFullAccess" },
 } as const;
 
-/** Current approval-policy tokens, plus the older names t3code sent. */
+/** `AskForApproval` on the wire is kebab-case. CamelCase aliases are accepted. */
 const APPROVAL = {
   never: "never",
-  "on-request": "onRequest",
-  onRequest: "onRequest",
-  untrusted: "unlessTrusted",
-  unlessTrusted: "unlessTrusted",
+  "on-request": "on-request",
+  onRequest: "on-request",
+  untrusted: "untrusted",
+  unlessTrusted: "untrusted",
 } as const;
 
 export function createCodexHarness(options: CodexHarnessOptions = {}): CodexHarness {
@@ -121,7 +125,7 @@ function idleOptions(requestTimeoutMs: number): ResolvedSessionOptions {
   return {
     cwd: process.cwd(),
     approvalPolicy: "never",
-    sandbox: "readOnly",
+    sandbox: "read-only",
     sandboxPolicyType: "readOnly",
     autoApproval: "decline",
     requestTimeoutMs,
@@ -133,7 +137,7 @@ function resolveOptions(opts: OpenSessionOptions, cwd: string, requestTimeoutMs:
   return {
     cwd,
     model: opts.model?.trim() || undefined,
-    approvalPolicy: resolveApproval(opts.approvalPolicy?.trim() || "onRequest"),
+    approvalPolicy: resolveApproval(opts.approvalPolicy?.trim() || "on-request"),
     sandbox: sandbox.thread,
     sandboxPolicyType: sandbox.turn,
     autoApproval: opts.autoApproval ?? "decline",

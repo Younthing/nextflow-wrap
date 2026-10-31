@@ -24,16 +24,15 @@ export interface OpenSessionOptions {
   /** Executable used instead of `codex` on `PATH`. */
   binaryPath?: string;
   /**
-   * Forwarded to `thread/start` and `turn/start`.
-   * Current values are `never`, `onRequest`, and `unlessTrusted`.
-   * Older aliases `on-request` and `untrusted` are normalized.
-   * Defaults to `onRequest`.
+   * Forwarded to `thread/start` and `turn/start` as `never`, `on-request`, or `untrusted`.
+   * CamelCase aliases `onRequest` and `unlessTrusted` are accepted.
+   * Defaults to `on-request`.
    */
   approvalPolicy?: string;
   /**
-   * Sandbox mode forwarded to `thread/start` and `turn/start`.
-   * Accepts `read-only` / `readOnly`, `workspace-write` / `workspaceWrite`,
-   * and `danger-full-access` / `dangerFullAccess`. Defaults to `workspace-write`.
+   * Sandbox forwarded to `thread/start` (`read-only`, `workspace-write`, `danger-full-access`)
+   * and to `turn/start` as `sandboxPolicy.type` (`readOnly`, `workspaceWrite`, `dangerFullAccess`).
+   * Either spelling is accepted. Defaults to `workspace-write`.
    */
   sandboxPolicy?: string;
   /**
