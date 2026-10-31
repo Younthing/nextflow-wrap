@@ -1,6 +1,7 @@
 import { REFERENCE_ID, SAMPLESHEET_ID } from "@/features/workflow/builtins";
 import { resolveNodeDef, type ModuleIndex } from "@/features/workflow/catalog";
 import { isOperator, operatorChannel } from "@/features/workflow/operators";
+import { renderTemporaryProcesses } from "@/features/workflow/test-modules";
 import { checkCompatibility, findPort, portFromHandle, socketInputs } from "@/features/workflow/ports";
 import type { ModuleDef, PortDef, WorkflowDoc, WorkflowEdge, WorkflowNode } from "@/features/workflow/types";
 import { ChannelOpError, paren, renderOperator } from "./channel-ops";
@@ -81,10 +82,15 @@ function adapt(expr: string, from: PortDef, to: PortDef): string {
   return expr;
 }
 
-/** Placeholder for an optional input nobody feeds: `[]` or `[ [:], [] ]`. */
+/**
+ * An unconnected secondary input still emits one empty value, so the process
+ * runs. `channel.empty()` would emit nothing and the task would never start.
+ * `.first()` makes that one empty list a value channel, reused for every sample.
+ */
 function emptyInput(port: PortDef): string {
+  if (port.elements.length === 1 && port.elements[0]?.kind !== "meta") return "Channel.of([]).first()";
   const parts = port.elements.map((el) => (el.kind === "meta" ? "[:]" : "[]"));
-  return parts.length === 1 ? parts[0] : `[ ${parts.join(", ")} ]`;
+  return `Channel.of([ ${parts.join(", ")} ]).first()`;
 }
 
 /** Value emitted when an optional output produced no file, so join and collect can finish. */
@@ -424,6 +430,11 @@ export function renderDataflow(doc: WorkflowDoc, index: ModuleIndex): string {
   return renderSteps(buildContext(doc, index, "pipeline")).join("\n\n");
 }
 
+/** Inline host-command processes. Empty when the canvas has none. */
+export function renderTemporaryModuleText(doc: WorkflowDoc, index: ModuleIndex): string {
+  return renderTemporaryProcesses(planNodes(doc, index).order);
+}
+
 export function workflowIncludes(order: PlannedNode[]): string[] {
   const modules = order.filter((p) => !p.def.builtin);
   const width = Math.max(...modules.map((p) => (p.def.process === p.node.data.alias ? p.def.process.length : `${p.def.process} as ${p.node.data.alias}`.length)), 22);
@@ -507,6 +518,7 @@ ${section("IMPORT MODULES / SUBWORKFLOWS / FUNCTIONS")}
 
 ${includes.join("\n")}
 
+${renderTemporaryProcesses(order) ? `${section("TEMPORARY TEST MODULES — not nf-core")}\n\n${renderTemporaryProcesses(order)}\n` : ""}
 ${section("RUN MAIN WORKFLOW")}
 
 workflow ${opts.workflowName} {

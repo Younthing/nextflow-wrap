@@ -21,6 +21,7 @@ export const CATEGORY_COLORS: Record<string, string> = {
   宏基因组: "oklch(0.66 0.14 130)",
   工具: "oklch(0.6 0.03 260)",
   通道: "oklch(0.72 0.12 200)",
+  临时测试: "oklch(0.7 0.12 40)",
 };
 
 export const categoryColor = (category: string) =>

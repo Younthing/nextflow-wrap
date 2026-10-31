@@ -50,6 +50,8 @@ export interface ModuleDef {
   inputs: PortDef[];
   outputs: PortDef[];
   builtin?: boolean;
+  /** Host-command process used to exercise patterns. Not an nf-core module. */
+  temporary?: boolean;
 }
 
 export interface ModuleCatalog {

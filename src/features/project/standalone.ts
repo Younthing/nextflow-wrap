@@ -1,4 +1,4 @@
-import { planNodes, renderDataflow } from "./workflow-script";
+import { planNodes, renderDataflow, renderTemporaryModuleText } from "./workflow-script";
 import type { ModuleIndex } from "@/features/workflow/catalog";
 import type { ChannelElement, ModuleDef, PortDef, WorkflowDoc, WorkflowNode } from "@/features/workflow/types";
 
@@ -146,6 +146,7 @@ export function standaloneScript(doc: WorkflowDoc, index: ModuleIndex): string {
   const { order } = planNodes(doc, index);
   const steps = renderDataflow(doc, index);
   const stubs = order.filter((planned) => !planned.def.builtin).map((planned) => stubProcess(planned.node, planned.def));
+  const temporary = renderTemporaryModuleText(doc, index);
   const samplesheet = steps.includes("ch_samplesheet")
     ? `def ch_samplesheet = channel.of(
         tuple([id: 'S1', single_end: true], [file(params.sample, checkIfExists: true)])
@@ -153,7 +154,7 @@ export function standaloneScript(doc: WorkflowDoc, index: ModuleIndex): string {
     : "";
   return `nextflow.enable.dsl=2
 
-${stubs.join("\n\n")}
+${[...stubs, temporary].filter(Boolean).join("\n\n")}
 
 workflow {
     ${samplesheet}

@@ -552,7 +552,7 @@ describe("nextflow patterns", () => {
       [edge("in", "files", "out", "seq")],
     );
     const { wf } = generated(doc, [two]);
-    expect(wf).toContain("[]");
+    expect(wf).toContain("Channel.of([]).first()");
     expect(wf).toMatch(/params\.filter \? channel\.value\(file\(params\.filter, checkIfExists: true\)\) : channel\.value\(\[\]\)/);
     expect(tasks(run(doc, [two]).output, "TWO").length).toBeGreaterThan(0);
   }, 120_000);
