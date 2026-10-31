@@ -11,6 +11,7 @@ import type { ModuleDef } from "@/features/workflow/types";
 import { cn } from "@/lib/utils";
 import { useShortcutLabels } from "@/lib/use-action-shortcuts";
 import { EDITOR_ACTIONS } from "../commands";
+import { EDITOR_CHROME_CLASS } from "../marquee-text";
 import { categoryColor } from "../port-style";
 
 export const MODULE_DRAG_TYPE = "application/x-nf-module";
@@ -61,7 +62,7 @@ export function ModuleLibrary({
   const groups = React.useMemo(() => groupByCategory(searchModules(modules, query)), [modules, query]);
 
   return (
-    <aside className={cn("glass flex min-h-0 flex-col rounded-xl", className)}>
+    <aside className={cn(EDITOR_CHROME_CLASS, "glass flex min-h-0 flex-col rounded-xl", className)}>
       <div className="flex flex-col gap-2 border-b border-border p-3">
         <div className="text-sm font-semibold">模块库</div>
         <div className="relative">

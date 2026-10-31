@@ -31,6 +31,7 @@ import type { Issue } from "@/features/workflow/validate";
 import { useShortcutLabel } from "@/lib/use-action-shortcuts";
 import { cn } from "@/lib/utils";
 import { EDITOR_ACTIONS } from "../commands";
+import { EDITOR_CHROME_CLASS } from "../marquee-text";
 import { selectIsDirty, useEditorStore } from "../store";
 
 function IconButton({
@@ -193,7 +194,7 @@ export function EditorToolbar({
   const fileInput = React.useRef<HTMLInputElement>(null);
 
   return (
-    <div className="glass flex h-12 shrink-0 items-center gap-1 rounded-xl px-2">
+    <div className={cn(EDITOR_CHROME_CLASS, "glass flex h-12 shrink-0 items-center gap-1 rounded-xl px-2")}>
       <input
         value={name}
         onChange={(e) => setName(e.target.value)}

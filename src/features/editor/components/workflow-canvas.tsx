@@ -20,6 +20,14 @@ import { EDITOR_CANVAS_CLASS, isEditableTarget } from "@/lib/actions";
 import { useShortcutLabels } from "@/lib/use-action-shortcuts";
 import { selectionForContextTarget } from "../canvas-menu";
 import { EDITOR_ACTIONS } from "../commands";
+import {
+  MARQUEE_TEXT_CLASS,
+  beginMarqueeTextGuard,
+  clearMarqueeTextSelection,
+  isCanvasMarqueePointerDown,
+  releaseMarqueeTextGuard,
+  shouldPreventMarqueeSelectStart,
+} from "../marquee-text";
 import { fitViewOptions } from "../fit-view";
 import { categoryColor, portColor } from "../port-style";
 import { useEditorStore, type FlowEdge, type FlowNode } from "../store";
@@ -122,6 +130,13 @@ export function WorkflowCanvas({
   }, [flowStore]);
 
   const surfaceRef = React.useRef<HTMLDivElement>(null);
+  const marqueeRef = React.useRef(false);
+  const releaseMarquee = React.useCallback(() => {
+    if (!marqueeRef.current) return;
+    marqueeRef.current = false;
+    releaseMarqueeTextGuard(document, () => marqueeRef.current, requestAnimationFrame);
+  }, []);
+
   React.useEffect(() => {
     const surface = surfaceRef.current;
     if (!surface) return;
@@ -131,15 +146,43 @@ export function WorkflowCanvas({
     const allowTextMenu = (event: Event) => {
       if (isEditableTarget(event.target)) event.stopPropagation();
     };
+    // selectstart on the pane is the browser starting a text range. Panels
+    // outside the pane can receive it too, because the flow viewport is
+    // transformed, so the same cancel listens on the document while the
+    // marquee gesture is down.
+    const blockMarqueeSelect = (event: Event) => {
+      if (!shouldPreventMarqueeSelectStart(marqueeRef.current, event.target)) return;
+      event.preventDefault();
+      clearMarqueeTextSelection(document);
+    };
     surface.addEventListener("contextmenu", allowTextMenu);
-    return () => surface.removeEventListener("contextmenu", allowTextMenu);
-  }, []);
+    surface.addEventListener("selectstart", blockMarqueeSelect, true);
+    document.addEventListener("selectstart", blockMarqueeSelect, true);
+    window.addEventListener("pointerup", releaseMarquee);
+    window.addEventListener("pointercancel", releaseMarquee);
+    window.addEventListener("blur", releaseMarquee);
+    return () => {
+      surface.removeEventListener("contextmenu", allowTextMenu);
+      surface.removeEventListener("selectstart", blockMarqueeSelect, true);
+      document.removeEventListener("selectstart", blockMarqueeSelect, true);
+      window.removeEventListener("pointerup", releaseMarquee);
+      window.removeEventListener("pointercancel", releaseMarquee);
+      window.removeEventListener("blur", releaseMarquee);
+      marqueeRef.current = false;
+      document.documentElement.classList.remove(MARQUEE_TEXT_CLASS);
+    };
+  }, [releaseMarquee]);
 
   return (
     <CanvasContextMenu>
       <div
         ref={surfaceRef}
         className={`${EDITOR_CANVAS_CLASS} size-full`}
+        onPointerDownCapture={(event) => {
+          if (!isCanvasMarqueePointerDown(event)) return;
+          marqueeRef.current = true;
+          beginMarqueeTextGuard(document);
+        }}
         onDoubleClick={(e) => {
           if ((e.target as HTMLElement).classList.contains("react-flow__pane")) {
             onRequestSearch({ position: screenToFlowPosition({ x: e.clientX, y: e.clientY }) });
@@ -156,6 +199,11 @@ export function WorkflowCanvas({
           onConnectEnd={onConnectEnd}
           isValidConnection={(c) => checkConnection(c).ok}
           onNodeDragStart={() => beginChange()}
+          onSelectionStart={() => {
+            marqueeRef.current = true;
+            beginMarqueeTextGuard(document);
+          }}
+          onSelectionEnd={releaseMarquee}
           onNodeContextMenu={onNodeContextMenu}
           onDragOver={(e) => {
             if (e.dataTransfer.types.includes(MODULE_DRAG_TYPE)) {

@@ -19,6 +19,7 @@ import { buildParamsSchema, referenceParams } from "@/features/project/schema";
 import samplesheetSchema from "@/data/samplesheet-schema.json";
 import type { ModuleDef, PortDef } from "@/features/workflow/types";
 import { cn } from "@/lib/utils";
+import { EDITOR_CHROME_CLASS } from "../marquee-text";
 import { categoryColor, portColor } from "../port-style";
 import { selectSelectedNode, useEditorStore, type FlowNode } from "../store";
 import { SchemaForm } from "./schema-form";
@@ -304,7 +305,7 @@ function PipelineInspector() {
 export function Inspector({ className }: { className?: string }) {
   const node = useEditorStore(selectSelectedNode);
   return (
-    <aside className={cn("glass flex min-h-0 flex-col rounded-xl", className)}>
+    <aside className={cn(EDITOR_CHROME_CLASS, "glass flex min-h-0 flex-col rounded-xl", className)}>
       <ScrollArea className="min-h-0 flex-1">
         {node ? <NodeInspector key={node.id} node={node} /> : <PipelineInspector />}
       </ScrollArea>

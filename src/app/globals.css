@@ -205,6 +205,37 @@
   stroke-width: 3;
 }
 
+/*
+ * A Shift-drag marquee hit-tests through the transformed pane and highlights
+ * sidebar, inspector, and label text. Chrome opts out; fields opt back in so
+ * a focused widget can still select its value. Prose (a module description,
+ * a container `<code>`) stays selectable for the copy command, unless a
+ * marquee is in progress (`html.nf-marquee`, toggled from the canvas).
+ */
+.nf-chrome,
+.nf-canvas {
+  -webkit-user-select: none;
+  user-select: none;
+}
+.nf-chrome :is(input, textarea, [contenteditable="true"]),
+.nf-canvas :is(input, textarea, [contenteditable="true"]) {
+  -webkit-user-select: text;
+  user-select: text;
+}
+.nf-chrome :is(p, code) {
+  -webkit-user-select: text;
+  user-select: text;
+}
+html.nf-marquee * {
+  -webkit-user-select: none;
+  user-select: none;
+}
+html.nf-marquee :is(input, textarea, [contenteditable="true"]),
+html.nf-marquee [contenteditable="true"] * {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 /* Code viewer tokens */
 .tok-comment {
   color: var(--muted-foreground);
