@@ -10,27 +10,28 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { isShellNavActive, SHELL_NAV, type ShellNavHref } from "./nav";
 
-const NAV_ITEMS = [
-  { href: "/", label: "流程编辑器", icon: Workflow },
-  { href: "/runs", label: "运行记录", icon: History },
-] as const;
+const ICONS = {
+  "/workflows": Workflow,
+  "/runs": History,
+} satisfies Record<ShellNavHref, typeof Workflow>;
 
 export function NavRail() {
   const pathname = usePathname();
 
   return (
-    <nav className="glass flex w-14 shrink-0 flex-col items-center gap-2 rounded-xl py-3">
+    <nav aria-label="主导航" className="glass flex w-14 shrink-0 flex-col items-center gap-2 rounded-xl py-3">
       <Link
-        href="/"
+        href="/workflows"
         className="mb-2 grid size-9 place-items-center rounded-lg bg-primary font-mono text-sm font-bold text-primary-foreground"
         aria-label="Nextflow Studio"
       >
         nf
       </Link>
-      {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
-        const active =
-          href === "/" ? pathname === "/" : pathname.startsWith(href);
+      {SHELL_NAV.map(({ href, label }) => {
+        const Icon = ICONS[href];
+        const active = isShellNavActive(href, pathname);
         return (
           <Tooltip key={href}>
             <TooltipTrigger asChild>

@@ -7,7 +7,6 @@ import { ArrowLeft, Loader2, PencilRuler, Square, Trash2, TriangleAlert } from "
 
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { rememberCurrentId } from "@/features/editor/components/workflow-editor";
 import { CodeViewer } from "@/features/project/components/code-viewer";
 import { ProjectPreview } from "@/features/project/components/project-preview";
 import { ENGINE_LABELS, executorDef } from "@/features/project/launch";
@@ -63,15 +62,10 @@ function RunHeader({ run }: { run: RunDetail }) {
         <StatusBadge status={run.status} />
         <span className="text-sm text-muted-foreground">{run.workflowName}</span>
         <div className="ml-auto flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              rememberCurrentId(run.workflowId);
-              router.push("/");
-            }}
-          >
-            <PencilRuler /> 在编辑器中打开
+          <Button asChild variant="outline" size="sm">
+            <Link href={`/workflows/${run.workflowId}`}>
+              <PencilRuler /> 在编辑器中打开
+            </Link>
           </Button>
           {!active && run.nextflowSessionId && <Button variant="outline" size="sm" disabled={resume.isPending} onClick={() => resume.mutate(run.id, { onSuccess: (next) => router.push(`/runs/${next.id}`) })}>从此运行恢复</Button>}
           {active ? (
