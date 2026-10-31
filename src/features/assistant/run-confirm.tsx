@@ -89,12 +89,15 @@ export interface RunConfirmApi {
   close: () => void;
 }
 
-/** One confirmation at a time. Unmounting while it is open counts as cancel. */
+/** One confirmation at a time. Unmount, or asking after it, counts as cancel. */
 export function useRunConfirm(): RunConfirmApi {
   const [view, setView] = React.useState<RunConfirmView | null>(null);
   const [busy, setBusy] = React.useState(false);
   const busyRef = React.useRef(false);
   const pending = React.useRef<((decision: true | null) => void) | null>(null);
+  // True from the first render. The effect sets it again because Strict Mode
+  // runs the cleanup once in development, and that cleanup must not stick.
+  const mounted = React.useRef(true);
 
   const setBusyState = React.useCallback((value: boolean) => {
     busyRef.current = value;
@@ -123,7 +126,9 @@ export function useRunConfirm(): RunConfirmApi {
   }, [setBusyState]);
 
   const ask = React.useCallback((next: RunConfirmView) => {
-    if (busyRef.current) return Promise.resolve(null);
+    // Preparation can finish after the editor unmounts. The chat provider
+    // stays mounted, so a promise with no dialog would never settle.
+    if (!mounted.current || busyRef.current) return Promise.resolve(null);
     pending.current?.(null);
     pending.current = null;
     setBusyState(false);
@@ -133,10 +138,14 @@ export function useRunConfirm(): RunConfirmApi {
     });
   }, [setBusyState]);
 
-  React.useEffect(() => () => {
-    const resolve = pending.current;
-    pending.current = null;
-    resolve?.(null);
+  React.useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      const resolve = pending.current;
+      pending.current = null;
+      resolve?.(null);
+    };
   }, []);
 
   return { view, busy, ask, confirm, dismiss, close };
