@@ -17,6 +17,7 @@ import { emptyWorkflow } from "@/features/workflow/document";
 import { createNode, newId } from "@/features/workflow/nodes";
 import { checkCompatibility, findPort, type Compatibility } from "@/features/workflow/ports";
 import { materializeClipboard, selectionClipboard, type NodeClipboard } from "./clipboard";
+import { placeWithoutOverlap } from "./placement";
 import type {
   ModuleDef,
   PipelineParams,
@@ -350,8 +351,14 @@ export const useEditorStore = create<EditorState>()((set, get) => {
 
     addNode: (def, position) => {
       get().beginChange();
+      // Drop, search, and the other single-node adds share this nudge.
+      // Paste and duplicate stay on the PASTE_GAP stair-step in the clipboard.
+      const placed = placeWithoutOverlap(
+        position,
+        get().nodes.map((node) => node.position),
+      );
       const node = toFlowNode(
-        createNode(def, position, get().nodes.map((n) => ({ id: n.id, position: n.position, data: n.data }))),
+        createNode(def, placed, get().nodes.map((n) => ({ id: n.id, position: n.position, data: n.data }))),
       );
       commit({
         nodes: [...get().nodes.map((n) => ({ ...n, selected: false })), { ...node, selected: true }],
