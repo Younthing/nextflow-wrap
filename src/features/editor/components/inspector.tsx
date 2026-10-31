@@ -26,7 +26,9 @@ import {
 import { resolveNodeDef } from "@/features/workflow/catalog";
 import { portSignature, socketInputs } from "@/features/workflow/ports";
 import { projectMeta } from "@/features/project/generate";
+import { formatPublishRules, parsePublishRules } from "@/features/project/publish-rules";
 import { buildParamsSchema, referenceParams } from "@/features/project/schema";
+import { operatorFields } from "@/features/workflow/operators";
 import samplesheetSchema from "@/data/samplesheet-schema.json";
 import type { ModuleDef, PortDef } from "@/features/workflow/types";
 import { cn } from "@/lib/utils";
@@ -174,6 +176,13 @@ function BuiltinSettings({ node, def }: { node: FlowNode; def: ModuleDef }) {
             </SelectContent>
           </Select>
         </FormField>
+        <label className="flex items-center justify-between text-sm">
+          可选文件
+          <Switch
+            checked={settings.optional === true}
+            onCheckedChange={(optional) => update(node.id, { settings: { ...settings, optional } })}
+          />
+        </label>
         {param && (
           <FormField
             label={
@@ -195,7 +204,41 @@ function BuiltinSettings({ node, def }: { node: FlowNode; def: ModuleDef }) {
       </Section>
     );
   }
-  return null;
+
+  const fields = operatorFields(def.id);
+  if (!fields) return null;
+  return (
+    <Section title="算子">
+      {fields.map((field) => {
+        const id = `${node.id}-${field.key}`;
+        if (field.type === "boolean") {
+          return (
+            <label key={field.key} className="flex items-center justify-between text-sm">
+              {field.label}
+              <Switch
+                checked={settings[field.key] !== false && settings[field.key] !== "false"}
+                onCheckedChange={(value) => update(node.id, { settings: { ...settings, [field.key]: value } })}
+              />
+            </label>
+          );
+        }
+        return (
+          <FormField key={field.key} label={field.label} htmlFor={id} hint={field.hint}>
+            <Input
+              id={id}
+              value={String(settings[field.key] ?? "")}
+              onChange={(event) => {
+                const raw = event.target.value;
+                const value = field.type === "number" ? (raw === "" ? "" : Number(raw)) : raw;
+                update(node.id, { settings: { ...settings, [field.key]: value } }, `op:${node.id}:${field.key}`);
+              }}
+              className="h-8 font-mono text-xs"
+            />
+          </FormField>
+        );
+      })}
+    </Section>
+  );
 }
 
 function NodeInspector({ node }: { node: FlowNode }) {
@@ -352,6 +395,101 @@ function NodeInspector({ node }: { node: FlowNode }) {
               onCheckedChange={(v) => setConfig({ publish: v }, "publish")}
             />
           </label>
+          <FormField label="发布路径" htmlFor="publish-path" hint="例如 ${params.outdir}/${meta.id}">
+            <Input
+              id="publish-path"
+              value={config.publishPath ?? ""}
+              onChange={(event) => setConfig({ publishPath: event.target.value }, "publishPath")}
+              className="h-8 font-mono text-xs"
+            />
+          </FormField>
+          <FormField label="发布匹配" htmlFor="publish-pattern" hint="只保存匹配这个 glob 的文件">
+            <Input
+              id="publish-pattern"
+              value={config.publishPattern ?? ""}
+              placeholder="*_counts.txt"
+              onChange={(event) => setConfig({ publishPattern: event.target.value }, "publishPattern")}
+              className="h-8 font-mono text-xs"
+            />
+          </FormField>
+          <FormField label="重命名" htmlFor="publish-save" hint="filename -> &quot;foo_$filename&quot;">
+            <Input
+              id="publish-save"
+              value={config.publishSaveAs ?? ""}
+              onChange={(event) => setConfig({ publishSaveAs: event.target.value }, "publishSaveAs")}
+              className="h-8 font-mono text-xs"
+            />
+          </FormField>
+          <FormField label="更多发布目录" htmlFor="publish-rules" hint="每行 path|pattern|saveAs">
+            <Textarea
+              id="publish-rules"
+              value={formatPublishRules(config.publishDirs)}
+              onChange={(event) => setConfig({ publishDirs: parsePublishRules(event.target.value) }, "publishDirs")}
+              className="min-h-14 font-mono text-xs"
+            />
+          </FormField>
+          <FormField label="when" htmlFor="when-expr" hint="为真才执行。空通道用「空时执行」。">
+            <Input
+              id="when-expr"
+              value={config.when ?? ""}
+              placeholder="x == 'EMPTY'"
+              onChange={(event) => setConfig({ when: event.target.value }, "when")}
+              className="h-8 font-mono text-xs"
+            />
+          </FormField>
+          <label className="flex items-center justify-between text-sm">
+            空时执行
+            <Switch
+              checked={!!config.whenEmpty}
+              onCheckedChange={(whenEmpty) => setConfig({ whenEmpty }, "whenEmpty")}
+            />
+          </label>
+          <label className="flex items-center justify-between text-sm">
+            可跳过（mix 旁路）
+            <Switch checked={!!config.skip} onCheckedChange={(skip) => setConfig({ skip }, "skip")} />
+          </label>
+          <FormField label="errorStrategy" htmlFor="error-strategy">
+            <Select
+              value={config.errorStrategy ?? "default"}
+              onValueChange={(value) => setConfig({ errorStrategy: value === "default" ? undefined : value }, "errorStrategy")}
+            >
+              <SelectTrigger id="error-strategy" size="sm" className="font-mono text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {["default", "ignore", "retry", "finish", "terminate"].map((strategy) => (
+                  <SelectItem key={strategy} value={strategy} className="font-mono text-xs">
+                    {strategy === "default" ? "默认" : strategy}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FormField>
+          <FormField label="memory" htmlFor="memory-expr" hint="闭包体，可引用输入文件">
+            <Input
+              id="memory-expr"
+              value={config.memory ?? ""}
+              placeholder="reads.size() < 70.KB ? 1.GB : 5.GB"
+              onChange={(event) => setConfig({ memory: event.target.value }, "memory")}
+              className="h-8 font-mono text-xs"
+            />
+          </FormField>
+          <FormField label="cpus" htmlFor="cpus-expr">
+            <Input
+              id="cpus-expr"
+              value={config.cpus ?? ""}
+              onChange={(event) => setConfig({ cpus: event.target.value }, "cpus")}
+              className="h-8 font-mono text-xs"
+            />
+          </FormField>
+          <FormField label="可选输出" htmlFor="optional-outputs" hint="端口名，逗号分隔。下游用 ifEmpty。">
+            <Input
+              id="optional-outputs"
+              value={config.optionalOutputs ?? ""}
+              onChange={(event) => setConfig({ optionalOutputs: event.target.value }, "optionalOutputs")}
+              className="h-8 font-mono text-xs"
+            />
+          </FormField>
           {def.container && (
             <div className="grid gap-1">
               <span className="text-xs text-muted-foreground">容器</span>
