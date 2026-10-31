@@ -44,3 +44,6 @@ next-env.d.ts
 storybook-static
 storybook-static
 *storybook.log
+
+# CodeGraph local index (https://github.com/colbymchenry/codegraph)
+.codegraph/
