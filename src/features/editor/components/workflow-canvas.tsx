@@ -17,11 +17,13 @@ import { resolveNodeDef } from "@/features/workflow/catalog";
 import { checkCompatibility, findPort } from "@/features/workflow/ports";
 import { EDITOR_CANVAS_CLASS } from "@/lib/actions";
 import { useShortcutLabels } from "@/lib/use-action-shortcuts";
+import { selectionForContextTarget } from "../canvas-menu";
 import { EDITOR_ACTIONS } from "../commands";
 import { fitViewOptions } from "../fit-view";
 import { categoryColor, portColor } from "../port-style";
 import { useEditorStore, type FlowEdge, type FlowNode } from "../store";
 import { toast } from "../toast";
+import { CanvasContextMenu } from "./canvas-context-menu";
 import { MODULE_DRAG_TYPE } from "./module-library";
 import { ModuleNode } from "./module-node";
 import type { SearchRequest } from "./node-search-dialog";
@@ -106,54 +108,63 @@ export function WorkflowCanvas({
     [addNode, index, screenToFlowPosition],
   );
 
+  const onNodeContextMenu = React.useCallback((_event: React.MouseEvent, node: FlowNode) => {
+    const { nodes: current, edges: currentEdges } = useEditorStore.getState();
+    const next = selectionForContextTarget(current, currentEdges, node.id);
+    if (next) useEditorStore.setState(next);
+  }, []);
+
   return (
-    <div
-      className={`${EDITOR_CANVAS_CLASS} size-full`}
-      onDoubleClick={(e) => {
-        if ((e.target as HTMLElement).classList.contains("react-flow__pane")) {
-          onRequestSearch({ position: screenToFlowPosition({ x: e.clientX, y: e.clientY }) });
-        }
-      }}
-    >
-      <ReactFlow<FlowNode, FlowEdge>
-        nodes={nodes}
-        edges={styledEdges}
-        nodeTypes={nodeTypes}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onConnect={onConnect}
-        onConnectEnd={onConnectEnd}
-        isValidConnection={(c) => checkConnection(c).ok}
-        onNodeDragStart={() => beginChange()}
-        onDragOver={(e) => {
-          if (e.dataTransfer.types.includes(MODULE_DRAG_TYPE)) {
-            e.preventDefault();
-            e.dataTransfer.dropEffect = "move";
+    <CanvasContextMenu>
+      <div
+        className={`${EDITOR_CANVAS_CLASS} size-full`}
+        onDoubleClick={(e) => {
+          if ((e.target as HTMLElement).classList.contains("react-flow__pane")) {
+            onRequestSearch({ position: screenToFlowPosition({ x: e.clientX, y: e.clientY }) });
           }
         }}
-        onDrop={onDrop}
-        zoomOnDoubleClick={false}
-        deleteKeyCode={["Delete", "Backspace"]}
-        multiSelectionKeyCode={["Shift", "Meta", "Control"]}
-        minZoom={0.2}
-        fitView
-        fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
-        ariaLabelConfig={{
-          "controls.fitView.ariaLabel": `${EDITOR_ACTIONS.fit.label}（${fitKeys}）`,
-        }}
-        proOptions={{ hideAttribution: true }}
       >
-        <Background variant={BackgroundVariant.Dots} gap={20} size={1.5} color="var(--canvas-dot)" />
-        <MiniMap<FlowNode>
-          pannable
-          zoomable
-          nodeColor={(n) => categoryColor(index.get(n.data.moduleId)?.category ?? "")}
-          bgColor="transparent"
-          maskColor="color-mix(in oklch, var(--foreground) 8%, transparent)"
-          className="!glass !rounded-lg"
-        />
-        <Controls className="!glass !rounded-lg !shadow-none" fitViewOptions={fitViewOptions(nodes)} />
-      </ReactFlow>
-    </div>
+        <ReactFlow<FlowNode, FlowEdge>
+          nodes={nodes}
+          edges={styledEdges}
+          nodeTypes={nodeTypes}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onConnect={onConnect}
+          onConnectEnd={onConnectEnd}
+          isValidConnection={(c) => checkConnection(c).ok}
+          onNodeDragStart={() => beginChange()}
+          onNodeContextMenu={onNodeContextMenu}
+          onDragOver={(e) => {
+            if (e.dataTransfer.types.includes(MODULE_DRAG_TYPE)) {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+            }
+          }}
+          onDrop={onDrop}
+          zoomOnDoubleClick={false}
+          deleteKeyCode={["Delete", "Backspace"]}
+          multiSelectionKeyCode={["Shift", "Meta", "Control"]}
+          minZoom={0.2}
+          fitView
+          fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
+          ariaLabelConfig={{
+            "controls.fitView.ariaLabel": `${EDITOR_ACTIONS.fit.label}（${fitKeys}）`,
+          }}
+          proOptions={{ hideAttribution: true }}
+        >
+          <Background variant={BackgroundVariant.Dots} gap={20} size={1.5} color="var(--canvas-dot)" />
+          <MiniMap<FlowNode>
+            pannable
+            zoomable
+            nodeColor={(n) => categoryColor(index.get(n.data.moduleId)?.category ?? "")}
+            bgColor="transparent"
+            maskColor="color-mix(in oklch, var(--foreground) 8%, transparent)"
+            className="!glass !rounded-lg"
+          />
+          <Controls className="!glass !rounded-lg !shadow-none" fitViewOptions={fitViewOptions(nodes)} />
+        </ReactFlow>
+      </div>
+    </CanvasContextMenu>
   );
 }

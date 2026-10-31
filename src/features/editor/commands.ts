@@ -13,8 +13,8 @@ type CommandSpec = {
  * Editor commands. Save, undo, and redo keep ComfyUI's ids and chords.
  * Canvas commands use ComfyUI's ids where those commands exist
  * (`Comfy.Canvas.CopySelected`, `PasteFromClipboard`, `SelectAll`, `FitView`).
- * Duplicate, deselect, and node search are this editor's chords; U3 renders
- * the same actions in the canvas context menu.
+ * Duplicate, deselect, and node search are this editor's chords. The canvas
+ * context menu renders these actions (`canvas-menu.ts`).
  * Labels stay the ones the toolbar and help text show.
  */
 export const EDITOR_ACTIONS: {

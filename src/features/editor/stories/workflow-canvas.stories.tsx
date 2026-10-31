@@ -1,10 +1,13 @@
 import type { Meta, StoryObj } from "@storybook/nextjs-vite";
-import { expect, userEvent, waitFor, within } from "storybook/test";
+import { useState } from "react";
+import { expect, screen, userEvent, waitFor, within } from "storybook/test";
 
 import { SAMPLESHEET_ID } from "@/features/workflow/builtins";
 import { emptyWorkflow } from "@/features/workflow/document";
 import type { WorkflowDoc } from "@/features/workflow/types";
 import { WorkflowCanvas } from "../components/workflow-canvas";
+import { useEditorStore } from "../store";
+import { useEditorCommands } from "../use-editor-commands";
 import { EditorFixture } from "./fixtures";
 
 /** Two nodes far apart, so fitting the selection leaves the other one outside the pane. */
@@ -110,5 +113,150 @@ export const FitSelected: Story = {
       expect(contains(pane, nodeBox(canvasElement, "selected"))).toBe(true);
       expect(intersects(nodeBox(canvasElement, "outside"), pane)).toBe(false);
     });
+  },
+};
+
+const commandCalls = { search: 0 };
+
+/** Registers the same editor commands the app does, so the menu calls those handlers. */
+function CommandCanvas() {
+  useState(() => {
+    useEditorStore.setState({ clipboard: null, clipboardPastes: 0 });
+    return true;
+  });
+  useEditorCommands({
+    save: () => {},
+    openNodeSearch: () => {
+      commandCalls.search += 1;
+    },
+    fitView: () => {},
+  });
+  return <WorkflowCanvas onRequestSearch={() => {}} />;
+}
+
+async function rightClick(target: Element) {
+  let prevented = false;
+  const mark = (event: Event) => {
+    prevented = event.defaultPrevented;
+  };
+  document.addEventListener("contextmenu", mark);
+  await userEvent.pointer({ keys: "[MouseRight]", target });
+  document.removeEventListener("contextmenu", mark);
+  const menu = await screen.findByRole("menu");
+  expect(prevented).toBe(true);
+  return menu;
+}
+
+function menuLabels() {
+  return screen.getAllByRole("menuitem").map((item) => (item.textContent ?? "").replace(/\s+/g, ""));
+}
+
+function menuItem(name: RegExp) {
+  return screen.getByRole("menuitem", { name });
+}
+
+/** Radix sets aria-disabled. jest-dom's toBeDisabled ignores that on a menuitem div. */
+function expectEnabled(name: RegExp) {
+  expect(menuItem(name)).not.toHaveAttribute("aria-disabled");
+}
+
+function expectDisabled(name: RegExp) {
+  expect(menuItem(name)).toHaveAttribute("aria-disabled", "true");
+}
+
+/** Right-click the empty pane. Commands with nothing to do are disabled; search still runs. */
+export const ContextMenuEmpty: Story = {
+  name: "Context menu on empty canvas",
+  render: () => <CommandCanvas />,
+  decorators: [
+    (Story) => (
+      <EditorFixture doc={emptyWorkflow("wf_menu_empty")}>
+        <Story />
+      </EditorFixture>
+    ),
+  ],
+  play: async ({ canvasElement }) => {
+    commandCalls.search = 0;
+    const surface = await waitFor(() => {
+      const el = canvasElement.querySelector(".react-flow__pane");
+      if (!el || el.getBoundingClientRect().width < 10) throw new Error("pane not ready");
+      return el;
+    });
+
+    await rightClick(surface);
+    await waitFor(() => expectEnabled(/搜索节点/));
+
+    expect(menuLabels()).toEqual([
+      expect.stringMatching(/^复制(Ctrl\+C|⌘C)$/),
+      expect.stringMatching(/^粘贴(Ctrl\+V|⌘V)$/),
+      expect.stringMatching(/^创建副本(Ctrl\+D|⌘D)$/),
+      expect.stringMatching(/^全选(Ctrl\+A|⌘A)$/),
+      expect.stringMatching(/^取消选择Esc$/),
+      expect.stringMatching(/^搜索节点(Ctrl\+K|⌘K)$/),
+      expect.stringMatching(/^适应视图F$/),
+    ]);
+    expect(screen.queryByRole("menuitem", { name: /保存|撤销|重做/ })).toBeNull();
+
+    for (const name of [/^复制/, /粘贴/, /创建副本/, /全选/, /取消选择/, /适应视图/]) {
+      expectDisabled(name);
+    }
+
+    await userEvent.click(menuItem(/搜索节点/));
+    await waitFor(() => expect(commandCalls.search).toBe(1));
+    expect(useEditorStore.getState().nodes).toHaveLength(0);
+    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
+  },
+};
+
+/** Right-click a selected node, an unselected node, and empty canvas. Items call the registered commands. */
+export const ContextMenuOnNode: Story = {
+  name: "Context menu on a node",
+  render: () => <CommandCanvas />,
+  decorators: [
+    (Story) => (
+      <EditorFixture doc={selectionFitWorkflow()} selectedNodeIds={["selected"]}>
+        <Story />
+      </EditorFixture>
+    ),
+  ],
+  play: async ({ canvasElement }) => {
+    await waitFor(() => {
+      expect(nodeBox(canvasElement, "selected").width).toBeGreaterThan(10);
+      expect(nodeBox(canvasElement, "outside").width).toBeGreaterThan(10);
+    });
+
+    const selected = canvasElement.querySelector(`[data-id="selected"]`);
+    if (!selected) throw new Error("missing node selected");
+    await rightClick(selected);
+    await waitFor(() => expectEnabled(/^复制/));
+    expectDisabled(/粘贴/);
+    expectEnabled(/创建副本/);
+    expectEnabled(/取消选择/);
+    expect(useEditorStore.getState().nodes.filter((node) => node.selected).map((node) => node.id)).toEqual(["selected"]);
+
+    await userEvent.click(menuItem(/创建副本/));
+    await waitFor(() => expect(useEditorStore.getState().nodes).toHaveLength(3));
+    expect(useEditorStore.getState().revision).toBeGreaterThan(0);
+    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
+
+    const outside = canvasElement.querySelector(`[data-id="outside"]`);
+    if (!outside) throw new Error("missing node outside");
+    await rightClick(outside);
+    await waitFor(() => {
+      expect(useEditorStore.getState().nodes.filter((node) => node.selected).map((node) => node.id)).toEqual(["outside"]);
+    });
+    await userEvent.click(menuItem(/^复制/));
+    await waitFor(() => {
+      expect(useEditorStore.getState().clipboard?.nodes.map((node) => node.data.alias)).toEqual(["OUTSIDE"]);
+    });
+    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
+
+    const surface = canvasElement.querySelector(".react-flow__pane");
+    if (!surface) throw new Error("missing pane");
+    await rightClick(surface);
+    await waitFor(() => expectEnabled(/粘贴/));
+    expect(useEditorStore.getState().nodes.find((node) => node.id === "outside")?.selected).toBe(true);
+    await userEvent.click(menuItem(/粘贴/));
+    await waitFor(() => expect(useEditorStore.getState().nodes).toHaveLength(4));
   },
 };
