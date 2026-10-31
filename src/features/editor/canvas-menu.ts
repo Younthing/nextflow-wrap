@@ -5,17 +5,16 @@ import { EDITOR_ACTIONS } from "./commands";
 /**
  * Canvas right-click menu. The groups follow ComfyUI: clipboard, then
  * selection, then the canvas actions (node search stands in for Add Node,
- * fit view for the canvas fit control). The same list opens on empty canvas
- * and on a node. Commands that do not apply are disabled by their `can*`
- * predicate instead of being omitted.
+ * fit view for the canvas fit control). Delete sits with the clipboard
+ * commands, the same place Clone and Remove occupy on a node. The same list
+ * opens on empty canvas and on a node. Commands that do not apply are
+ * disabled by their `can*` predicate instead of being omitted.
  *
  * Save, undo, and redo stay on the toolbar. ComfyUI's canvas and node menus
  * do not include them, and this editor already shows them there.
- * Node items such as remove, bypass, and pin are not listed: the registry
- * has no command for them.
  */
 const CANVAS_MENU_GROUPS = [
-  ["copy", "paste", "duplicate"],
+  ["copy", "paste", "duplicate", "delete"],
   ["selectAll", "deselect"],
   ["search", "fit"],
 ] as const satisfies readonly (readonly (keyof typeof EDITOR_ACTIONS)[])[];
@@ -26,6 +25,8 @@ export type CanvasMenuItem = {
   label: string;
   shortcut: NonNullable<Action["shortcut"]>;
   disabled: boolean;
+  /** Delete is the destructive row. Other commands stay neutral. */
+  destructive?: boolean;
 };
 
 export type CanvasMenuEntry = CanvasMenuItem | { type: "separator" };
@@ -45,6 +46,7 @@ export function canvasContextMenuItems(actions: readonly Action[]): CanvasMenuEn
         label: action?.label ?? spec.label,
         shortcut: action?.shortcut ?? spec.shortcut,
         disabled: !action || !isActionEnabled(action),
+        destructive: key === "delete" ? true : undefined,
       });
     }
   }

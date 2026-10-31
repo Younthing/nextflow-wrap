@@ -165,7 +165,9 @@ export function WorkflowCanvas({
           }}
           onDrop={onDrop}
           zoomOnDoubleClick={false}
-          deleteKeyCode={["Delete", "Backspace"]}
+          // Delete and Backspace are Comfy.Canvas.DeleteSelectedItems. Leaving
+          // React Flow's handler on would remove the same selection again.
+          deleteKeyCode={null}
           multiSelectionKeyCode={["Shift", "Meta", "Control"]}
           minZoom={0.2}
           fitView
