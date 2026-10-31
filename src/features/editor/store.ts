@@ -406,26 +406,19 @@ export const createEditorStore = () =>
       connect: (connection) => {
         const result = get().checkConnection(connection);
         if (!result.ok) return result;
-        const { nodes, edges, index } = get();
-        const dst = nodes.find((n) => n.id === connection.target)!;
-        const inp = findPort(
-          resolveNodeDef(index, dst.data)!,
-          connection.targetHandle,
-          "in",
-        )!;
-
+        const { edges } = get();
+        // An input can take several channels. The generator mixes them;
+        // alignment is an operator node, not a property of the edge.
+        const duplicate = edges.some(
+          (edge) =>
+            edge.source === connection.source &&
+            edge.target === connection.target &&
+            edge.sourceHandle === connection.sourceHandle &&
+            edge.targetHandle === connection.targetHandle,
+        );
+        if (duplicate) return result;
         get().beginChange();
-        // Like ComfyUI, a single-value input keeps only its newest link.
-        const kept = inp.collect
-          ? edges
-          : edges.filter(
-              (e) =>
-                !(
-                  e.target === connection.target &&
-                  e.targetHandle === connection.targetHandle
-                ),
-            );
-        commit({ edges: addEdge({ ...connection, id: newId("e") }, kept) });
+        commit({ edges: addEdge({ ...connection, id: newId("e") }, edges) });
         return result;
       },
 

@@ -1,3 +1,5 @@
+import { OPERATOR_MODULES } from "./operators";
+import { TEST_MODULES } from "./test-modules";
 import type { ModuleDef } from "./types";
 
 export const SAMPLESHEET_ID = "builtin/samplesheet";
@@ -58,6 +60,8 @@ export const BUILTIN_MODULES: ModuleDef[] = [
       },
     ],
   },
+  ...OPERATOR_MODULES,
+  ...TEST_MODULES,
 ];
 
 /** Applies a reference node's chosen format to its output ports. */

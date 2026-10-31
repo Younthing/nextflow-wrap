@@ -50,6 +50,8 @@ export interface ModuleDef {
   inputs: PortDef[];
   outputs: PortDef[];
   builtin?: boolean;
+  /** Host-command process used to exercise patterns. Not an nf-core module. */
+  temporary?: boolean;
 }
 
 export interface ModuleCatalog {
@@ -62,6 +64,16 @@ export interface ModuleCatalog {
 
 export type WidgetValue = string | number | boolean;
 
+/** One publishDir entry. Path and saveAs are Groovy expressions, not quoted strings. */
+export interface PublishDir {
+  /** Directory expression, for example `${params.outdir}/${meta.id}`. */
+  path: string;
+  /** Glob; only matching files are stored in this directory. */
+  pattern?: string;
+  /** Closure body `filename -> ...`. `null` drops the file. */
+  saveAs?: string;
+}
+
 /** Per-node settings that end up in conf/modules.config. */
 export interface NodeConfig {
   /** Extra command-line arguments, `ext.args`. */
@@ -72,6 +84,28 @@ export interface NodeConfig {
   publish?: boolean;
   /** Override the module's resource label. */
   label?: string;
+  /** Process `errorStrategy`, for example `ignore`. */
+  errorStrategy?: string;
+  /** Groovy expression for the `when` directive. */
+  when?: string;
+  /** Feed `ifEmpty('EMPTY')` and run only when that marker arrives. */
+  whenEmpty?: boolean;
+  /** Skip at runtime via `params.skip_<alias>` and mix the input downstream. */
+  skip?: boolean;
+  /** Dynamic `memory` closure body, for example `reads.size() < 70.KB ? 1.GB : 5.GB`. */
+  memory?: string;
+  /** Dynamic `cpus` closure body. */
+  cpus?: string;
+  /** Comma-separated output ports that may be missing. Consumers use `ifEmpty`. */
+  optionalOutputs?: string;
+  /** Override the publish directory expression. */
+  publishPath?: string;
+  /** Glob for the primary publishDir. */
+  publishPattern?: string;
+  /** `saveAs` closure body for the primary publishDir. */
+  publishSaveAs?: string;
+  /** Extra publish directories (pattern 21). Combined with the primary rule. */
+  publishDirs?: PublishDir[];
 }
 
 export interface WorkflowNodeData {

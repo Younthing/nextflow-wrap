@@ -25,7 +25,7 @@ async function handle(request: Request, context: Context): Promise<Response> {
     if (resource === "health" && method === "GET") {
       const state = store().runtime();
       const ready = runnerReady();
-      return json({ status: ready ? "ok" : "degraded", nextflowVersion: state?.versions?.nextflow ?? "未就绪", mocked: false, runnerReady: !!ready, diagnostics: state?.error ?? (ready ? undefined : "请启动 pnpm runner"), capabilities: { executors: ["local"], engines: ["docker"] }, resources: state?.resources, versions: state?.versions });
+      return json({ status: ready ? "ok" : "degraded", nextflowVersion: state?.versions?.nextflow ?? "未就绪", mocked: false, runnerReady: !!ready, diagnostics: state?.error ?? (ready ? undefined : "请启动 pnpm runner"), capabilities: { executors: ["local"], engines: ["shell", "docker"] }, resources: state?.resources, versions: state?.versions });
     }
     if (resource === "modules" && method === "GET") return json(catalog);
     if (resource === "schemas" && id === "samplesheet" && method === "GET") return json(samplesheetSchema);

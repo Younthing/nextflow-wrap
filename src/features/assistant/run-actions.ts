@@ -17,6 +17,7 @@ import {
   launchCommand,
   launchProblems,
   profileList,
+  realLaunchConfig,
   renderRunConfig,
   type LaunchConfig,
 } from "@/features/project/launch";
@@ -221,19 +222,13 @@ export interface StartRunPlan {
   request: LaunchRequest | null;
 }
 
-/** Real mode uses the same forced local/docker launch as the run dialog. */
+/** Real mode uses the same local launch as the run dialog. Shell stays; other engines become Docker. */
 export function effectiveLaunchConfig(
   config: LaunchConfig,
   real: boolean,
 ): LaunchConfig {
   if (!real) return config;
-  return {
-    ...config,
-    settings: { cpus: 2, memory: "2.GB", ...config.settings },
-    executor: "local",
-    engine: "docker",
-    resume: false,
-  };
+  return realLaunchConfig(config);
 }
 
 /** Builds the same launch request the run dialog submits, or the reasons it would refuse. */

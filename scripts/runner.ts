@@ -7,7 +7,7 @@ import { gzipSync } from "node:zlib";
 import catalog from "@/data/nf-core-modules.json";
 import { generateProject } from "@/features/project/generate";
 import { gstr } from "@/features/project/groovy";
-import { renderRunConfig } from "@/features/project/launch";
+import { profileList, renderRunConfig } from "@/features/project/launch";
 import { CommandError, runCommand } from "@/features/project/server/command";
 import { installComponents, materializeProject } from "@/features/project/server/materialize";
 import { preflight, type RuntimeTools } from "@/features/project/server/preflight";
@@ -17,6 +17,7 @@ import { active } from "@/features/runs/server/service";
 import { ingestEvent, reconcileTrace, refreshProgress } from "@/features/runs/server/tasks";
 import { resultFiles } from "@/features/runs/server/files";
 import { indexModules } from "@/features/workflow/catalog";
+import { hostChainWorkflow, writeHostChainInputs } from "@/features/workflow/host-chain-demo";
 import { qcDemoWorkflow } from "@/features/workflow/qc-demo";
 import type { ModuleCatalog } from "@/features/workflow/types";
 import { dataDirectory, store, type StoredExecution } from "@/lib/server/database";
@@ -33,6 +34,7 @@ const pidStart = (pid: number) => {
 const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
 
 async function cleanupContainers(tools: RuntimeTools, id: string) {
+  if (!tools.docker) return;
   const ids = (await runCommand(tools.docker, ["ps", "-aq", "--filter", `label=nextflow-studio.run=${id}`], { env: tools.env, quiet: true, timeoutMs: 15_000 })).trim().split(/\s+/).filter((id) => /^[a-f0-9]+$/.test(id));
   if (ids.length) await runCommand(tools.docker, ["rm", "-f", ...ids], { env: tools.env, timeoutMs: 30_000 });
 }
@@ -58,6 +60,19 @@ async function seedDemo() {
     demo.params = { ...demo.params, custom_config_base: "", monochrome_logs: true };
     db.saveWorkflow(demo);
   }
+  const hostRoot = join(dataDirectory(), "host-chain");
+  writeHostChainInputs(hostRoot);
+  const reads = join(hostRoot, "reads.fastq.gz");
+  await writeFile(reads, gzipSync(smokeFastq(3, 1, 4)), { flag: "wx" }).catch((error: NodeJS.ErrnoException) => { if (error.code !== "EEXIST") throw error; });
+  const hostInput = join(hostRoot, "samplesheet.csv");
+  await writeFile(hostInput, `sample,fastq_1,fastq_2\nHOST,${reads},\n`, { flag: "wx" }).catch((error: NodeJS.ErrnoException) => { if (error.code !== "EEXIST") throw error; });
+  if (!db.workflow("hostchain")) {
+    const demo = hostChainWorkflow(hostRoot, hostInput);
+    demo.id = "hostchain";
+    demo.params = { ...demo.params, custom_config_base: "", monochrome_logs: true };
+    demo.updatedAt = new Date().toISOString();
+    db.saveWorkflow(demo);
+  }
 }
 
 async function execute(run: StoredExecution, tools: RuntimeTools, port: number) {
@@ -72,7 +87,9 @@ async function execute(run: StoredExecution, tools: RuntimeTools, port: number) 
     const runtimeState = db.runtime()!;
     const cpus = Math.min(Number(run.detail.launch.settings.cpus ?? 2), tools.resources.cpus);
     const memory = run.detail.launch.settings.memory ?? "2.GB";
-    const launch = { ...run.detail.launch, settings: { cpus, memory }, workDir: join(run.projectDir, "../work"), extraProfiles: [...new Set([...run.detail.launch.extraProfiles, ...(tools.resources.architecture === "aarch64" || tools.resources.architecture === "arm64" ? ["emulate_amd64"] : [])])] };
+    const shell = run.detail.launch.engine === "shell";
+    const emulate = !shell && tools.docker && (tools.resources.architecture === "aarch64" || tools.resources.architecture === "arm64");
+    const launch = { ...run.detail.launch, settings: { cpus, memory }, workDir: join(run.projectDir, "../work"), extraProfiles: [...new Set([...run.detail.launch.extraProfiles, ...(emulate ? ["emulate_amd64"] : [])])] };
     const params = { ...run.detail.params, input: String(run.detail.params.input), outdir: join(run.attemptDir, "results"), custom_config_base: "", publish_dir_mode: "copy", trace_report_suffix: id };
     // Web launches use explicit host paths; the server cannot read a browser's filesystem.
     if (!params.input.startsWith("/")) throw new Error("请输入 runner 主机上的绝对样本表路径；可先使用内置质控示例");
@@ -93,7 +110,7 @@ async function execute(run: StoredExecution, tools: RuntimeTools, port: number) 
       `executor.cpus = ${cpus}`,
       `executor.memory = ${gstr(String(memory))}`,
       "executor.queueSize = 2",
-      `docker.runOptions = ${gstr(`-u ${process.getuid?.() ?? 0}:${process.getgid?.() ?? 0} --label nextflow-studio.run=${id}${emulation}`)}`,
+      ...(shell ? [] : [`docker.runOptions = ${gstr(`-u ${process.getuid?.() ?? 0}:${process.getgid?.() ?? 0} --label nextflow-studio.run=${id}${emulation}`)}`]),
       `plugins { id 'nf-schema@${NF_SCHEMA_VERSION}'; id 'nf-weblog@1.2.0' }`,
       `weblog { enabled = true; url = ${gstr(`http://127.0.0.1:${port}/events/${id}/${token}`)} }`,
       "trace.enabled = true", "trace.raw = true",
@@ -104,7 +121,8 @@ async function execute(run: StoredExecution, tools: RuntimeTools, port: number) 
       `dag.file = ${gstr(join(run.attemptDir, "dag.html"))}`,
       "",
     ].join("\n");
-    const args = ["-log", join(run.attemptDir, "nextflow.log"), "run", ".", "-ansi-log", "false", "-profile", [launch.engine, ...launch.extraProfiles].join(","), "-c", join(run.attemptDir, "run.config"), "-params-file", join(run.attemptDir, "params.json"), "-name", run.detail.runName];
+    const profiles = profileList(launch);
+    const args = ["-log", join(run.attemptDir, "nextflow.log"), "run", ".", "-ansi-log", "false", ...(profiles ? ["-profile", profiles] : []), "-c", join(run.attemptDir, "run.config"), "-params-file", join(run.attemptDir, "params.json"), "-name", run.detail.runName];
     if (run.resumeFrom) args.push("-resume", run.sessionId!);
     await writeFile(join(run.attemptDir, "params.json"), JSON.stringify(params, null, 2));
     await writeFile(join(run.attemptDir, "run.config"), runConfig);

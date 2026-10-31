@@ -1,4 +1,5 @@
 import { REFERENCE_ID } from "./builtins";
+import { operatorDefaults } from "./operators";
 import { widgetInputs } from "./ports";
 import type { ModuleDef, WidgetValue, WorkflowNode } from "./types";
 
@@ -58,7 +59,7 @@ export function createNode(
               ),
               format: "fasta",
             }
-          : undefined,
+          : operatorDefaults(def.id),
     },
   };
 }
