@@ -2,8 +2,15 @@ import { resolveNodeDef, type ModuleIndex } from "@/features/workflow/catalog";
 import { newId, uniqueAlias } from "@/features/workflow/nodes";
 import type { PipelineParams, WorkflowNodeData } from "@/features/workflow/types";
 
+/**
+ * Module cards are `w-64` (16rem = 256px). The paste step has to clear that
+ * width: a shorter step drops the copy on the original, and the edges between
+ * the copied nodes sit on the source edges, so the canvas looks unchanged.
+ */
+export const MODULE_CARD_WIDTH = 256;
+
 /** Distance from the source nodes to each paste or duplicate, in flow units. */
-export const PASTE_GAP = 40;
+export const PASTE_GAP = MODULE_CARD_WIDTH + 64;
 
 export type ClipboardNode = {
   id: string;
