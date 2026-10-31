@@ -11,13 +11,18 @@ export interface CodexAgentOptions {
   maxSteps?: number;
   /** Present for HTTP chat runs so the slot stays held until the process exits. */
   permit?: SessionPermit;
+  /**
+   * Set only by route tests. A chat run omits this and gets an empty temp directory.
+   */
+  cwd?: string;
 }
 
 /**
  * CopilotKit custom agent. Browser tools stay browser-side: a Codex reply that
  * is only a known tool JSON object becomes AG-UI tool-call events, and the next
- * request brings the tool result back in the transcript. Each run uses an empty
- * temp directory and stops after `maxSteps` model replies in the current turn.
+ * request brings the tool result back in the transcript. A chat run gets an
+ * empty temp directory when `cwd` is omitted, and stops after `maxSteps` model
+ * replies in the current turn.
  */
 export function createCodexAgent(options: CodexAgentOptions) {
   const maxSteps = options.maxSteps ?? ASSISTANT_MAX_STEPS;
@@ -26,6 +31,7 @@ export function createCodexAgent(options: CodexAgentOptions) {
     factory: (ctx) => runCodexAssistant(ctx.input, {
       harness: options.harness,
       prompt: options.prompt,
+      cwd: options.cwd,
       model: options.model,
       signal: ctx.abortSignal,
       maxSteps,
