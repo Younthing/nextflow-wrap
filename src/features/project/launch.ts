@@ -1,7 +1,7 @@
 import { gstr } from "./groovy";
 
 export type ExecutorId = "local" | "slurm" | "google-batch" | "aws-batch" | "azure-batch" | "k8s";
-export type ContainerEngine = "docker" | "singularity" | "apptainer" | "podman" | "conda" | "wave";
+export type ContainerEngine = "shell" | "docker" | "singularity" | "apptainer" | "podman" | "conda" | "wave";
 
 export interface ExecutorField {
   key: string;
@@ -29,7 +29,7 @@ export const EXECUTORS: ExecutorDef[] = [
     name: "本机",
     description: "在运行 Nextflow 的机器上直接执行，适合小数据和调试。",
     workDirHint: "work",
-    engines: ["docker", "singularity", "apptainer", "podman", "conda", "wave"],
+    engines: ["shell", "docker", "singularity", "apptainer", "podman", "conda", "wave"],
     fields: [
       { key: "cpus", label: "最多 CPU", type: "number", placeholder: "8" },
       { key: "memory", label: "最多内存", type: "text", placeholder: "32.GB" },
@@ -101,6 +101,7 @@ export const EXECUTORS: ExecutorDef[] = [
 ];
 
 export const ENGINE_LABELS: Record<ContainerEngine, string> = {
+  shell: "Shell",
   docker: "Docker",
   singularity: "Singularity",
   apptainer: "Apptainer",
@@ -110,6 +111,24 @@ export const ENGINE_LABELS: Record<ContainerEngine, string> = {
 };
 
 export const REGISTRIES = ["quay.io", "docker.rainbond.cc"] as const;
+
+/** Engines a real runner on this machine can launch. Shell runs the process script directly. */
+export const REAL_ENGINES = ["shell", "docker"] as const satisfies readonly ContainerEngine[];
+
+export function isRealEngine(engine: ContainerEngine): boolean {
+  return (REAL_ENGINES as readonly ContainerEngine[]).includes(engine);
+}
+
+/** Real launches stay on this machine. Shell is kept; any other engine becomes Docker. */
+export function realLaunchConfig(config: LaunchConfig): LaunchConfig {
+  return {
+    ...config,
+    settings: { cpus: 2, memory: "2.GB", ...config.settings },
+    executor: "local",
+    engine: config.engine === "shell" ? "shell" : "docker",
+    resume: false,
+  };
+}
 
 export interface LaunchConfig {
   executor: ExecutorId;
@@ -216,21 +235,31 @@ export function renderRunConfig(config: LaunchConfig): string {
       lines.push("}");
       break;
   }
+  if (config.engine === "shell") {
+    lines.push(
+      "docker.enabled = false",
+      "singularity.enabled = false",
+      "podman.enabled = false",
+      "apptainer.enabled = false",
+      "conda.enabled = false",
+    );
+  }
   return `${lines.join("\n")}\n`;
 }
 
 export function profileList(config: LaunchConfig): string {
-  return [config.engine, ...config.extraProfiles].join(",");
+  return [config.engine === "shell" ? "" : config.engine, ...config.extraProfiles]
+    .map((name) => name.trim())
+    .filter(Boolean)
+    .join(",");
 }
 
 /** The command the backend runs inside the materialised project directory. */
 export function launchCommand(config: LaunchConfig): string {
-  const parts = [
-    "nextflow run .",
-    `-profile ${profileList(config)}`,
-    "-c run.config",
-    "-params-file params.json",
-  ];
+  const parts = ["nextflow run ."];
+  const profile = profileList(config);
+  if (profile) parts.push(`-profile ${profile}`);
+  parts.push("-c run.config", "-params-file params.json");
   if (config.runName) parts.push(`-name ${config.runName}`);
   if (config.resume) parts.push("-resume");
   return parts.join(" \\\n    ");

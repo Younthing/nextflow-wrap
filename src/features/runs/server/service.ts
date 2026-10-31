@@ -28,7 +28,7 @@ const workflowSchema = z.object({
   edges: z.array(z.object({ id: z.string(), source: z.string(), target: z.string(), sourceHandle: z.string(), targetHandle: z.string() })).max(2000),
 });
 const launchSchema = z.object({
-  executor: z.literal("local"), engine: z.literal("docker"), settings: z.object({ cpus: z.preprocess((value) => value === "" ? undefined : value, z.coerce.number().int().min(1).max(64).optional()), memory: z.preprocess((value) => value === "" ? undefined : value, z.string().regex(/^\d+(?:\.\d+)?\s*\.?\s*(?:[KMGT]B)$/i).optional()) }),
+  executor: z.literal("local"), engine: z.enum(["docker", "shell"]), settings: z.object({ cpus: z.preprocess((value) => value === "" ? undefined : value, z.coerce.number().int().min(1).max(64).optional()), memory: z.preprocess((value) => value === "" ? undefined : value, z.string().regex(/^\d+(?:\.\d+)?\s*\.?\s*(?:[KMGT]B)$/i).optional()) }),
   extraProfiles: z.array(z.enum(["test", "debug", "emulate_amd64"])), workDir: z.string(), resume: z.boolean(), registry: z.enum(["quay.io", "docker.rainbond.cc"]), runName: z.string().regex(/^[A-Za-z][A-Za-z0-9_-]{0,60}$/).optional(),
 });
 export function workflowInput(value: unknown): WorkflowDoc { return parseWorkflowDoc(workflowSchema.parse(value)); }
