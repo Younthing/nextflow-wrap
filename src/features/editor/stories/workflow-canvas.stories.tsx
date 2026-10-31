@@ -210,6 +210,7 @@ export const ContextMenuEmpty: Story = {
       expect.stringMatching(/^复制(Ctrl\+C|⌘C)$/),
       expect.stringMatching(/^粘贴(Ctrl\+V|⌘V)$/),
       expect.stringMatching(/^创建副本(Ctrl\+D|⌘D)$/),
+      expect.stringMatching(/^删除Delete$/),
       expect.stringMatching(/^全选(Ctrl\+A|⌘A)$/),
       expect.stringMatching(/^取消选择Esc$/),
       expect.stringMatching(/^搜索节点(Ctrl\+K|⌘K)$/),
@@ -217,7 +218,7 @@ export const ContextMenuEmpty: Story = {
     ]);
     expect(screen.queryByRole("menuitem", { name: /保存|撤销|重做/ })).toBeNull();
 
-    for (const name of [/^复制/, /粘贴/, /创建副本/, /全选/, /取消选择/, /适应视图/]) {
+    for (const name of [/^复制/, /粘贴/, /创建副本/, /^删除/, /全选/, /取消选择/, /适应视图/]) {
       expectDisabled(name);
     }
 
@@ -251,6 +252,7 @@ export const ContextMenuOnNode: Story = {
     await waitFor(() => expectEnabled(/^复制/));
     expectDisabled(/粘贴/);
     expectEnabled(/创建副本/);
+    expectEnabled(/^删除/);
     expectEnabled(/取消选择/);
     expect(useEditorStore.getState().nodes.filter((node) => node.selected).map((node) => node.id)).toEqual(["selected"]);
 
@@ -335,6 +337,84 @@ export const ContextMenuClearsSelectionBox: Story = {
   },
 };
 
+/** Two nodes and the link between them. Right-click retargets the selection, then Delete removes it. */
+function linkedPair(): WorkflowDoc {
+  return {
+    ...emptyWorkflow("wf_delete", "删除"),
+    nodes: [
+      {
+        id: "keep",
+        position: { x: 40, y: 80 },
+        data: { moduleId: SAMPLESHEET_ID, alias: "KEEP", widgets: {}, config: {} },
+      },
+      {
+        id: "drop",
+        position: { x: 420, y: 80 },
+        data: { moduleId: "nf-core/fastqc", alias: "FASTQC", widgets: {}, config: {} },
+      },
+    ],
+    edges: [
+      {
+        id: "e-keep-drop",
+        source: "keep",
+        sourceHandle: "out:reads",
+        target: "drop",
+        targetHandle: "in:reads",
+      },
+    ],
+  };
+}
+
+/** Right-click an unselected node, delete that selection, and undo it back. */
+export const ContextMenuDeletesNode: Story = {
+  name: "Context menu deletes the node",
+  render: () => <CommandCanvas />,
+  decorators: [
+    (Story) => (
+      <EditorFixture doc={linkedPair()} selectedNodeIds={["keep"]}>
+        <Story />
+      </EditorFixture>
+    ),
+  ],
+  play: async ({ canvasElement }) => {
+    await waitFor(() => {
+      expect(nodeBox(canvasElement, "keep").width).toBeGreaterThan(10);
+      expect(nodeBox(canvasElement, "drop").width).toBeGreaterThan(10);
+    });
+
+    const drop = canvasElement.querySelector(`[data-id="drop"]`);
+    if (!drop) throw new Error("missing node drop");
+    await rightClick(drop);
+    await waitFor(() => {
+      expect(useEditorStore.getState().nodes.filter((node) => node.selected).map((node) => node.id)).toEqual(["drop"]);
+    });
+    expectEnabled(/^删除/);
+    expect(useEditorStore.getState().edges.map((edge) => edge.id)).toEqual(["e-keep-drop"]);
+
+    await userEvent.click(menuItem(/^删除/));
+    await waitFor(() => {
+      expect(useEditorStore.getState().nodes.map((node) => node.id)).toEqual(["keep"]);
+      expect(useEditorStore.getState().edges).toEqual([]);
+      expect(useEditorStore.getState().past).toHaveLength(1);
+      expect(canvasElement.querySelector(`[data-id="drop"]`)).toBeNull();
+    });
+    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
+
+    useEditorStore.getState().undo();
+    await waitFor(() => {
+      expect(useEditorStore.getState().nodes.map((node) => node.id)).toEqual(["keep", "drop"]);
+      expect(useEditorStore.getState().edges.map((edge) => edge.id)).toEqual(["e-keep-drop"]);
+      expect(nodeBox(canvasElement, "drop").width).toBeGreaterThan(10);
+    });
+
+    await userEvent.keyboard("{Delete}");
+    await waitFor(() => {
+      expect(useEditorStore.getState().nodes.map((node) => node.id)).toEqual(["keep"]);
+      expect(useEditorStore.getState().edges).toEqual([]);
+    });
+  },
+};
+
 /** A widget input keeps the browser text menu. The canvas commands stay closed. */
 export const ContextMenuOnTextInput: Story = {
   name: "Context menu leaves text inputs",
@@ -364,5 +444,14 @@ export const ContextMenuOnTextInput: Story = {
     expect(seen.event?.defaultPrevented).toBe(false);
     expect(screen.queryByRole("menu")).toBeNull();
     expect(input.value).toBe("12");
+
+    useEditorStore.setState({
+      nodes: useEditorStore.getState().nodes.map((node) => ({ ...node, selected: true })),
+    });
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+    await userEvent.keyboard("{Backspace}");
+    await waitFor(() => expect(input.value).toBe("1"));
+    expect(useEditorStore.getState().nodes.map((node) => node.id)).toEqual(["widget"]);
   },
 };

@@ -95,6 +95,8 @@ interface EditorState {
   duplicateSelected: () => void;
   selectAllNodes: () => void;
   clearSelection: () => void;
+  /** Selected nodes, edges that touch them, and any selected edge. One undo step. */
+  deleteSelected: () => void;
 }
 
 function toFlowNode(n: WorkflowDoc["nodes"][number]): FlowNode {
@@ -269,6 +271,24 @@ export const useEditorStore = create<EditorState>()((set, get) => {
         edges: edges.some((edge) => edge.selected)
           ? edges.map((edge) => (edge.selected ? { ...edge, selected: false } : edge))
           : edges,
+      });
+    },
+
+    deleteSelected: () => {
+      const { nodes, edges } = get();
+      const dropNodes = new Set<string>();
+      for (const node of nodes) if (node.selected) dropNodes.add(node.id);
+      let droppedEdge = false;
+      const nextEdges = edges.filter((edge) => {
+        const drop = Boolean(edge.selected) || dropNodes.has(edge.source) || dropNodes.has(edge.target);
+        if (drop) droppedEdge = true;
+        return !drop;
+      });
+      if (dropNodes.size === 0 && !droppedEdge) return;
+      get().beginChange();
+      commit({
+        nodes: dropNodes.size === 0 ? nodes : nodes.filter((node) => !dropNodes.has(node.id)),
+        edges: nextEdges,
       });
     },
 

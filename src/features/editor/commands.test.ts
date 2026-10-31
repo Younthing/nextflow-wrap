@@ -20,6 +20,7 @@ function handlers(overrides: Partial<EditorCommandHandlers> = {}): EditorCommand
     copy: vi.fn(),
     paste: vi.fn(),
     duplicate: vi.fn(),
+    delete: vi.fn(),
     selectAll: vi.fn(),
     deselect: vi.fn(),
     openNodeSearch: vi.fn(),
@@ -29,6 +30,7 @@ function handlers(overrides: Partial<EditorCommandHandlers> = {}): EditorCommand
     canCopy: () => true,
     canPaste: () => true,
     canDuplicate: () => true,
+    canDelete: () => true,
     canSelectAll: () => true,
     canDeselect: () => true,
     canFitView: () => true,
@@ -54,6 +56,8 @@ describe("editor commands", () => {
       id: "Comfy.Canvas.DuplicateSelected",
       shortcut: { key: "d", ctrl: true },
     });
+    expect(EDITOR_ACTIONS.delete.id).toBe("Comfy.Canvas.DeleteSelectedItems");
+    expect(combosOf(EDITOR_ACTIONS.delete)).toEqual([{ key: "Delete" }, { key: "Backspace" }]);
     expect(EDITOR_ACTIONS.selectAll).toMatchObject({ id: "Comfy.Canvas.SelectAll", shortcut: { key: "a", ctrl: true } });
     expect(EDITOR_ACTIONS.deselect).toMatchObject({ id: "Comfy.Canvas.Deselect", shortcut: { key: "Escape" } });
     expect(EDITOR_ACTIONS.fit.id).toBe("Comfy.Canvas.FitView");
@@ -107,6 +111,9 @@ describe("editor commands", () => {
     for (const action of [EDITOR_ACTIONS.copy, EDITOR_ACTIONS.paste, EDITOR_ACTIONS.duplicate, EDITOR_ACTIONS.selectAll]) {
       expect(readme).toContain(shortcutHint(action.shortcut));
     }
+    for (const combo of combosOf(EDITOR_ACTIONS.delete)) {
+      expect(readme).toContain(shortcutHint(combo));
+    }
     expect(readme).toContain(shortcutHint(EDITOR_ACTIONS.search.shortcut));
     expect(readme).toContain("或 / 打开节点搜索");
     expect(readme).toContain("Esc 取消选择");
@@ -118,12 +125,13 @@ describe("editor commands", () => {
     const copy = vi.fn();
     const paste = vi.fn();
     const duplicate = vi.fn();
+    const remove = vi.fn();
     const selectAll = vi.fn();
     const deselect = vi.fn();
     const openNodeSearch = vi.fn();
     const fitView = vi.fn();
     const actions = editorActions(
-      handlers({ copy, paste, duplicate, selectAll, deselect, openNodeSearch, fitView }),
+      handlers({ copy, paste, duplicate, delete: remove, selectAll, deselect, openNodeSearch, fitView }),
     );
     const idle = { typing: false, dialogOpen: false, menuOpen: false };
     const typing = { typing: true, dialogOpen: false, menuOpen: false };
@@ -133,6 +141,8 @@ describe("editor commands", () => {
     expect(handleShortcutKey(actions, press("c", { ctrlKey: true }), idle)).toBe(true);
     expect(handleShortcutKey(actions, press("v", { metaKey: true }), idle)).toBe(true);
     expect(handleShortcutKey(actions, press("d", { ctrlKey: true }), idle)).toBe(true);
+    expect(handleShortcutKey(actions, press("Delete"), idle)).toBe(true);
+    expect(handleShortcutKey(actions, press("Backspace"), idle)).toBe(true);
     expect(handleShortcutKey(actions, press("a", { metaKey: true }), idle)).toBe(true);
     expect(handleShortcutKey(actions, press("Escape"), idle)).toBe(true);
     expect(handleShortcutKey(actions, press("k", { ctrlKey: true }), idle)).toBe(true);
@@ -143,6 +153,7 @@ describe("editor commands", () => {
     expect(copy).toHaveBeenCalledTimes(1);
     expect(paste).toHaveBeenCalledTimes(1);
     expect(duplicate).toHaveBeenCalledTimes(1);
+    expect(remove).toHaveBeenCalledTimes(2);
     expect(selectAll).toHaveBeenCalledTimes(1);
     expect(deselect).toHaveBeenCalledTimes(1);
     expect(openNodeSearch).toHaveBeenCalledTimes(2);
@@ -155,12 +166,15 @@ describe("editor commands", () => {
     for (const guard of [typing, dialog, menu]) {
       expect(handleShortcutKey(actions, press("c", { ctrlKey: true }), guard)).toBe(false);
       expect(handleShortcutKey(actions, press("a", { ctrlKey: true }), guard)).toBe(false);
+      expect(handleShortcutKey(actions, press("Delete"), guard)).toBe(false);
+      expect(handleShortcutKey(actions, press("Backspace"), guard)).toBe(false);
       expect(handleShortcutKey(actions, press("/"), guard)).toBe(false);
       expect(handleShortcutKey(actions, press("f"), guard)).toBe(false);
       expect(handleShortcutKey(actions, press("Escape"), guard)).toBe(false);
       expect(handleShortcutKey(actions, press("k", { metaKey: true }), guard)).toBe(false);
     }
     expect(copy).toHaveBeenCalledTimes(1);
+    expect(remove).toHaveBeenCalledTimes(2);
     expect(selectAll).toHaveBeenCalledTimes(1);
     expect(openNodeSearch).toHaveBeenCalledTimes(2);
     expect(fitView).toHaveBeenCalledTimes(3);
@@ -200,19 +214,32 @@ describe("editor commands", () => {
     expect(copy).toHaveBeenCalledTimes(1);
   });
 
-  it("consumes copy, paste, and fit when they have nothing to do", () => {
+  it("consumes copy, paste, delete, and fit when they have nothing to do", () => {
     const copy = vi.fn();
     const paste = vi.fn();
+    const remove = vi.fn();
     const fitView = vi.fn();
     const actions = editorActions(
-      handlers({ copy, paste, fitView, canCopy: () => false, canPaste: () => false, canFitView: () => false }),
+      handlers({
+        copy,
+        paste,
+        delete: remove,
+        fitView,
+        canCopy: () => false,
+        canPaste: () => false,
+        canDelete: () => false,
+        canFitView: () => false,
+      }),
     );
     const idle = { typing: false, dialogOpen: false };
     expect(handleShortcutKey(actions, press("c", { ctrlKey: true }), idle)).toBe(true);
     expect(handleShortcutKey(actions, press("v", { ctrlKey: true }), idle)).toBe(true);
+    expect(handleShortcutKey(actions, press("Delete"), idle)).toBe(true);
+    expect(handleShortcutKey(actions, press("Backspace"), idle)).toBe(true);
     expect(handleShortcutKey(actions, press("f"), idle)).toBe(true);
     expect(copy).not.toHaveBeenCalled();
     expect(paste).not.toHaveBeenCalled();
+    expect(remove).not.toHaveBeenCalled();
     expect(fitView).not.toHaveBeenCalled();
   });
 });

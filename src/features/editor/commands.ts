@@ -12,9 +12,11 @@ type CommandSpec = {
 /**
  * Editor commands. Save, undo, and redo keep ComfyUI's ids and chords.
  * Canvas commands use ComfyUI's ids where those commands exist
- * (`Comfy.Canvas.CopySelected`, `PasteFromClipboard`, `SelectAll`, `FitView`).
- * Duplicate, deselect, and node search are this editor's chords. The canvas
- * context menu renders these actions (`canvas-menu.ts`).
+ * (`Comfy.Canvas.CopySelected`, `PasteFromClipboard`, `SelectAll`, `FitView`,
+ * `DeleteSelectedItems`).
+ * Duplicate, deselect, and node search are this editor's chords. Delete and
+ * Backspace both run `DeleteSelectedItems`. The canvas context menu renders
+ * these actions (`canvas-menu.ts`).
  * Labels stay the ones the toolbar and help text show.
  */
 export const EDITOR_ACTIONS: {
@@ -24,6 +26,7 @@ export const EDITOR_ACTIONS: {
   copy: CommandSpec;
   paste: CommandSpec;
   duplicate: CommandSpec;
+  delete: CommandSpec;
   selectAll: CommandSpec;
   deselect: CommandSpec;
   search: CommandSpec;
@@ -69,6 +72,12 @@ export const EDITOR_ACTIONS: {
     label: "创建副本",
     shortcut: { key: "d", ctrl: true },
   },
+  delete: {
+    id: "Comfy.Canvas.DeleteSelectedItems",
+    label: "删除",
+    // ComfyUI binds both. The menu shows Delete; Backspace still runs it.
+    shortcut: [{ key: "Delete" }, { key: "Backspace" }],
+  },
   selectAll: {
     id: "Comfy.Canvas.SelectAll",
     label: "全选",
@@ -106,6 +115,7 @@ export type EditorCommandHandlers = {
   copy: () => void;
   paste: () => void;
   duplicate: () => void;
+  delete: () => void;
   selectAll: () => void;
   deselect: () => void;
   openNodeSearch: () => void;
@@ -115,6 +125,7 @@ export type EditorCommandHandlers = {
   canCopy?: () => boolean;
   canPaste?: () => boolean;
   canDuplicate?: () => boolean;
+  canDelete?: () => boolean;
   canSelectAll?: () => boolean;
   canDeselect?: () => boolean;
   canFitView?: () => boolean;
@@ -128,6 +139,7 @@ export function editorActions(handlers: EditorCommandHandlers): Action[] {
     { ...EDITOR_ACTIONS.copy, enabled: handlers.canCopy, run: handlers.copy },
     { ...EDITOR_ACTIONS.paste, enabled: handlers.canPaste, run: handlers.paste },
     { ...EDITOR_ACTIONS.duplicate, enabled: handlers.canDuplicate, run: handlers.duplicate },
+    { ...EDITOR_ACTIONS.delete, enabled: handlers.canDelete, run: handlers.delete },
     { ...EDITOR_ACTIONS.selectAll, enabled: handlers.canSelectAll, run: handlers.selectAll },
     { ...EDITOR_ACTIONS.deselect, enabled: handlers.canDeselect, run: handlers.deselect },
     { ...EDITOR_ACTIONS.search, run: handlers.openNodeSearch },

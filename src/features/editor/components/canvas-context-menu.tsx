@@ -30,7 +30,11 @@ function useCanvasMenuItems() {
 function CommandMenuItem({ item }: { item: CanvasMenuItem }) {
   const shortcut = useShortcutLabel(item.shortcut);
   return (
-    <ContextMenuItem disabled={item.disabled} onSelect={() => runRegisteredAction(item.id)}>
+    <ContextMenuItem
+      variant={item.destructive ? "destructive" : "default"}
+      disabled={item.disabled}
+      onSelect={() => runRegisteredAction(item.id)}
+    >
       {item.label}
       <ContextMenuShortcut>{shortcut}</ContextMenuShortcut>
     </ContextMenuItem>

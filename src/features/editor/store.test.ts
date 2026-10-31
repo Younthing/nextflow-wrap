@@ -348,6 +348,75 @@ describe("editor clipboard", () => {
     expect(useEditorStore.getState().past).toHaveLength(0);
   });
 
+  it("deletes selected nodes and every edge that touches them", () => {
+    useEditorStore.getState().copySelected();
+    const revision = useEditorStore.getState().revision;
+    useEditorStore.getState().deleteSelected();
+    const deleted = useEditorStore.getState();
+    expect(deleted.nodes.map((node) => node.id)).toEqual(["n3"]);
+    expect(deleted.edges).toEqual([]);
+    expect(deleted.past).toHaveLength(1);
+    expect(deleted.future).toEqual([]);
+    expect(deleted.revision).toBe(revision + 1);
+    expect(deleted.clipboard?.nodes.map((node) => node.id)).toEqual(["n1", "n2"]);
+
+    deleted.undo();
+    const restored = useEditorStore.getState();
+    expect(restored.nodes.map((node) => node.id)).toEqual(["n1", "n2", "n3"]);
+    expect(restored.nodes.filter((node) => node.selected).map((node) => node.id)).toEqual(["n1", "n2"]);
+    expect(restored.edges.map((edge) => edge.id)).toEqual(["e12", "e23"]);
+    restored.redo();
+    expect(useEditorStore.getState().nodes.map((node) => node.id)).toEqual(["n3"]);
+    expect(useEditorStore.getState().edges).toEqual([]);
+  });
+
+  it("keeps an edge between nodes that stay and drops a selected edge in the same step", () => {
+    useEditorStore.setState({
+      nodes: [
+        node("n1", "A", { x: 0, y: 0 }, true),
+        node("n2", "B", { x: 200, y: 0 }, false),
+        node("n3", "C", { x: 400, y: 0 }, false),
+      ],
+      edges: [
+        { id: "e12", source: "n1", target: "n2", sourceHandle: "out:reads", targetHandle: "in:reads" },
+        { id: "e23", source: "n2", target: "n3", sourceHandle: "out:reads", targetHandle: "in:reads" },
+        { id: "e-extra", source: "n2", target: "n3", sourceHandle: "out:reads", targetHandle: "in:reads", selected: true },
+      ],
+    });
+    useEditorStore.getState().deleteSelected();
+    expect(useEditorStore.getState().nodes.map((n) => n.id)).toEqual(["n2", "n3"]);
+    expect(useEditorStore.getState().edges.map((edge) => edge.id)).toEqual(["e23"]);
+    expect(useEditorStore.getState().past).toHaveLength(1);
+    useEditorStore.getState().undo();
+    expect(useEditorStore.getState().nodes.map((n) => n.id)).toEqual(["n1", "n2", "n3"]);
+    expect(useEditorStore.getState().edges.map((edge) => edge.id)).toEqual(["e12", "e23", "e-extra"]);
+    expect(useEditorStore.getState().edges.find((edge) => edge.id === "e-extra")?.selected).toBe(true);
+  });
+
+  it("deletes a selected edge whose nodes stay", () => {
+    useEditorStore.getState().clearSelection();
+    useEditorStore.setState({
+      edges: useEditorStore.getState().edges.map((edge) => ({ ...edge, selected: edge.id === "e23" })),
+    });
+    useEditorStore.getState().deleteSelected();
+    expect(useEditorStore.getState().nodes.map((node) => node.id)).toEqual(["n1", "n2", "n3"]);
+    expect(useEditorStore.getState().edges.map((edge) => edge.id)).toEqual(["e12"]);
+    useEditorStore.getState().undo();
+    expect(useEditorStore.getState().edges.map((edge) => edge.id)).toEqual(["e12", "e23"]);
+    expect(useEditorStore.getState().edges.find((edge) => edge.id === "e23")?.selected).toBe(true);
+  });
+
+  it("does not record an undo step when nothing is selected", () => {
+    useEditorStore.getState().clearSelection();
+    const revision = useEditorStore.getState().revision;
+    useEditorStore.getState().deleteSelected();
+    useEditorStore.getState().deleteSelected();
+    expect(useEditorStore.getState().revision).toBe(revision);
+    expect(useEditorStore.getState().past).toHaveLength(0);
+    expect(useEditorStore.getState().nodes).toHaveLength(3);
+    expect(useEditorStore.getState().edges).toHaveLength(2);
+  });
+
   it("clears a selection that is only edges", () => {
     useEditorStore.getState().clearSelection();
     useEditorStore.setState({
