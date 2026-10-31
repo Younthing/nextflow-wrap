@@ -256,7 +256,7 @@ export function prepareStartRun(input: StartRunInput): StartRunPlan {
   return { launch, command, runConfig, profile, problems, modulesSha: input.modulesSha, workflow: input.doc, request };
 }
 
-/** Ignores `updatedAt`, which the editor rewrites on every read. */
+/** Ignores `updatedAt`. It is the server revision, not canvas content. */
 export function startPlanStamp(plan: StartRunPlan): string {
   const doc = plan.workflow;
   return JSON.stringify({
@@ -349,7 +349,7 @@ export async function ensureWorkflowSaved(
     const next = useEditorStore.getState();
     if (next.generation === generation) {
       if (!next.docId) useEditorStore.setState({ docId: saved.id });
-      next.markSaved(revision);
+      next.markSaved(revision, saved.updatedAt);
     }
     return { doc: useEditorStore.getState().toDoc() };
   } catch (err) {

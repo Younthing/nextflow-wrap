@@ -60,6 +60,8 @@ interface EditorState {
   /** Bumped on every content change, compared against the last saved value. */
   revision: number;
   savedRevision: number;
+  /** Server revision last loaded or saved. PUT sends this; the server rejects a mismatch. */
+  updatedAt: string;
   /** Bumped by every load, so async work can tell whether its document is still open. */
   generation: number;
   past: Snapshot[];
@@ -73,7 +75,7 @@ interface EditorState {
   setIndex: (index: ModuleIndex) => void;
   load: (doc: WorkflowDoc) => void;
   toDoc: () => WorkflowDoc;
-  markSaved: (revision: number) => void;
+  markSaved: (revision: number, updatedAt: string) => void;
 
   onNodesChange: (changes: NodeChange<FlowNode>[]) => void;
   onEdgesChange: (changes: EdgeChange<FlowEdge>[]) => void;
@@ -145,7 +147,7 @@ export const useEditorStore = create<EditorState>()((set, get) => {
   return {
     ...(() => {
       const doc = emptyWorkflow("");
-      return { docId: doc.id, name: doc.name, params: doc.params };
+      return { docId: doc.id, name: doc.name, params: doc.params, updatedAt: doc.updatedAt };
     })(),
     nodes: [],
     edges: [],
@@ -172,6 +174,7 @@ export const useEditorStore = create<EditorState>()((set, get) => {
         edges: doc.edges.map((e) => ({ ...e })),
         revision: 0,
         savedRevision: 0,
+        updatedAt: doc.updatedAt,
         past: [],
         future: [],
         lastSnapshotKey: undefined,
@@ -194,11 +197,11 @@ export const useEditorStore = create<EditorState>()((set, get) => {
           target: e.target,
           targetHandle: e.targetHandle ?? "",
         })),
-        updatedAt: new Date().toISOString(),
+        updatedAt: s.updatedAt,
       };
     },
 
-    markSaved: (revision) => set({ savedRevision: revision }),
+    markSaved: (revision, updatedAt) => set({ savedRevision: revision, updatedAt }),
 
     beginChange: (key) => {
       const s = get();

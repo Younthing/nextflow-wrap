@@ -10,7 +10,10 @@ import { EditorAssistant } from "@/features/assistant/editor-assistant";
 import { RunDialog } from "@/features/runs/components/run-dialog";
 import { BUILTIN_MODULES } from "@/features/workflow/builtins";
 import { useModuleCatalog, useSaveWorkflow, useWorkflow } from "@/features/workflow/queries";
+import { keepLocalWorkflowEdits } from "@/features/workflow/revision";
+import type { WorkflowDoc } from "@/features/workflow/types";
 import { validateWorkflow } from "@/features/workflow/validate";
+import { ApiError, api } from "@/lib/api";
 import { useShortcutLabels } from "@/lib/use-action-shortcuts";
 import { EDITOR_ACTIONS } from "../commands";
 import { fitViewOptions } from "../fit-view";
@@ -49,6 +52,18 @@ function subscribeAppliedWorkflow(listener: () => void) {
 
 function useAppliedWorkflow() {
   return React.useSyncExternalStore(subscribeAppliedWorkflow, () => appliedWorkflow, () => SERVER_APPLIED);
+}
+
+/** A rejected leave-page save must not keep the stale canvas in front of a newer server copy. */
+async function adoptServerWorkflow(generation: number, id: string) {
+  try {
+    const current = await api<WorkflowDoc>(`/workflows/${id}`);
+    const state = useEditorStore.getState();
+    if (state.generation !== generation || state.docId !== id) return;
+    state.load(current);
+  } catch {
+    // The next open compares updatedAt and loads the server copy.
+  }
 }
 
 function editorIssues(
@@ -125,10 +140,17 @@ function Editor({ workflowId }: { workflowId: string }) {
   React.useEffect(() => {
     const doc = workflow.data;
     if (!doc || doc.id !== workflowId) return;
-    if (applied.id === workflowId && applied.token === mountToken) return;
     const state = store.getState();
-    // Keep unsaved edits when this document is already open. Otherwise load the route.
-    if (!(state.docId === doc.id && selectIsDirty(state))) store.getState().load(doc);
+    const appliedThisMount = applied.id === workflowId && applied.token === mountToken;
+    // A save echo for the revision we already have must not reload the canvas.
+    if (appliedThisMount && state.updatedAt === doc.updatedAt) return;
+    // Dirty edits stay only while the server revision they were based on is still current.
+    if (!keepLocalWorkflowEdits(
+      { docId: state.docId, updatedAt: state.updatedAt, dirty: selectIsDirty(state) },
+      doc,
+    )) {
+      store.getState().load(doc);
+    }
     markWorkflowApplied(workflowId, mountToken);
   }, [workflow.data, workflowId, store, applied.id, applied.token, mountToken]);
 
@@ -141,18 +163,26 @@ function Editor({ workflowId }: { workflowId: string }) {
       const confirmation = saveConfirmation(editorIssues(state));
       // Per-call mutate callbacks only run while this observer has listeners.
       // Leaving the editor drops them, so completion follows the mutation promise.
+      const docId = state.docId;
       void save.mutateAsync(state.toDoc()).then(
         (saved) => {
           const s = store.getState();
           // Another workflow was opened while saving: leave its identity alone.
           if (s.generation !== generation || s.docId !== saved.id) return;
-          s.markSaved(rev);
+          s.markSaved(rev, saved.updatedAt);
           if (!silent) {
             if (confirmation.tone === "warning") toast.warning(confirmation.message);
             else toast.success(confirmation.message);
           }
         },
-        (err: Error) => toast.error(`保存失败：${err.message}`),
+        (err: unknown) => {
+          if (err instanceof ApiError && err.status === 409) {
+            void adoptServerWorkflow(generation, docId);
+            return;
+          }
+          const message = err instanceof Error ? err.message : "保存失败";
+          toast.error(`保存失败：${message}`);
+        },
       );
     },
     [save, store],

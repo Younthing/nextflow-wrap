@@ -75,6 +75,11 @@ export function useSaveWorkflow() {
       qc.setQueryData(workflowKeys.detail(doc.id), doc);
       void qc.invalidateQueries({ queryKey: workflowKeys.all, exact: true });
     },
+    onError: (err, doc) => {
+      if (!(err instanceof ApiError) || err.status !== 409 || !doc.id) return;
+      void qc.invalidateQueries({ queryKey: workflowKeys.detail(doc.id) });
+      void qc.invalidateQueries({ queryKey: workflowKeys.all, exact: true });
+    },
   });
 }
 
@@ -106,6 +111,10 @@ export function useRenameWorkflow() {
     },
     onSuccess: (doc) => {
       qc.setQueryData(workflowKeys.detail(doc.id), doc);
+      void qc.invalidateQueries({ queryKey: workflowKeys.all, exact: true });
+    },
+    onError: (_err, { id }) => {
+      void qc.invalidateQueries({ queryKey: workflowKeys.detail(id) });
       void qc.invalidateQueries({ queryKey: workflowKeys.all, exact: true });
     },
   });

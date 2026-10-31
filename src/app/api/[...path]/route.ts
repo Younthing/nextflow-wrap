@@ -6,6 +6,7 @@ import catalog from "@/data/nf-core-modules.json";
 import samplesheetSchema from "@/data/samplesheet-schema.json";
 import { containedFile, fileResponse, readTail, resultFiles } from "@/features/runs/server/files";
 import { active, assertSameOrigin, cancelRun, HttpError, requireRun, resumeRun, runnerReady, submitRun, workflowInput } from "@/features/runs/server/service";
+import { workflowWriteIsStale } from "@/features/workflow/revision";
 import { store } from "@/lib/server/database";
 
 type Context = { params: Promise<{ path: string[] }> };
@@ -40,7 +41,9 @@ async function handle(request: Request, context: Context): Promise<Response> {
       if (!doc) throw new HttpError(404, "流程不存在");
       if (method === "GET") return json(doc);
       if (method === "PUT") {
-        const next = { ...workflowInput(await request.json()), id, updatedAt: new Date().toISOString() };
+        const incoming = workflowInput(await request.json());
+        if (workflowWriteIsStale(doc, incoming)) throw new HttpError(409, "流程已在其他地方更新，请重新打开");
+        const next = { ...incoming, id, updatedAt: new Date().toISOString() };
         store().saveWorkflow(next);
         return json(next);
       }
