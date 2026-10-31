@@ -21,7 +21,7 @@ ComfyUI 式的 Nextflow 可视化前端：在画布上用 nf-core 模块搭建�
 - 只接受值的输入（布尔、字符串、数字）直接显示为节点上的控件。
 - 双击画布搜索模块；把连线拖到空白处会搜索能接上的模块并自动连线。
 - 右侧面板编辑节点配置（`ext.args`、`ext.prefix`、资源标签、是否发布）或流程参数（按 `nextflow_schema.json` 自动生成）。
-- 撤销/重做（Ctrl+Z / Ctrl+Shift+Z），Ctrl+S 保存，已保存的流程会自动保存；也可以导入/导出 JSON。
+- 撤销/重做（Ctrl+Z / ⌘Z，重做 Ctrl+Shift+Z / ⇧⌘Z，也可 Ctrl+Y / ⌘Y），Ctrl+S / ⌘S 保存，已保存的流程会自动保存；也可以导入/导出 JSON。
 
 ## 一键运行
 

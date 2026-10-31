@@ -9,9 +9,9 @@ export interface ResolvedSessionOptions {
   cwd: string;
   model?: string;
   approvalPolicy: string;
-  /** `thread/start` sandbox mode (`readOnly`, `workspaceWrite`, `dangerFullAccess`). */
+  /** `thread/start` sandbox mode (`read-only`, `workspace-write`, `danger-full-access`). */
   sandbox: string;
-  /** `turn/start` sandboxPolicy.type. */
+  /** `turn/start` sandboxPolicy.type (`readOnly`, `workspaceWrite`, `dangerFullAccess`). */
   sandboxPolicyType: string;
   autoApproval: "accept" | "decline" | "manual";
   requestTimeoutMs: number;

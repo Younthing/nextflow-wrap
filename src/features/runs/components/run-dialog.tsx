@@ -11,7 +11,9 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { EDITOR_ACTIONS } from "@/features/editor/commands";
 import { useEditorStore } from "@/features/editor/store";
+import { useShortcutLabel } from "@/lib/use-action-shortcuts";
 import { CodeViewer } from "@/features/project/components/code-viewer";
 import { ProjectPreview } from "@/features/project/components/project-preview";
 import { defaultProjectSettings, GenerateError, generateProject } from "@/features/project/generate";
@@ -268,6 +270,7 @@ export function RunDialog({
   const real = !!health.data && !health.data.mocked;
   const docId = useEditorStore((s) => s.docId);
   const revision = useEditorStore((s) => s.revision);
+  const saveShortcut = useShortcutLabel(EDITOR_ACTIONS.save.shortcut);
   const index = useEditorStore((s) => s.index);
   const [config, setConfig] = React.useState<LaunchConfig>(() => readLaunchConfig(docId));
   const launchConfig: LaunchConfig = real ? { ...config, settings: { cpus: 2, memory: "2.GB", ...config.settings }, executor: "local", engine: "docker", resume: false } : config;
@@ -299,7 +302,7 @@ export function RunDialog({
   const command = launchCommand(launchConfig);
   const errors = issues.filter((i) => i.level === "error").map((i) => i.message);
   const problems = [
-    ...(docId ? [] : ["请先保存流程（Ctrl+S）"]),
+    ...(docId ? [] : [`请先保存流程（${saveShortcut}）`]),
     ...(generated?.error ? [`无法生成项目：${generated.error}`] : []),
     ...errors,
     ...launchProblems(launchConfig),
