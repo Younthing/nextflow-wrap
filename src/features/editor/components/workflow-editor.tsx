@@ -139,8 +139,10 @@ function Editor({ workflowId }: { workflowId: string }) {
       const rev = state.revision;
       const generation = state.generation;
       const confirmation = saveConfirmation(editorIssues(state));
-      save.mutate(state.toDoc(), {
-        onSuccess: (saved) => {
+      // Per-call mutate callbacks only run while this observer has listeners.
+      // Leaving the editor drops them, so completion follows the mutation promise.
+      void save.mutateAsync(state.toDoc()).then(
+        (saved) => {
           const s = store.getState();
           // Another workflow was opened while saving: leave its identity alone.
           if (s.generation !== generation || s.docId !== saved.id) return;
@@ -150,8 +152,8 @@ function Editor({ workflowId }: { workflowId: string }) {
             else toast.success(confirmation.message);
           }
         },
-        onError: (err) => toast.error(`保存失败：${err.message}`),
-      });
+        (err: Error) => toast.error(`保存失败：${err.message}`),
+      );
     },
     [save, store],
   );
