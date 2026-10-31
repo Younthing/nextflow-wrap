@@ -4,6 +4,7 @@ import * as React from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 
+import { EditorProvider } from "@/features/editor/editor-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AssistantProvider } from "@/features/assistant/assistant-provider";
 import { startMocking } from "@/lib/mocking";
@@ -50,7 +51,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <MockingGate>
-          <AssistantProvider>{children}</AssistantProvider>
+          <EditorProvider>
+            <AssistantProvider>{children}</AssistantProvider>
+          </EditorProvider>
         </MockingGate>
       </TooltipProvider>
       {process.env.NODE_ENV === "development" && (

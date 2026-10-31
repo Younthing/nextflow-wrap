@@ -1,8 +1,14 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  queryOptions,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 
-import { noteEditorRevision } from "@/features/editor/editor-save";
+import type { EditorStore } from "@/features/editor/store";
+import { getEditorSaveSession } from "@/features/editor/editor-save";
 import { api, ApiError } from "@/lib/api";
 import { indexModules } from "./catalog";
 import { duplicateWorkflowName, WORKFLOW_NAME_MAX } from "./library";
@@ -14,15 +20,20 @@ export const workflowKeys = {
 };
 
 // Defined once so React Query can memoise the derived index by data identity.
-const withIndex = (catalog: ModuleCatalog) => ({ ...catalog, index: indexModules(catalog.modules) });
+const withIndex = (catalog: ModuleCatalog) => ({
+  ...catalog,
+  index: indexModules(catalog.modules),
+});
 
-export function useModuleCatalog() {
-  return useQuery({
+export const moduleCatalogQueryOptions = () =>
+  queryOptions({
     queryKey: ["modules"],
     queryFn: () => api<ModuleCatalog>("/modules"),
     staleTime: Infinity,
-    select: withIndex,
   });
+
+export function useModuleCatalog() {
+  return useQuery({ ...moduleCatalogQueryOptions(), select: withIndex });
 }
 
 export interface JsonSchema {
@@ -52,12 +63,15 @@ export function useWorkflows() {
   });
 }
 
+export const fetchWorkflow = (id: string) =>
+  api<WorkflowDoc>(`/workflows/${id}`);
+
 export function useWorkflow(id: string | undefined) {
   return useQuery({
     queryKey: workflowKeys.detail(id ?? ""),
     // A missing workflow resolves to null so the editor can fall back to a new one.
     queryFn: () =>
-      api<WorkflowDoc>(`/workflows/${id}`).catch((err: unknown) => {
+      fetchWorkflow(id!).catch((err: unknown) => {
         if (err instanceof ApiError && err.status === 404) return null;
         throw err;
       }),
@@ -65,17 +79,23 @@ export function useWorkflow(id: string | undefined) {
   });
 }
 
-export function useSaveWorkflow() {
+export function useSaveWorkflow(store?: EditorStore) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (doc: WorkflowDoc) =>
       doc.id
-        ? api<WorkflowDoc>(`/workflows/${doc.id}`, { method: "PUT", body: JSON.stringify(doc) })
-        : api<WorkflowDoc>("/workflows", { method: "POST", body: JSON.stringify(doc) }),
+        ? api<WorkflowDoc>(`/workflows/${doc.id}`, {
+            method: "PUT",
+            body: JSON.stringify(doc),
+          })
+        : api<WorkflowDoc>("/workflows", {
+            method: "POST",
+            body: JSON.stringify(doc),
+          }),
     onSuccess: async (doc) => {
       // Note the revision before the cache update so the open editor can tell
       // this echo from a library rename before its updatedAt effect runs.
-      noteEditorRevision(doc.id, doc.updatedAt);
+      getEditorSaveSession(store).noteEditorRevision(doc.id, doc.updatedAt);
       await qc.cancelQueries({ queryKey: workflowKeys.detail(doc.id) });
       qc.setQueryData(workflowKeys.detail(doc.id), doc);
       void qc.invalidateQueries({ queryKey: workflowKeys.all, exact: true });
@@ -91,7 +111,8 @@ export function useSaveWorkflow() {
 export function useDeleteWorkflow() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api<void>(`/workflows/${id}`, { method: "DELETE" }),
+    mutationFn: (id: string) =>
+      api<void>(`/workflows/${id}`, { method: "DELETE" }),
     onSuccess: (_, id) => {
       qc.removeQueries({ queryKey: workflowKeys.detail(id) });
       void qc.invalidateQueries({ queryKey: workflowKeys.all, exact: true });
@@ -133,7 +154,11 @@ export function useDuplicateWorkflow() {
       const doc = await api<WorkflowDoc>(`/workflows/${id}`);
       return api<WorkflowDoc>("/workflows", {
         method: "POST",
-        body: JSON.stringify({ ...doc, id: "", name: duplicateWorkflowName(doc.name) }),
+        body: JSON.stringify({
+          ...doc,
+          id: "",
+          name: duplicateWorkflowName(doc.name),
+        }),
       });
     },
     onSuccess: (doc) => {

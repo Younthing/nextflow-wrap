@@ -6,12 +6,17 @@ import { ArrowLeft, Play, Redo2, Scan, Undo2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useShortcutLabel } from "@/lib/use-action-shortcuts";
 import { cn } from "@/lib/utils";
 import { EDITOR_ACTIONS } from "../commands";
 import { EDITOR_CHROME_CLASS } from "../marquee-text";
-import { selectIsDirty, useEditorStore } from "../store";
+import { selectIsDirty } from "../store";
+import { useEditorStore } from "@/features/editor/editor-provider";
 
 function IconButton({
   label,
@@ -22,13 +27,23 @@ function IconButton({
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <Button variant="ghost" size="icon-sm" type="button" aria-label={label} {...props}>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          type="button"
+          aria-label={label}
+          {...props}
+        >
           {children}
         </Button>
       </TooltipTrigger>
       <TooltipContent>
         {label}
-        {shortcut && <span className="ml-2 font-mono text-muted-foreground">{shortcut}</span>}
+        {shortcut && (
+          <span className="ml-2 font-mono text-muted-foreground">
+            {shortcut}
+          </span>
+        )}
       </TooltipContent>
     </Tooltip>
   );
@@ -58,7 +73,12 @@ export function EditorToolbar({
   const saveLabel = saving ? "保存中" : dirty ? "未保存" : "已保存";
 
   return (
-    <div className={cn(EDITOR_CHROME_CLASS, "glass flex h-12 shrink-0 items-center gap-1 rounded-xl px-2")}>
+    <div
+      className={cn(
+        EDITOR_CHROME_CLASS,
+        "glass flex h-12 shrink-0 items-center gap-1 rounded-xl px-2",
+      )}
+    >
       <Tooltip>
         <TooltipTrigger asChild>
           <Button asChild variant="ghost" size="icon-sm" className="shrink-0">
@@ -80,19 +100,46 @@ export function EditorToolbar({
           "flex shrink-0 items-center gap-1.5 px-1 text-xs",
           dirty ? "text-warning" : "text-muted-foreground",
         )}
-        title={saving ? "正在保存" : dirty ? `有未保存的修改（${saveShortcut}）` : "已保存"}
+        title={
+          saving
+            ? "正在保存"
+            : dirty
+              ? `有未保存的修改（${saveShortcut}）`
+              : "已保存"
+        }
       >
-        <span className={cn("size-1.5 rounded-full", saving || dirty ? "bg-warning" : "bg-success", saving && "animate-pulse")} />
+        <span
+          className={cn(
+            "size-1.5 rounded-full",
+            saving || dirty ? "bg-warning" : "bg-success",
+            saving && "animate-pulse",
+          )}
+        />
         {saveLabel}
       </span>
       <Separator orientation="vertical" className="mx-1 !h-5" />
-      <IconButton label={EDITOR_ACTIONS.undo.label} shortcut={undoShortcut} onClick={undo} disabled={!canUndo}>
+      <IconButton
+        label={EDITOR_ACTIONS.undo.label}
+        shortcut={undoShortcut}
+        onClick={undo}
+        disabled={!canUndo}
+      >
         <Undo2 />
       </IconButton>
-      <IconButton label={EDITOR_ACTIONS.redo.label} shortcut={redoShortcut} onClick={redo} disabled={!canRedo}>
+      <IconButton
+        label={EDITOR_ACTIONS.redo.label}
+        shortcut={redoShortcut}
+        onClick={redo}
+        disabled={!canRedo}
+      >
         <Redo2 />
       </IconButton>
-      <IconButton label={EDITOR_ACTIONS.fit.label} shortcut={fitShortcut} onClick={onFit} disabled={!canFit}>
+      <IconButton
+        label={EDITOR_ACTIONS.fit.label}
+        shortcut={fitShortcut}
+        onClick={onFit}
+        disabled={!canFit}
+      >
         <Scan />
       </IconButton>
       <div className="ml-auto flex shrink-0 items-center gap-2 whitespace-nowrap">

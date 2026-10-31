@@ -21,11 +21,14 @@ export function NavRail() {
   const pathname = usePathname();
 
   return (
-    <nav aria-label="主导航" className="glass flex w-14 shrink-0 flex-col items-center gap-2 rounded-xl py-3">
+    <nav
+      aria-label="主导航"
+      className="glass flex w-14 shrink-0 flex-col items-center gap-2 rounded-xl py-3"
+    >
       <Link
         href="/workflows"
         className="mb-2 grid size-9 place-items-center rounded-lg bg-primary font-mono text-sm font-bold text-primary-foreground"
-        aria-label="Nextflow Studio"
+        aria-label="nf · Nextflow Studio"
       >
         nf
       </Link>

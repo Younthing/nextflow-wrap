@@ -2,148 +2,45 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { ArrowLeft, Loader2, PencilRuler, Square, Trash2, TriangleAlert } from "lucide-react";
+import { PanelLoading, PanelNotice } from "@/components/ui/panel-notice";
+import { Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CodeViewer } from "@/features/project/components/code-viewer";
 import { ProjectPreview } from "@/features/project/components/project-preview";
-import { ENGINE_LABELS, executorDef } from "@/features/project/launch";
 import { ApiError } from "@/lib/api";
-import { formatDuration, formatTime, runDuration } from "../format";
 import { useModuleCatalog } from "@/features/workflow/queries";
 import { RunAssistant } from "@/features/assistant/run-assistant";
-import { isActive, useCancelRun, useDeleteRun, useRefreshWhenDone, useResumeRun, useRun, useRunTasks } from "../queries";
+import { isActive, useRefreshWhenDone, useRun, useRunTasks } from "../queries";
 import type { RunDetail } from "../types";
 import { RunGraph } from "./run-graph";
 import { RunConsole, RunResults } from "./run-results";
-import { ProgressBar, StatusBadge } from "./runs-table";
+import { RunHeader } from "./run-header";
 import { TaskTable } from "./task-table";
-
-function Stat({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="grid gap-0.5">
-      <span className="text-[11px] text-muted-foreground">{label}</span>
-      <span className="text-sm">{children}</span>
-    </div>
-  );
-}
-
-/** Re-renders every second while the run is active, so the duration ticks. */
-function useNow(active: boolean) {
-  const [now, setNow] = React.useState(() => Date.now());
-  React.useEffect(() => {
-    if (!active) return;
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, [active]);
-  return now;
-}
-
-function RunHeader({ run }: { run: RunDetail }) {
-  const router = useRouter();
-  const cancel = useCancelRun();
-  const del = useDeleteRun();
-  const resume = useResumeRun();
-  const active = isActive(run.status);
-  const now = useNow(active);
-  const p = run.progress;
-
-  return (
-    <header className="grid gap-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <Button asChild variant="ghost" size="icon-sm" aria-label="返回运行记录">
-          <Link href="/runs">
-            <ArrowLeft />
-          </Link>
-        </Button>
-        <h1 className="font-mono text-xl font-semibold">{run.runName}</h1>
-        <StatusBadge status={run.status} />
-        <span className="text-sm text-muted-foreground">{run.workflowName}</span>
-        <div className="ml-auto flex gap-2">
-          <Button asChild variant="outline" size="sm">
-            <Link href={`/workflows/${run.workflowId}`}>
-              <PencilRuler /> 在编辑器中打开
-            </Link>
-          </Button>
-          {!active && run.nextflowSessionId && <Button variant="outline" size="sm" disabled={resume.isPending} onClick={() => resume.mutate(run.id, { onSuccess: (next) => router.push(`/runs/${next.id}`) })}>从此运行恢复</Button>}
-          {active ? (
-            <Button variant="destructive" size="sm" disabled={cancel.isPending || run.phase === "cancelling"} onClick={() => cancel.mutate(run.id)}>
-              {cancel.isPending ? <Loader2 className="animate-spin" /> : <Square />} 停止
-            </Button>
-          ) : (
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={del.isPending}
-              onClick={() => del.mutate(run.id, { onSuccess: () => router.push("/runs") })}
-            >
-              <Trash2 /> 删除
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {run.phase && <p className="text-xs text-muted-foreground">{{ queued: "等待 runner 领取", preparing: "正在准备项目和安装依赖", executing: "执行中 · 任务数量随流程展开更新", finalizing: "正在核对任务与结果", cancelling: "正在停止计算并清理任务" }[run.phase]}</p>}
-      {(cancel.error || del.error || resume.error) && <p role="alert" className="text-sm text-destructive">{(cancel.error || del.error || resume.error)?.message}</p>}
-
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
-        <Stat label="运行环境">{executorDef(run.executor).name}</Stat>
-        <Stat label="软件环境">
-          {ENGINE_LABELS[run.launch.engine]}
-          {run.launch.extraProfiles.length > 0 && <span className="font-mono text-xs text-muted-foreground"> +{run.launch.extraProfiles.join(",")}</span>}
-        </Stat>
-        <Stat label="提交时间">{formatTime(run.submittedAt)}</Stat>
-        <Stat label="耗时">
-          <span className="font-mono">{formatDuration(runDuration(run, now))}</span>
-        </Stat>
-        <Stat label="工作目录">
-          <span className="font-mono text-xs break-all">{run.launch.workDir}</span>
-        </Stat>
-        <Stat label="任务">
-          <span className="font-mono">
-            已发现 {p.total} · 完成 {p.completed + p.cached}
-            {p.running > 0 && <span className="text-primary"> · {p.running} 运行中</span>}
-            {p.failed > 0 && <span className="text-destructive"> · {p.failed} 失败</span>}
-            {p.aborted > 0 && <span className="text-warning"> · {p.aborted} 中止</span>}
-          </span>
-        </Stat>
-      </div>
-      <ProgressBar progress={p} className="h-2" />
-
-      {run.errorMessage && (
-        <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          <TriangleAlert className="mt-0.5 size-4 shrink-0" />
-          <span className="font-mono text-xs leading-5">{run.errorMessage}</span>
-        </div>
-      )}
-    </header>
-  );
-}
 
 export function RunDetailView({ params }: { params: Promise<{ id: string }> }) {
   const { id } = React.use(params);
   const run = useRun(id);
 
   if (run.isPending) {
-    return (
-      <div className="glass grid size-full place-items-center rounded-xl">
-        <Loader2 className="size-5 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <PanelLoading />;
   }
   if (run.error) {
     const missing = run.error instanceof ApiError && run.error.status === 404;
     return (
-      <div className="glass flex size-full flex-col items-center justify-center gap-3 rounded-xl text-sm">
-        <span className={missing ? "text-muted-foreground" : "text-destructive"}>
-          {missing ? "这个运行不存在或已被删除" : `加载失败：${run.error.message}`}
-        </span>
+      <PanelNotice
+        message={
+          missing
+            ? "这个运行不存在或已被删除"
+            : `加载失败：${run.error.message}`
+        }
+        tone={missing ? "muted" : "danger"}
+      >
         <Button asChild variant="outline" size="sm">
           <Link href="/runs">返回运行记录</Link>
         </Button>
-      </div>
+      </PanelNotice>
     );
   }
 
@@ -166,7 +63,9 @@ function RunBody({ run: data }: { run: RunDetail }) {
       <Tabs value={tab} onValueChange={setTab} className="min-h-0 flex-1">
         <TabsList>
           <TabsTrigger value="graph">流程图</TabsTrigger>
-          <TabsTrigger value="tasks">任务{tasks.data && ` · ${tasks.data.length}`}</TabsTrigger>
+          <TabsTrigger value="tasks">
+            任务{tasks.data && ` · ${tasks.data.length}`}
+          </TabsTrigger>
           <TabsTrigger value="log">日志</TabsTrigger>
           <TabsTrigger value="results">结果</TabsTrigger>
           <TabsTrigger value="launch">启动配置</TabsTrigger>
@@ -189,7 +88,9 @@ function RunBody({ run: data }: { run: RunDetail }) {
               <Loader2 className="size-5 animate-spin text-muted-foreground" />
             </div>
           )}
-          <p className="pt-2 text-xs text-muted-foreground">点击节点查看它的任务和日志。</p>
+          <p className="pt-2 text-xs text-muted-foreground">
+            点击节点查看它的任务和日志。
+          </p>
         </TabsContent>
         <TabsContent value="tasks" className="flex min-h-0 flex-col">
           <TaskTable
@@ -197,7 +98,9 @@ function RunBody({ run: data }: { run: RunDetail }) {
             tasks={tasks.data ?? []}
             active={active}
             nodeFilter={nodeFilter}
-            nodeLabel={data.workflow.nodes.find((n) => n.id === nodeFilter)?.data.alias}
+            nodeLabel={
+              data.workflow.nodes.find((n) => n.id === nodeFilter)?.data.alias
+            }
             onClearFilter={() => setNodeFilter(null)}
           />
         </TabsContent>
@@ -205,24 +108,48 @@ function RunBody({ run: data }: { run: RunDetail }) {
           <RunConsole runId={data.id} active={active} />
         </TabsContent>
         <TabsContent value="results" className="flex min-h-0 flex-col">
-          <RunResults runId={data.id} active={active} outdir={String(data.params.outdir ?? "results")} />
+          <RunResults
+            runId={data.id}
+            active={active}
+            outdir={String(data.params.outdir ?? "results")}
+          />
         </TabsContent>
-        <TabsContent value="launch" className="grid min-h-0 content-start gap-4 overflow-auto lg:grid-cols-2">
+        <TabsContent
+          value="launch"
+          className="grid min-h-0 content-start gap-4 overflow-auto lg:grid-cols-2"
+        >
           <div className="grid content-start gap-1.5 lg:col-span-2">
-            <span className="text-xs font-semibold text-muted-foreground">命令</span>
-            <CodeViewer code={data.command} language="text" lineNumbers={false} />
+            <span className="text-xs font-semibold text-muted-foreground">
+              命令
+            </span>
+            <CodeViewer
+              code={data.command}
+              language="text"
+              lineNumbers={false}
+            />
           </div>
           <div className="grid content-start gap-1.5">
-            <span className="text-xs font-semibold text-muted-foreground">run.config</span>
+            <span className="text-xs font-semibold text-muted-foreground">
+              run.config
+            </span>
             <CodeViewer code={data.runConfig} language="groovy" />
           </div>
           <div className="grid content-start gap-1.5">
-            <span className="text-xs font-semibold text-muted-foreground">params.json</span>
-            <CodeViewer code={JSON.stringify(data.params, null, 2)} language="json" />
+            <span className="text-xs font-semibold text-muted-foreground">
+              params.json
+            </span>
+            <CodeViewer
+              code={JSON.stringify(data.params, null, 2)}
+              language="json"
+            />
           </div>
         </TabsContent>
         <TabsContent value="project" className="flex min-h-0 flex-col">
-          <ProjectPreview files={data.project.files} components={data.project.components} className="min-h-0 flex-1" />
+          <ProjectPreview
+            files={data.project.files}
+            components={data.project.components}
+            className="min-h-0 flex-1"
+          />
         </TabsContent>
       </Tabs>
     </section>

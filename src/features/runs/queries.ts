@@ -1,12 +1,23 @@
 "use client";
 
 import * as React from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  queryOptions,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
 import type { HealthStatus } from "@/lib/api-types";
 import type { ResultFile } from "./outputs";
-import type { LaunchRequest, RunDetail, RunStatus, RunSummary, TaskRecord } from "./types";
+import type {
+  LaunchRequest,
+  RunDetail,
+  RunStatus,
+  RunSummary,
+  TaskRecord,
+} from "./types";
 
 export const runKeys = {
   all: ["runs"] as const,
@@ -14,28 +25,49 @@ export const runKeys = {
   detail: (id: string) => ["runs", "detail", id] as const,
 };
 
-export const isActive = (status: RunStatus) => status === "submitted" || status === "running";
+export const isActive = (status: RunStatus) =>
+  status === "submitted" || status === "running";
 
 const POLL_MS = 2_000;
 
+export const healthQueryOptions = () =>
+  queryOptions({
+    queryKey: ["health"],
+    queryFn: () => api<HealthStatus>("/health"),
+  });
+
 export function useHealthStatus(enabled = true) {
-  return useQuery({ queryKey: ["health"], queryFn: () => api<HealthStatus>("/health"), refetchInterval: 10_000, enabled });
+  return useQuery({
+    ...healthQueryOptions(),
+    refetchInterval: 10_000,
+    enabled,
+  });
 }
 
 export function useResumeRun() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api<RunDetail>(`/runs/${id}/resume`, { method: "POST" }),
-    onSuccess: (run) => { qc.setQueryData(runKeys.detail(run.id), run); void qc.invalidateQueries({ queryKey: ["runs", "list"] }); },
+    mutationFn: (id: string) =>
+      api<RunDetail>(`/runs/${id}/resume`, { method: "POST" }),
+    onSuccess: (run) => {
+      qc.setQueryData(runKeys.detail(run.id), run);
+      void qc.invalidateQueries({ queryKey: ["runs", "list"] });
+    },
   });
 }
 
 export function useRuns(workflowId?: string) {
   return useQuery({
     queryKey: runKeys.list(workflowId),
-    queryFn: () => api<RunSummary[]>(workflowId ? `/runs?workflowId=${encodeURIComponent(workflowId)}` : "/runs"),
+    queryFn: () =>
+      api<RunSummary[]>(
+        workflowId
+          ? `/runs?workflowId=${encodeURIComponent(workflowId)}`
+          : "/runs",
+      ),
     // Keep polling while anything is still running.
-    refetchInterval: (q) => (q.state.data?.some((r) => isActive(r.status)) ? POLL_MS : false),
+    refetchInterval: (q) =>
+      q.state.data?.some((r) => isActive(r.status)) ? POLL_MS : false,
   });
 }
 
@@ -43,14 +75,20 @@ export function useRun(id: string) {
   return useQuery({
     queryKey: runKeys.detail(id),
     queryFn: () => api<RunDetail>(`/runs/${id}`),
-    refetchInterval: (q) => (q.state.data && isActive(q.state.data.status) ? POLL_MS / 2 : false),
+    refetchInterval: (q) =>
+      q.state.data && isActive(q.state.data.status) ? POLL_MS / 2 : false,
   });
 }
 
 export function useLaunchRun() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (req: LaunchRequest) => api<RunDetail>("/runs", { method: "POST", headers: { "idempotency-key": crypto.randomUUID() }, body: JSON.stringify(req) }),
+    mutationFn: (req: LaunchRequest) =>
+      api<RunDetail>("/runs", {
+        method: "POST",
+        headers: { "idempotency-key": crypto.randomUUID() },
+        body: JSON.stringify(req),
+      }),
     onSuccess: (run) => {
       qc.setQueryData(runKeys.detail(run.id), run);
       void qc.invalidateQueries({ queryKey: ["runs", "list"] });
@@ -61,7 +99,8 @@ export function useLaunchRun() {
 export function useCancelRun() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api<RunDetail>(`/runs/${id}/cancel`, { method: "POST" }),
+    mutationFn: (id: string) =>
+      api<RunDetail>(`/runs/${id}/cancel`, { method: "POST" }),
     onSuccess: (run) => {
       qc.setQueryData(runKeys.detail(run.id), run);
       void qc.invalidateQueries({ queryKey: ["runs", "list"] });
@@ -94,7 +133,10 @@ export function useRefreshWhenDone(id: string, active: boolean) {
   React.useEffect(() => {
     if (wasActive.current && !active) {
       const detail = runKeys.detail(id);
-      void qc.invalidateQueries({ queryKey: detail, predicate: (q) => q.queryKey.length > detail.length });
+      void qc.invalidateQueries({
+        queryKey: detail,
+        predicate: (q) => q.queryKey.length > detail.length,
+      });
     }
     wasActive.current = active;
   }, [qc, id, active]);
@@ -119,7 +161,10 @@ export function useRunLog(id: string, active: boolean) {
 export function useTaskLog(id: string, hash: string | null, active: boolean) {
   return useQuery({
     queryKey: [...runKeys.detail(id), "task-log", hash],
-    queryFn: () => api<{ text: string }>(`/runs/${id}/task-log?hash=${encodeURIComponent(hash ?? "")}`),
+    queryFn: () =>
+      api<{ text: string }>(
+        `/runs/${id}/task-log?hash=${encodeURIComponent(hash ?? "")}`,
+      ),
     enabled: !!hash,
     refetchInterval: pollWhile(active),
   });
@@ -137,9 +182,17 @@ export function useResultContent(id: string, path: string | null) {
   return useQuery({
     queryKey: [...runKeys.detail(id), "content", path],
     queryFn: async () => {
-      const res = await fetch(`/api/runs/${id}/results/content?path=${encodeURIComponent(path ?? "")}`);
-      if (!res.ok) throw new Error((await res.json().catch(() => null))?.message ?? res.statusText);
-      return { contentType: res.headers.get("content-type") ?? "text/plain", body: await res.text() };
+      const res = await fetch(
+        `/api/runs/${id}/results/content?path=${encodeURIComponent(path ?? "")}`,
+      );
+      if (!res.ok)
+        throw new Error(
+          (await res.json().catch(() => null))?.message ?? res.statusText,
+        );
+      return {
+        contentType: res.headers.get("content-type") ?? "text/plain",
+        body: await res.text(),
+      };
     },
     enabled: !!path,
     staleTime: Infinity,

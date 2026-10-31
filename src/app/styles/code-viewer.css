@@ -1,0 +1,21 @@
+/* Code viewer tokens */
+.tok-comment {
+  color: var(--muted-foreground);
+  font-style: italic;
+}
+.tok-string {
+  color: var(--syntax-string);
+}
+.tok-keyword {
+  color: var(--syntax-keyword);
+}
+.tok-number {
+  color: var(--syntax-number);
+}
+.tok-process {
+  color: var(--primary);
+  font-weight: 600;
+}
+.tok-key {
+  color: var(--syntax-key);
+}

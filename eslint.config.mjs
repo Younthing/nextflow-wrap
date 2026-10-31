@@ -14,6 +14,8 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Generated files.
     "public/mockServiceWorker.js",
+    "OpenBot/**",
+    ".codegraph/**",
     "storybook-static/**",
   ]),
 ]);

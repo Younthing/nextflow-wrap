@@ -15,8 +15,16 @@ import { create } from "zustand";
 import { resolveNodeDef, type ModuleIndex } from "@/features/workflow/catalog";
 import { emptyWorkflow } from "@/features/workflow/document";
 import { createNode, newId } from "@/features/workflow/nodes";
-import { checkCompatibility, findPort, type Compatibility } from "@/features/workflow/ports";
-import { materializeClipboard, selectionClipboard, type NodeClipboard } from "./clipboard";
+import {
+  checkCompatibility,
+  findPort,
+  type Compatibility,
+} from "@/features/workflow/ports";
+import {
+  materializeClipboard,
+  selectionClipboard,
+  type NodeClipboard,
+} from "./clipboard";
 import { placeWithoutOverlap } from "./placement";
 import type {
   ModuleDef,
@@ -48,7 +56,8 @@ const snapshotOf = (s: Snapshot): Snapshot => ({
 
 const HISTORY_LIMIT = 100;
 
-interface EditorState {
+export interface EditorState {
+  appliedWorkflow: { id: string | null; token: symbol | null };
   docId: string;
   name: string;
   description?: string;
@@ -82,7 +91,11 @@ interface EditorState {
   checkConnection: (connection: Connection | FlowEdge) => Compatibility;
   connect: (connection: Connection) => Compatibility;
   addNode: (def: ModuleDef, position: { x: number; y: number }) => FlowNode;
-  updateNodeData: (id: string, patch: Partial<WorkflowNodeData>, historyKey?: string) => void;
+  updateNodeData: (
+    id: string,
+    patch: Partial<WorkflowNodeData>,
+    historyKey?: string,
+  ) => void;
   setWidget: (id: string, name: string, value: WidgetValue) => void;
   removeNodes: (ids: string[]) => void;
   setName: (name: string) => void;
@@ -107,7 +120,13 @@ function toFlowNode(n: WorkflowDoc["nodes"][number]): FlowNode {
 }
 
 function pastedNode(node: NodeClipboard["nodes"][number]): FlowNode {
-  return { id: node.id, type: "module", position: node.position, data: node.data, selected: true };
+  return {
+    id: node.id,
+    type: "module",
+    position: node.position,
+    data: node.data,
+    selected: true,
+  };
 }
 
 function pastedEdge(edge: NodeClipboard["edges"][number]): FlowEdge {
@@ -120,296 +139,378 @@ function pastedEdge(edge: NodeClipboard["edges"][number]): FlowEdge {
   };
 }
 
-export const useEditorStore = create<EditorState>()((set, get) => {
-  /** Applies a content change and bumps the revision. */
-  const commit = (patch: Partial<EditorState>) =>
-    set((s) => ({ ...patch, revision: s.revision + 1 }));
+export const createEditorStore = () =>
+  create<EditorState>()((set, get) => {
+    /** Applies a content change and bumps the revision. */
+    const commit = (patch: Partial<EditorState>) =>
+      set((s) => ({ ...patch, revision: s.revision + 1 }));
 
-  const applyClipboard = (clip: NodeClipboard, step: number, extra?: Partial<EditorState>) => {
-    const created = materializeClipboard(clip, get().nodes, get().index, step, get().params);
-    get().beginChange();
-    commit({
-      nodes: [
-        ...get().nodes.map((node) => (node.selected ? { ...node, selected: false } : node)),
-        ...created.nodes.map(pastedNode),
-      ],
-      // The copies become the selection. Clear links that were already selected
-      // so Delete and Backspace remove the copies and leave the source graph.
-      edges: [
-        ...get().edges.map((edge) => (edge.selected ? { ...edge, selected: false } : edge)),
-        ...created.edges.map(pastedEdge),
-      ],
-      params: { ...get().params, ...created.params },
-      ...extra,
-    });
-  };
-
-  return {
-    ...(() => {
-      const doc = emptyWorkflow("");
-      return { docId: doc.id, name: doc.name, params: doc.params, updatedAt: doc.updatedAt };
-    })(),
-    nodes: [],
-    edges: [],
-    index: new Map(),
-    revision: 0,
-    savedRevision: 0,
-    generation: 0,
-    past: [],
-    future: [],
-    clipboard: null,
-    clipboardPastes: 0,
-
-    setIndex: (index) => set({ index }),
-
-    load: (doc) =>
-      set((s) => ({
-        generation: s.generation + 1,
-        docId: doc.id,
-        name: doc.name,
-        description: doc.description,
-        project: doc.project,
-        params: doc.params,
-        nodes: doc.nodes.map(toFlowNode),
-        edges: doc.edges.map((e) => ({ ...e })),
-        revision: 0,
-        savedRevision: 0,
-        updatedAt: doc.updatedAt,
-        past: [],
-        future: [],
-        lastSnapshotKey: undefined,
-      })),
-
-    toDoc: () => {
-      const s = get();
-      return {
-        id: s.docId,
-        name: s.name,
-        description: s.description,
-        project: s.project,
-        version: 1,
-        params: s.params,
-        nodes: s.nodes.map((n) => ({ id: n.id, position: n.position, data: n.data })),
-        edges: s.edges.map((e) => ({
-          id: e.id,
-          source: e.source,
-          sourceHandle: e.sourceHandle ?? "",
-          target: e.target,
-          targetHandle: e.targetHandle ?? "",
-        })),
-        updatedAt: s.updatedAt,
-      };
-    },
-
-    markSaved: (revision, updatedAt) => set({ savedRevision: revision, updatedAt }),
-
-    beginChange: (key) => {
-      const s = get();
-      // Consecutive edits to the same field collapse into one undo step.
-      if (key && key === s.lastSnapshotKey) return;
-      const snap = snapshotOf(s);
-      set({
-        past: [...s.past, snap].slice(-HISTORY_LIMIT),
-        future: [],
-        lastSnapshotKey: key,
-      });
-    },
-
-    undo: () => {
-      const s = get();
-      const prev = s.past.at(-1);
-      if (!prev) return;
-      commit({
-        ...prev,
-        past: s.past.slice(0, -1),
-        future: [snapshotOf(s), ...s.future],
-        lastSnapshotKey: undefined,
-      });
-    },
-
-    redo: () => {
-      const s = get();
-      const next = s.future[0];
-      if (!next) return;
-      commit({
-        ...next,
-        past: [...s.past, snapshotOf(s)],
-        future: s.future.slice(1),
-        lastSnapshotKey: undefined,
-      });
-    },
-
-    copySelected: () => {
-      const { nodes, edges, params } = get();
-      const clip = selectionClipboard(nodes, edges, params);
-      if (!clip) return;
-      set({ clipboard: clip, clipboardPastes: 0 });
-    },
-
-    pasteFromClipboard: () => {
-      const { clipboard, clipboardPastes } = get();
-      if (!clipboard?.nodes.length) return;
-      applyClipboard(clipboard, clipboardPastes + 1, { clipboardPastes: clipboardPastes + 1 });
-    },
-
-    duplicateSelected: () => {
-      const { nodes, edges, params } = get();
-      const clip = selectionClipboard(nodes, edges, params);
-      if (!clip) return;
-      applyClipboard(clip, 1);
-    },
-
-    selectAllNodes: () => {
-      const nodes = get().nodes;
-      if (nodes.length === 0 || nodes.every((node) => node.selected)) return;
-      set({ nodes: nodes.map((node) => (node.selected ? node : { ...node, selected: true })) });
-    },
-
-    clearSelection: () => {
-      const { nodes, edges } = get();
-      if (!selectHasSelection({ nodes, edges })) return;
-      set({
-        nodes: nodes.some((node) => node.selected)
-          ? nodes.map((node) => (node.selected ? { ...node, selected: false } : node))
-          : nodes,
-        edges: edges.some((edge) => edge.selected)
-          ? edges.map((edge) => (edge.selected ? { ...edge, selected: false } : edge))
-          : edges,
-      });
-    },
-
-    deleteSelected: () => {
-      const { nodes, edges } = get();
-      const dropNodes = new Set<string>();
-      for (const node of nodes) if (node.selected) dropNodes.add(node.id);
-      let droppedEdge = false;
-      const nextEdges = edges.filter((edge) => {
-        const drop = Boolean(edge.selected) || dropNodes.has(edge.source) || dropNodes.has(edge.target);
-        if (drop) droppedEdge = true;
-        return !drop;
-      });
-      if (dropNodes.size === 0 && !droppedEdge) return;
+    const applyClipboard = (
+      clip: NodeClipboard,
+      step: number,
+      extra?: Partial<EditorState>,
+    ) => {
+      const created = materializeClipboard(
+        clip,
+        get().nodes,
+        get().index,
+        step,
+        get().params,
+      );
       get().beginChange();
       commit({
-        nodes: dropNodes.size === 0 ? nodes : nodes.filter((node) => !dropNodes.has(node.id)),
-        edges: nextEdges,
+        nodes: [
+          ...get().nodes.map((node) =>
+            node.selected ? { ...node, selected: false } : node,
+          ),
+          ...created.nodes.map(pastedNode),
+        ],
+        // The copies become the selection. Clear links that were already selected
+        // so Delete and Backspace remove the copies and leave the source graph.
+        edges: [
+          ...get().edges.map((edge) =>
+            edge.selected ? { ...edge, selected: false } : edge,
+          ),
+          ...created.edges.map(pastedEdge),
+        ],
+        params: { ...get().params, ...created.params },
+        ...extra,
       });
-    },
+    };
 
-    onNodesChange: (changes) => {
-      const meaningful = changes.some(
-        (c) => c.type === "remove" || c.type === "add" || (c.type === "position" && !c.dragging),
-      );
-      if (changes.some((c) => c.type === "remove")) {
-        get().beginChange();
-        const removed = new Set(changes.flatMap((c) => (c.type === "remove" ? [c.id] : [])));
+    return {
+      ...(() => {
+        const doc = emptyWorkflow("");
+        return {
+          docId: doc.id,
+          name: doc.name,
+          params: doc.params,
+          updatedAt: doc.updatedAt,
+        };
+      })(),
+      appliedWorkflow: { id: null, token: null },
+      nodes: [],
+      edges: [],
+      index: new Map(),
+      revision: 0,
+      savedRevision: 0,
+      generation: 0,
+      past: [],
+      future: [],
+      clipboard: null,
+      clipboardPastes: 0,
+
+      setIndex: (index) => set({ index }),
+
+      load: (doc) =>
         set((s) => ({
-          edges: s.edges.filter((e) => !removed.has(e.source) && !removed.has(e.target)),
-        }));
-      }
-      const nodes = applyNodeChanges(changes, get().nodes);
-      if (meaningful) commit({ nodes });
-      else set({ nodes });
-    },
+          generation: s.generation + 1,
+          docId: doc.id,
+          name: doc.name,
+          description: doc.description,
+          project: doc.project,
+          params: doc.params,
+          nodes: doc.nodes.map(toFlowNode),
+          edges: doc.edges.map((e) => ({ ...e })),
+          revision: 0,
+          savedRevision: 0,
+          updatedAt: doc.updatedAt,
+          past: [],
+          future: [],
+          lastSnapshotKey: undefined,
+        })),
 
-    onEdgesChange: (changes) => {
-      if (changes.some((c) => c.type === "remove")) {
+      toDoc: () => {
+        const s = get();
+        return {
+          id: s.docId,
+          name: s.name,
+          description: s.description,
+          project: s.project,
+          version: 1,
+          params: s.params,
+          nodes: s.nodes.map((n) => ({
+            id: n.id,
+            position: n.position,
+            data: n.data,
+          })),
+          edges: s.edges.map((e) => ({
+            id: e.id,
+            source: e.source,
+            sourceHandle: e.sourceHandle ?? "",
+            target: e.target,
+            targetHandle: e.targetHandle ?? "",
+          })),
+          updatedAt: s.updatedAt,
+        };
+      },
+
+      markSaved: (revision, updatedAt) =>
+        set({ savedRevision: revision, updatedAt }),
+
+      beginChange: (key) => {
+        const s = get();
+        // Consecutive edits to the same field collapse into one undo step.
+        if (key && key === s.lastSnapshotKey) return;
+        const snap = snapshotOf(s);
+        set({
+          past: [...s.past, snap].slice(-HISTORY_LIMIT),
+          future: [],
+          lastSnapshotKey: key,
+        });
+      },
+
+      undo: () => {
+        const s = get();
+        const prev = s.past.at(-1);
+        if (!prev) return;
+        commit({
+          ...prev,
+          past: s.past.slice(0, -1),
+          future: [snapshotOf(s), ...s.future],
+          lastSnapshotKey: undefined,
+        });
+      },
+
+      redo: () => {
+        const s = get();
+        const next = s.future[0];
+        if (!next) return;
+        commit({
+          ...next,
+          past: [...s.past, snapshotOf(s)],
+          future: s.future.slice(1),
+          lastSnapshotKey: undefined,
+        });
+      },
+
+      copySelected: () => {
+        const { nodes, edges, params } = get();
+        const clip = selectionClipboard(nodes, edges, params);
+        if (!clip) return;
+        set({ clipboard: clip, clipboardPastes: 0 });
+      },
+
+      pasteFromClipboard: () => {
+        const { clipboard, clipboardPastes } = get();
+        if (!clipboard?.nodes.length) return;
+        applyClipboard(clipboard, clipboardPastes + 1, {
+          clipboardPastes: clipboardPastes + 1,
+        });
+      },
+
+      duplicateSelected: () => {
+        const { nodes, edges, params } = get();
+        const clip = selectionClipboard(nodes, edges, params);
+        if (!clip) return;
+        applyClipboard(clip, 1);
+      },
+
+      selectAllNodes: () => {
+        const nodes = get().nodes;
+        if (nodes.length === 0 || nodes.every((node) => node.selected)) return;
+        set({
+          nodes: nodes.map((node) =>
+            node.selected ? node : { ...node, selected: true },
+          ),
+        });
+      },
+
+      clearSelection: () => {
+        const { nodes, edges } = get();
+        if (!selectHasSelection({ nodes, edges })) return;
+        set({
+          nodes: nodes.some((node) => node.selected)
+            ? nodes.map((node) =>
+                node.selected ? { ...node, selected: false } : node,
+              )
+            : nodes,
+          edges: edges.some((edge) => edge.selected)
+            ? edges.map((edge) =>
+                edge.selected ? { ...edge, selected: false } : edge,
+              )
+            : edges,
+        });
+      },
+
+      deleteSelected: () => {
+        const { nodes, edges } = get();
+        const dropNodes = new Set<string>();
+        for (const node of nodes) if (node.selected) dropNodes.add(node.id);
+        let droppedEdge = false;
+        const nextEdges = edges.filter((edge) => {
+          const drop =
+            Boolean(edge.selected) ||
+            dropNodes.has(edge.source) ||
+            dropNodes.has(edge.target);
+          if (drop) droppedEdge = true;
+          return !drop;
+        });
+        if (dropNodes.size === 0 && !droppedEdge) return;
         get().beginChange();
-        commit({ edges: applyEdgeChanges(changes, get().edges) });
-      } else {
-        set({ edges: applyEdgeChanges(changes, get().edges) });
-      }
-    },
+        commit({
+          nodes:
+            dropNodes.size === 0
+              ? nodes
+              : nodes.filter((node) => !dropNodes.has(node.id)),
+          edges: nextEdges,
+        });
+      },
 
-    checkConnection: (connection) => {
-      const { nodes, index } = get();
-      if (connection.source === connection.target) return { ok: false, reason: "不能连接到自身" };
-      const src = nodes.find((n) => n.id === connection.source);
-      const dst = nodes.find((n) => n.id === connection.target);
-      const srcDef = src && resolveNodeDef(index, src.data);
-      const dstDef = dst && resolveNodeDef(index, dst.data);
-      const out = srcDef && findPort(srcDef, connection.sourceHandle, "out");
-      const inp = dstDef && findPort(dstDef, connection.targetHandle, "in");
-      if (!out || !inp) return { ok: false, reason: "找不到端口" };
-      return checkCompatibility(out, inp);
-    },
-
-    connect: (connection) => {
-      const result = get().checkConnection(connection);
-      if (!result.ok) return result;
-      const { nodes, edges, index } = get();
-      const dst = nodes.find((n) => n.id === connection.target)!;
-      const inp = findPort(resolveNodeDef(index, dst.data)!, connection.targetHandle, "in")!;
-
-      get().beginChange();
-      // Like ComfyUI, a single-value input keeps only its newest link.
-      const kept = inp.collect
-        ? edges
-        : edges.filter(
-            (e) => !(e.target === connection.target && e.targetHandle === connection.targetHandle),
+      onNodesChange: (changes) => {
+        const meaningful = changes.some(
+          (c) =>
+            c.type === "remove" ||
+            c.type === "add" ||
+            (c.type === "position" && !c.dragging),
+        );
+        if (changes.some((c) => c.type === "remove")) {
+          get().beginChange();
+          const removed = new Set(
+            changes.flatMap((c) => (c.type === "remove" ? [c.id] : [])),
           );
-      commit({ edges: addEdge({ ...connection, id: newId("e") }, kept) });
-      return result;
-    },
+          set((s) => ({
+            edges: s.edges.filter(
+              (e) => !removed.has(e.source) && !removed.has(e.target),
+            ),
+          }));
+        }
+        const nodes = applyNodeChanges(changes, get().nodes);
+        if (meaningful) commit({ nodes });
+        else set({ nodes });
+      },
 
-    addNode: (def, position) => {
-      get().beginChange();
-      // Drop, search, and the other single-node adds share this nudge.
-      // Paste and duplicate stay on the PASTE_GAP stair-step in the clipboard.
-      const placed = placeWithoutOverlap(
-        position,
-        get().nodes.map((node) => node.position),
-      );
-      const node = toFlowNode(
-        createNode(def, placed, get().nodes.map((n) => ({ id: n.id, position: n.position, data: n.data }))),
-      );
-      commit({
-        nodes: [...get().nodes.map((n) => ({ ...n, selected: false })), { ...node, selected: true }],
-      });
-      return node;
-    },
+      onEdgesChange: (changes) => {
+        if (changes.some((c) => c.type === "remove")) {
+          get().beginChange();
+          commit({ edges: applyEdgeChanges(changes, get().edges) });
+        } else {
+          set({ edges: applyEdgeChanges(changes, get().edges) });
+        }
+      },
 
-    updateNodeData: (id, patch, historyKey) => {
-      get().beginChange(historyKey ?? `node:${id}`);
-      commit({
-        nodes: get().nodes.map((n) => (n.id === id ? { ...n, data: { ...n.data, ...patch } } : n)),
-      });
-    },
+      checkConnection: (connection) => {
+        const { nodes, index } = get();
+        if (connection.source === connection.target)
+          return { ok: false, reason: "不能连接到自身" };
+        const src = nodes.find((n) => n.id === connection.source);
+        const dst = nodes.find((n) => n.id === connection.target);
+        const srcDef = src && resolveNodeDef(index, src.data);
+        const dstDef = dst && resolveNodeDef(index, dst.data);
+        const out = srcDef && findPort(srcDef, connection.sourceHandle, "out");
+        const inp = dstDef && findPort(dstDef, connection.targetHandle, "in");
+        if (!out || !inp) return { ok: false, reason: "找不到端口" };
+        return checkCompatibility(out, inp);
+      },
 
-    setWidget: (id, name, value) => {
-      const node = get().nodes.find((n) => n.id === id);
-      if (!node) return;
-      get().updateNodeData(id, { widgets: { ...node.data.widgets, [name]: value } }, `widget:${id}:${name}`);
-    },
+      connect: (connection) => {
+        const result = get().checkConnection(connection);
+        if (!result.ok) return result;
+        const { nodes, edges, index } = get();
+        const dst = nodes.find((n) => n.id === connection.target)!;
+        const inp = findPort(
+          resolveNodeDef(index, dst.data)!,
+          connection.targetHandle,
+          "in",
+        )!;
 
-    removeNodes: (ids) => {
-      const drop = new Set(ids);
-      get().beginChange();
-      commit({
-        nodes: get().nodes.filter((n) => !drop.has(n.id)),
-        edges: get().edges.filter((e) => !drop.has(e.source) && !drop.has(e.target)),
-      });
-    },
+        get().beginChange();
+        // Like ComfyUI, a single-value input keeps only its newest link.
+        const kept = inp.collect
+          ? edges
+          : edges.filter(
+              (e) =>
+                !(
+                  e.target === connection.target &&
+                  e.targetHandle === connection.targetHandle
+                ),
+            );
+        commit({ edges: addEdge({ ...connection, id: newId("e") }, kept) });
+        return result;
+      },
 
-    setName: (name) => {
-      get().beginChange("name");
-      commit({ name });
-    },
+      addNode: (def, position) => {
+        get().beginChange();
+        // Drop, search, and the other single-node adds share this nudge.
+        // Paste and duplicate stay on the PASTE_GAP stair-step in the clipboard.
+        const placed = placeWithoutOverlap(
+          position,
+          get().nodes.map((node) => node.position),
+        );
+        const node = toFlowNode(
+          createNode(
+            def,
+            placed,
+            get().nodes.map((n) => ({
+              id: n.id,
+              position: n.position,
+              data: n.data,
+            })),
+          ),
+        );
+        commit({
+          nodes: [
+            ...get().nodes.map((n) => ({ ...n, selected: false })),
+            { ...node, selected: true },
+          ],
+        });
+        return node;
+      },
 
-    setProject: (project) => {
-      get().beginChange("project");
-      commit({ project });
-    },
+      updateNodeData: (id, patch, historyKey) => {
+        get().beginChange(historyKey ?? `node:${id}`);
+        commit({
+          nodes: get().nodes.map((n) =>
+            n.id === id ? { ...n, data: { ...n.data, ...patch } } : n,
+          ),
+        });
+      },
 
-    setParam: (key, value) => {
-      get().beginChange(`param:${key}`);
-      const params = { ...get().params };
-      if (value === undefined || value === "") delete params[key];
-      else params[key] = value;
-      commit({ params });
-    },
-  };
-});
+      setWidget: (id, name, value) => {
+        const node = get().nodes.find((n) => n.id === id);
+        if (!node) return;
+        get().updateNodeData(
+          id,
+          { widgets: { ...node.data.widgets, [name]: value } },
+          `widget:${id}:${name}`,
+        );
+      },
+
+      removeNodes: (ids) => {
+        const drop = new Set(ids);
+        get().beginChange();
+        commit({
+          nodes: get().nodes.filter((n) => !drop.has(n.id)),
+          edges: get().edges.filter(
+            (e) => !drop.has(e.source) && !drop.has(e.target),
+          ),
+        });
+      },
+
+      setName: (name) => {
+        get().beginChange("name");
+        commit({ name });
+      },
+
+      setProject: (project) => {
+        get().beginChange("project");
+        commit({ project });
+      },
+
+      setParam: (key, value) => {
+        get().beginChange(`param:${key}`);
+        const params = { ...get().params };
+        if (value === undefined || value === "") delete params[key];
+        else params[key] = value;
+        commit({ params });
+      },
+    };
+  });
+
+export type EditorStore = ReturnType<typeof createEditorStore>;
+
+/** Standalone store for non-React callers and existing domain tests. UI uses its Provider. */
+export const useEditorStore = createEditorStore();
 
 export const selectIsDirty = (s: EditorState) => s.revision !== s.savedRevision;
 
@@ -418,7 +519,10 @@ export function selectHasSelection(state: {
   nodes: readonly { selected?: boolean }[];
   edges: readonly { selected?: boolean }[];
 }): boolean {
-  return state.nodes.some((node) => node.selected) || state.edges.some((edge) => edge.selected);
+  return (
+    state.nodes.some((node) => node.selected) ||
+    state.edges.some((edge) => edge.selected)
+  );
 }
 
 export const selectSelectedNode = (s: EditorState) => {

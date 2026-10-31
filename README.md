@@ -41,14 +41,14 @@ ComfyUI 式的 Nextflow 可视化前端：在画布上用 nf-core 模块搭建�
 
 ### `/api/runs` 接口
 
-| 方法 | 路径 | 说明 |
-| --- | --- | --- |
-| `GET` | `/api/runs?workflowId=` | 运行列表（`RunSummary[]`） |
-| `POST` | `/api/runs` | 启动：`LaunchRequest`（流程、项目文件、参数、启动配置、`run.config`、命令） |
-| `GET` | `/api/runs/:id` | 运行详情（`RunDetail`） |
-| `POST` | `/api/runs/:id/cancel` | 停止，已结束返回 409 |
-| `POST` | `/api/runs/:id/resume` | 从明确来源恢复，返回新运行记录 |
-| `DELETE` | `/api/runs/:id` | 删除记录 |
+| 方法     | 路径                    | 说明                                                                        |
+| -------- | ----------------------- | --------------------------------------------------------------------------- |
+| `GET`    | `/api/runs?workflowId=` | 运行列表（`RunSummary[]`）                                                  |
+| `POST`   | `/api/runs`             | 启动：`LaunchRequest`（流程、项目文件、参数、启动配置、`run.config`、命令） |
+| `GET`    | `/api/runs/:id`         | 运行详情（`RunDetail`）                                                     |
+| `POST`   | `/api/runs/:id/cancel`  | 停止，已结束返回 409                                                        |
+| `POST`   | `/api/runs/:id/resume`  | 从明确来源恢复，返回新运行记录                                              |
+| `DELETE` | `/api/runs/:id`         | 删除记录                                                                    |
 
 运行详情页可以实时查看：
 
@@ -57,13 +57,13 @@ ComfyUI 式的 Nextflow 可视化前端：在画布上用 nf-core 模块搭建�
 - **日志**：`nextflow run -ansi-log false` 风格的控制台输出，出错时显示失败的进程和工作目录。
 - **结果**：`--outdir` 下按模块分组的文件，MultiQC 报告和文本文件可以直接预览（HTML 报告放在无脚本的沙箱 iframe 里）。
 
-| 方法 | 路径 | 说明 |
-| --- | --- | --- |
-| `GET` | `/api/runs/:id/tasks` | 任务列表（`TaskRecord[]`） |
-| `GET` | `/api/runs/:id/log` | 控制台日志 `{ lines }` |
-| `GET` | `/api/runs/:id/task-log?hash=` | 单个任务的 `.command.log` `{ text }` |
-| `GET` | `/api/runs/:id/results` | outdir 下的文件（`ResultFile[]`） |
-| `GET` | `/api/runs/:id/results/content?path=` | 文件内容，按 `content-type` 返回 |
+| 方法  | 路径                                  | 说明                                 |
+| ----- | ------------------------------------- | ------------------------------------ |
+| `GET` | `/api/runs/:id/tasks`                 | 任务列表（`TaskRecord[]`）           |
+| `GET` | `/api/runs/:id/log`                   | 控制台日志 `{ lines }`               |
+| `GET` | `/api/runs/:id/task-log?hash=`        | 单个任务的 `.command.log` `{ text }` |
+| `GET` | `/api/runs/:id/results`               | outdir 下的文件（`ResultFile[]`）    |
+| `GET` | `/api/runs/:id/results/content?path=` | 文件内容，按 `content-type` 返回     |
 
 类型定义在 `src/features/runs/types.ts` 和 `src/features/runs/outputs.ts`。模拟后端（`src/mocks/runs.ts`）按流程结构确定性地推演任务进度；参数里设置 `simulate_failure: true` 可以模拟任务失败。
 
@@ -162,3 +162,7 @@ pnpm typecheck && pnpm lint && pnpm build
 ```
 
 `pnpm dev` 默认保留 MSW 演示模式；`pnpm dev:real` 或 `NEXT_PUBLIC_API_MOCKING=disabled` 使用真实 API。切换到真实模式会注销本应用的 mock Service Worker。
+
+### 前端组件开发
+
+组件分层、Storybook 状态示例、浏览器测试和主题约定见 [前端开发指南](docs/frontend-development.md)。运行 `pnpm test:storybook` 可执行 Chromium 中的故事交互和可访问性检查；首次运行先执行 `pnpm exec playwright install chromium`。

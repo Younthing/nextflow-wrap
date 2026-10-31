@@ -30,7 +30,11 @@ import {
 } from "../marquee-text";
 import { fitViewOptions } from "../fit-view";
 import { categoryColor, portColor } from "../port-style";
-import { useEditorStore, type FlowEdge, type FlowNode } from "../store";
+import { type FlowEdge, type FlowNode } from "../store";
+import {
+  useEditorStore,
+  useEditorStoreApi,
+} from "@/features/editor/editor-provider";
 import { toast } from "../toast";
 import { CanvasContextMenu } from "./canvas-context-menu";
 import { MODULE_DRAG_TYPE } from "./module-library";
@@ -44,6 +48,7 @@ export function WorkflowCanvas({
 }: {
   onRequestSearch: (request: SearchRequest) => void;
 }) {
+  const store = useEditorStoreApi();
   const nodes = useEditorStore((s) => s.nodes);
   const edges = useEditorStore((s) => s.edges);
   const index = useEditorStore((s) => s.index);
@@ -72,7 +77,11 @@ export function WorkflowCanvas({
       return {
         ...e,
         style: {
-          stroke: !compat.ok ? "var(--destructive)" : out ? portColor(out) : undefined,
+          stroke: !compat.ok
+            ? "var(--destructive)"
+            : out
+              ? portColor(out)
+              : undefined,
           strokeWidth: 2,
           strokeDasharray: !compat.ok || compat.warning ? "6 4" : undefined,
           opacity: disabled ? 0.35 : 1,
@@ -92,11 +101,14 @@ export function WorkflowCanvas({
 
   const onConnectEnd = React.useCallback<OnConnectEnd>(
     (event, state) => {
-      if (state.isValid || state.toNode || !state.fromNode || !state.fromHandle) return;
+      if (state.isValid || state.toNode || !state.fromNode || !state.fromHandle)
+        return;
       const fromNode = state.fromNode as unknown as FlowNode;
       const def = resolveNodeDef(index, fromNode.data);
       const side = state.fromHandle.type;
-      const port = def && findPort(def, state.fromHandle.id, side === "source" ? "out" : "in");
+      const port =
+        def &&
+        findPort(def, state.fromHandle.id, side === "source" ? "out" : "in");
       if (!port) return;
       const point = "changedTouches" in event ? event.changedTouches[0] : event;
       onRequestSearch({
@@ -113,28 +125,38 @@ export function WorkflowCanvas({
       const def = id && index.get(id);
       if (!def) return;
       e.preventDefault();
-      addNode(def, screenToFlowPosition({ x: e.clientX - 120, y: e.clientY - 20 }));
+      addNode(
+        def,
+        screenToFlowPosition({ x: e.clientX - 120, y: e.clientY - 20 }),
+      );
     },
     [addNode, index, screenToFlowPosition],
   );
 
-  const onNodeContextMenu = React.useCallback((_event: React.MouseEvent, node: FlowNode) => {
-    const { nodes: current, edges: currentEdges } = useEditorStore.getState();
-    const next = selectionForContextTarget(current, currentEdges, node.id);
-    if (!next) return;
-    useEditorStore.setState(next);
-    // A shift-drag leaves React Flow's selection rectangle up. Retargeting the
-    // selection to one node does not clear that flag, so the rectangle stays
-    // on top of the node. A node that was already selected keeps the rectangle.
-    flowStore.setState({ nodesSelectionActive: false });
-  }, [flowStore]);
+  const onNodeContextMenu = React.useCallback(
+    (_event: React.MouseEvent, node: FlowNode) => {
+      const { nodes: current, edges: currentEdges } = store.getState();
+      const next = selectionForContextTarget(current, currentEdges, node.id);
+      if (!next) return;
+      store.setState(next);
+      // A shift-drag leaves React Flow's selection rectangle up. Retargeting the
+      // selection to one node does not clear that flag, so the rectangle stays
+      // on top of the node. A node that was already selected keeps the rectangle.
+      flowStore.setState({ nodesSelectionActive: false });
+    },
+    [flowStore, store],
+  );
 
   const surfaceRef = React.useRef<HTMLDivElement>(null);
   const marqueeRef = React.useRef(false);
   const releaseMarquee = React.useCallback(() => {
     if (!marqueeRef.current) return;
     marqueeRef.current = false;
-    releaseMarqueeTextGuard(document, () => marqueeRef.current, requestAnimationFrame);
+    releaseMarqueeTextGuard(
+      document,
+      () => marqueeRef.current,
+      requestAnimationFrame,
+    );
   }, []);
 
   React.useEffect(() => {
@@ -151,7 +173,8 @@ export function WorkflowCanvas({
     // transformed, so the same cancel listens on the document while the
     // marquee gesture is down.
     const blockMarqueeSelect = (event: Event) => {
-      if (!shouldPreventMarqueeSelectStart(marqueeRef.current, event.target)) return;
+      if (!shouldPreventMarqueeSelectStart(marqueeRef.current, event.target))
+        return;
       event.preventDefault();
       clearMarqueeTextSelection(document);
     };
@@ -184,8 +207,12 @@ export function WorkflowCanvas({
           beginMarqueeTextGuard(document);
         }}
         onDoubleClick={(e) => {
-          if ((e.target as HTMLElement).classList.contains("react-flow__pane")) {
-            onRequestSearch({ position: screenToFlowPosition({ x: e.clientX, y: e.clientY }) });
+          if (
+            (e.target as HTMLElement).classList.contains("react-flow__pane")
+          ) {
+            onRequestSearch({
+              position: screenToFlowPosition({ x: e.clientX, y: e.clientY }),
+            });
           }
         }}
       >
@@ -225,16 +252,26 @@ export function WorkflowCanvas({
           }}
           proOptions={{ hideAttribution: true }}
         >
-          <Background variant={BackgroundVariant.Dots} gap={20} size={1.5} color="var(--canvas-dot)" />
+          <Background
+            variant={BackgroundVariant.Dots}
+            gap={20}
+            size={1.5}
+            color="var(--canvas-dot)"
+          />
           <MiniMap<FlowNode>
             pannable
             zoomable
-            nodeColor={(n) => categoryColor(index.get(n.data.moduleId)?.category ?? "")}
+            nodeColor={(n) =>
+              categoryColor(index.get(n.data.moduleId)?.category ?? "")
+            }
             bgColor="transparent"
             maskColor="color-mix(in oklch, var(--foreground) 8%, transparent)"
             className="!glass !rounded-lg"
           />
-          <Controls className="!glass !rounded-lg !shadow-none" fitViewOptions={fitViewOptions(nodes)} />
+          <Controls
+            className="!glass !rounded-lg !shadow-none"
+            fitViewOptions={fitViewOptions(nodes)}
+          />
         </ReactFlow>
       </div>
     </CanvasContextMenu>

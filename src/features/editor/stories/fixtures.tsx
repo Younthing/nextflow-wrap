@@ -6,10 +6,23 @@ import { BUILTIN_MODULES } from "@/features/workflow/builtins";
 import { indexModules } from "@/features/workflow/catalog";
 import { demoRnaseqWorkflow } from "@/features/workflow/demo";
 import type { ModuleCatalog, WorkflowDoc } from "@/features/workflow/types";
-import { useEditorStore } from "../store";
+import { createEditorStore, type EditorStore } from "../store";
+import { EditorProvider } from "../editor-provider";
 
 export const storyCatalog = catalog as ModuleCatalog;
 export const storyModules = [...BUILTIN_MODULES, ...storyCatalog.modules];
+
+const fixtureStores = new WeakMap<Element, EditorStore>();
+
+export function getStoryEditorStore(root: HTMLElement): EditorStore {
+  const element = root.matches("[data-editor-fixture]")
+    ? root
+    : (root.querySelector("[data-editor-fixture]") ??
+      root.closest("[data-editor-fixture]"));
+  const store = element && fixtureStores.get(element);
+  if (!store) throw new Error("Editor fixture is not mounted");
+  return store;
+}
 
 /** Seeds the editor store so editor components render outside the app. */
 export function EditorFixture({
@@ -23,19 +36,34 @@ export function EditorFixture({
   children: React.ReactNode;
 }) {
   // Seed synchronously on first render so children never see an empty store.
-  React.useState(() => {
-    const s = useEditorStore.getState();
+  const [store] = React.useState(() => {
+    const store = createEditorStore();
+    const s = store.getState();
     s.setIndex(indexModules(storyCatalog.modules));
     s.load(doc);
     if (selectedNodeIds.length > 0) {
       const selected = new Set(selectedNodeIds);
-      useEditorStore.setState({
-        nodes: useEditorStore.getState().nodes.map((node) =>
-          selected.has(node.id) ? { ...node, selected: true } : node,
-        ),
+      store.setState({
+        nodes: store
+          .getState()
+          .nodes.map((node) =>
+            selected.has(node.id) ? { ...node, selected: true } : node,
+          ),
       });
     }
-    return true;
+    return store;
   });
-  return <ReactFlowProvider>{children}</ReactFlowProvider>;
+  return (
+    <div
+      data-editor-fixture
+      className="contents"
+      ref={(element) => {
+        if (element) fixtureStores.set(element, store);
+      }}
+    >
+      <EditorProvider store={store}>
+        <ReactFlowProvider>{children}</ReactFlowProvider>
+      </EditorProvider>
+    </div>
+  );
 }
