@@ -198,6 +198,37 @@ describe("editor clipboard", () => {
     expect(useEditorStore.getState().params).toEqual({});
   });
 
+  it("keeps params.input when duplicating a reference named input_2", () => {
+    const samplesheet = "assets/samplesheet.csv";
+    const path = "s3://bucket/extra.fa";
+    useEditorStore.setState({
+      params: { input: samplesheet, input_2: path, outdir: "results" },
+      nodes: [
+        node("r1", "REFERENCE", { x: 0, y: 0 }, true, {
+          moduleId: REFERENCE_ID,
+          settings: { param: "input_2", format: "fasta" },
+        }),
+      ],
+      edges: [],
+    });
+    useEditorStore.getState().duplicateSelected();
+    const copy = useEditorStore.getState().nodes.find((n) => n.selected);
+    expect(copy?.data.settings).toMatchObject({ param: "input_3", format: "fasta" });
+    expect(useEditorStore.getState().params).toEqual({
+      input: samplesheet,
+      input_2: path,
+      input_3: path,
+      outdir: "results",
+    });
+    useEditorStore.getState().undo();
+    expect(useEditorStore.getState().params).toEqual({
+      input: samplesheet,
+      input_2: path,
+      outdir: "results",
+    });
+    expect(useEditorStore.getState().nodes).toHaveLength(1);
+  });
+
   it("pastes reference paths into another workflow under the remapped names", () => {
     const fasta = "s3://bucket/genome.fa";
     const gtf = "s3://bucket/genes.gtf";
@@ -239,6 +270,44 @@ describe("editor clipboard", () => {
       input: "other.csv",
     });
     expect(useEditorStore.getState().nodes.map((n) => n.id)).toEqual(["kept"]);
+  });
+
+  it("keeps a destination param key when pasting into another workflow", () => {
+    const path = "s3://bucket/extra.fa";
+    useEditorStore.setState({
+      params: { input: "assets/samplesheet.csv", input_2: path, outdir: "results" },
+      nodes: [
+        node("r1", "REFERENCE", { x: 0, y: 0 }, true, {
+          moduleId: REFERENCE_ID,
+          settings: { param: "input_2", format: "fasta" },
+        }),
+      ],
+      edges: [],
+    });
+    useEditorStore.getState().copySelected();
+
+    useEditorStore.getState().load(emptyWorkflow("other", "另一个"));
+    useEditorStore.setState({
+      params: { input: "other.csv", input_2: "s3://destination/keep.fa", outdir: "elsewhere" },
+      nodes: [],
+      edges: [],
+    });
+    useEditorStore.getState().pasteFromClipboard();
+    const pasted = useEditorStore.getState().nodes.find((n) => n.selected);
+    expect(pasted?.data.settings).toMatchObject({ param: "input_3", format: "fasta" });
+    expect(useEditorStore.getState().params).toEqual({
+      input: "other.csv",
+      input_2: "s3://destination/keep.fa",
+      input_3: path,
+      outdir: "elsewhere",
+    });
+    useEditorStore.getState().undo();
+    expect(useEditorStore.getState().params).toEqual({
+      input: "other.csv",
+      input_2: "s3://destination/keep.fa",
+      outdir: "elsewhere",
+    });
+    expect(useEditorStore.getState().nodes).toHaveLength(0);
   });
 
   it("selects and clears nodes and edges without a history step", () => {

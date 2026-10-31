@@ -91,24 +91,38 @@ export function selectionClipboard(
 }
 
 /**
+ * Parameter names already in use: every destination workflow key, plus names
+ * on existing nodes. Keys such as `input` belong to the pipeline even when
+ * no reference node points at them.
+ */
+function takenParamNames(
+  existing: readonly { data: WorkflowNodeData }[],
+  workflowParams: PipelineParams,
+): Set<string> {
+  const taken = new Set(Object.keys(workflowParams));
+  for (const node of existing) {
+    const name = paramName(node.data);
+    if (name) taken.add(name);
+  }
+  return taken;
+}
+
+/**
  * New ids, unique process aliases, and a stair-step offset.
- * Reference param names are remapped, and `params` holds their values under
- * those new names. `step` is 1 for the first paste or a duplicate, then 2, 3, …
+ * Reference param names are remapped against node settings and existing
+ * workflow parameter keys. `params` holds their values under those new names.
+ * `step` is 1 for the first paste or a duplicate, then 2, 3, …
  */
 export function materializeClipboard(
   clipboard: NodeClipboard,
   existing: readonly { data: WorkflowNodeData }[],
   index: ModuleIndex,
   step: number,
+  workflowParams: PipelineParams,
 ): { nodes: ClipboardNode[]; edges: ClipboardEdge[]; params: PipelineParams } {
   const offset = PASTE_GAP * step;
   const takenAliases = new Set(existing.map((node) => node.data.alias));
-  const takenParams = new Set(
-    existing.flatMap((node) => {
-      const param = node.data.settings?.param;
-      return typeof param === "string" && param ? [param] : [];
-    }),
-  );
+  const takenParams = takenParamNames(existing, workflowParams);
   const idMap = new Map<string, string>();
   const params: PipelineParams = {};
 

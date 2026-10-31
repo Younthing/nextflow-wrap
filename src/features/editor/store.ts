@@ -121,7 +121,7 @@ export const useEditorStore = create<EditorState>()((set, get) => {
     set((s) => ({ ...patch, revision: s.revision + 1 }));
 
   const applyClipboard = (clip: NodeClipboard, step: number, extra?: Partial<EditorState>) => {
-    const created = materializeClipboard(clip, get().nodes, get().index, step);
+    const created = materializeClipboard(clip, get().nodes, get().index, step, get().params);
     get().beginChange();
     commit({
       nodes: [
