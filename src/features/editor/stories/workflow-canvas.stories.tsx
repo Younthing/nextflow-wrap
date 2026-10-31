@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/nextjs-vite";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { expect, screen, userEvent, waitFor, within } from "storybook/test";
+import { useStoreApi } from "@xyflow/react";
 
 import { SAMPLESHEET_ID } from "@/features/workflow/builtins";
 import { emptyWorkflow } from "@/features/workflow/document";
@@ -277,6 +278,60 @@ export const ContextMenuOnNode: Story = {
     expect(useEditorStore.getState().nodes.find((node) => node.id === "outside")?.selected).toBe(true);
     await userEvent.click(menuItem(/粘贴/));
     await waitFor(() => expect(useEditorStore.getState().nodes).toHaveLength(4));
+  },
+};
+
+/** Same commands, with React Flow's box-selection rectangle already showing. */
+function BoxSelectionCanvas() {
+  const store = useStoreApi();
+  useState(() => {
+    useEditorStore.setState({ clipboard: null, clipboardPastes: 0 });
+    return true;
+  });
+  useEditorCommands({
+    save: () => {},
+    openNodeSearch: () => {
+      commandCalls.search += 1;
+    },
+    fitView: () => {},
+  });
+  useEffect(() => {
+    store.setState({ nodesSelectionActive: true });
+  }, [store]);
+  return <WorkflowCanvas onRequestSearch={() => {}} />;
+}
+
+/** Right-clicking a node outside the box drops the rectangle. The box stays when the node is already inside it. */
+export const ContextMenuClearsSelectionBox: Story = {
+  name: "Context menu clears the selection box",
+  render: () => <BoxSelectionCanvas />,
+  decorators: [
+    (Story) => (
+      <EditorFixture doc={selectionFitWorkflow()} selectedNodeIds={["selected"]}>
+        <Story />
+      </EditorFixture>
+    ),
+  ],
+  play: async ({ canvasElement }) => {
+    await waitFor(() => {
+      expect(nodeBox(canvasElement, "outside").width).toBeGreaterThan(10);
+      expect(canvasElement.querySelector(".react-flow__nodesselection")).toBeTruthy();
+    });
+
+    const selected = canvasElement.querySelector(`[data-id="selected"]`);
+    const outside = canvasElement.querySelector(`[data-id="outside"]`);
+    if (!selected || !outside) throw new Error("missing nodes");
+
+    await rightClick(selected);
+    expect(canvasElement.querySelector(".react-flow__nodesselection")).toBeTruthy();
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
+
+    await rightClick(outside);
+    await waitFor(() => {
+      expect(canvasElement.querySelector(".react-flow__nodesselection")).toBeNull();
+      expect(useEditorStore.getState().nodes.filter((node) => node.selected).map((node) => node.id)).toEqual(["outside"]);
+    });
   },
 };
 

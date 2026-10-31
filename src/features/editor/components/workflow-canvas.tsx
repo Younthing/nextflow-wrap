@@ -8,6 +8,7 @@ import {
   MiniMap,
   ReactFlow,
   useReactFlow,
+  useStoreApi,
   type Connection,
   type OnConnectEnd,
 } from "@xyflow/react";
@@ -45,6 +46,7 @@ export function WorkflowCanvas({
   const beginChange = useEditorStore((s) => s.beginChange);
   const addNode = useEditorStore((s) => s.addNode);
   const { screenToFlowPosition } = useReactFlow();
+  const flowStore = useStoreApi();
   const fitKeys = useShortcutLabels(EDITOR_ACTIONS.fit.shortcut);
 
   // Edges take the colour of the channel they carry; dubious links are dashed.
@@ -111,8 +113,13 @@ export function WorkflowCanvas({
   const onNodeContextMenu = React.useCallback((_event: React.MouseEvent, node: FlowNode) => {
     const { nodes: current, edges: currentEdges } = useEditorStore.getState();
     const next = selectionForContextTarget(current, currentEdges, node.id);
-    if (next) useEditorStore.setState(next);
-  }, []);
+    if (!next) return;
+    useEditorStore.setState(next);
+    // A shift-drag leaves React Flow's selection rectangle up. Retargeting the
+    // selection to one node does not clear that flag, so the rectangle stays
+    // on top of the node. A node that was already selected keeps the rectangle.
+    flowStore.setState({ nodesSelectionActive: false });
+  }, [flowStore]);
 
   const surfaceRef = React.useRef<HTMLDivElement>(null);
   React.useEffect(() => {
