@@ -1,3 +1,8 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+
 import { createCodexHarness, CodexHarnessError, type CodexSession } from "../src/features/codex-harness";
 
 const DEFAULT_PROMPT = "Reply with the single word pong.";
@@ -9,6 +14,7 @@ function usage(): string {
     "",
     "Runs one Codex turn with the local `codex` CLI (`codex login` must already be done).",
     "Auth stays in ~/.codex. This script never reads or copies tokens.",
+    "The turn uses an empty temporary directory, not this repository.",
     "If `codex` is not on PATH, the script skips and exits 0.",
   ].join("\n");
 }
@@ -41,6 +47,19 @@ function parseArgs(argv: string[]): { model?: string; binary?: string; approval?
     prompt.push(arg);
   }
   return { model, binary, approval, prompt: prompt.join(" ").trim() || DEFAULT_PROMPT };
+}
+
+/**
+ * Stop a smoke run. `session.close()` signals the detached Codex process group
+ * before the temp directory is removed. `process.exit` skips `finally`, so
+ * cancel and timeout must use this order themselves.
+ */
+export async function stopSmokeSession(
+  session: { close(): Promise<void> } | undefined,
+  removeCwd: () => Promise<void>,
+): Promise<void> {
+  await session?.close();
+  await removeCwd();
 }
 
 async function readTurn(session: CodexSession): Promise<string> {
@@ -78,42 +97,72 @@ async function main(): Promise<void> {
     throw new CodexHarnessError("codex is installed but not authenticated. Run `codex login`. This script does not read ~/.codex.");
   }
 
-  const session = await harness.open({
-    cwd: process.cwd(),
-    model: args.model,
-    binaryPath: args.binary,
-    approvalPolicy: args.approval ?? "never",
-    sandboxPolicy: "workspace-write",
-    autoApproval: "decline",
-  });
+  const cwd = await mkdtemp(join(tmpdir(), "nextflow-codex-smoke-"));
+  const removeCwd = () => rm(cwd, { recursive: true, force: true }).catch(() => undefined);
+  console.error(`cwd ${cwd}`);
+  let session: CodexSession | undefined;
+  let finishing = false;
+  // Before open() resolves there is no process group to close, so a signal only
+  // deletes the directory. After open(), these handlers await session.close()
+  // (which signals the detached process group) and only then delete the directory.
+  const shutdown = (code: number) => {
+    if (finishing) return;
+    finishing = true;
+    const current = session;
+    const closed = current ? current.close() : Promise.resolve();
+    void closed.finally(async () => {
+      await removeCwd();
+      process.exit(code);
+    });
+  };
+  const onSignal = () => shutdown(130);
+  process.once("SIGINT", onSignal);
+  process.once("SIGTERM", onSignal);
   const timer = setTimeout(() => {
     console.error(`smoke timed out after ${TIMEOUT_MS}ms`);
-    void session.close().finally(() => process.exit(1));
+    shutdown(1);
   }, TIMEOUT_MS);
   timer.unref();
-  const stop = () => {
-    void session.close().finally(() => process.exit(130));
-  };
-  process.once("SIGINT", stop);
-  process.once("SIGTERM", stop);
-  const reading = readTurn(session);
   try {
-    const { threadId } = await session.ensureThread();
-    const { turnId } = await session.startTurn(args.prompt);
-    console.error(`thread ${threadId} turn ${turnId}`);
-    await reading;
+    session = await harness.open({
+      cwd,
+      model: args.model,
+      binaryPath: args.binary,
+      approvalPolicy: args.approval ?? "never",
+      sandboxPolicy: "workspace-write",
+      autoApproval: "decline",
+    });
+    const reading = readTurn(session);
+    try {
+      const { threadId } = await session.ensureThread();
+      const { turnId } = await session.startTurn(args.prompt);
+      console.error(`thread ${threadId} turn ${turnId}`);
+      await reading;
+    } finally {
+      if (!finishing) await session.close();
+      // Observe a reader that rejected because the session closed first.
+      await reading.catch(() => undefined);
+    }
   } finally {
-    clearTimeout(timer);
-    process.removeListener("SIGINT", stop);
-    process.removeListener("SIGTERM", stop);
-    await session.close();
-    // Observe a reader that rejected because the session closed first.
-    await reading.catch(() => undefined);
+    if (!finishing) {
+      clearTimeout(timer);
+      process.removeListener("SIGINT", onSignal);
+      process.removeListener("SIGTERM", onSignal);
+      await stopSmokeSession(session, removeCwd);
+    }
   }
 }
 
-main().catch((error: unknown) => {
-  const message = error instanceof Error ? error.message : String(error);
-  console.error(message);
-  process.exitCode = 1;
-});
+function isEntrypoint(): boolean {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  return import.meta.url === pathToFileURL(entry).href;
+}
+
+if (isEntrypoint()) {
+  main().catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(message);
+    process.exitCode = 1;
+  });
+}

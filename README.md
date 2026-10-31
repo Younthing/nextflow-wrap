@@ -75,6 +75,8 @@ ComfyUI 式的 Nextflow 可视化前端：在画布上用 nf-core 模块搭建�
 
 助手默认优先使用本机已经 `codex login` 的 Codex CLI（`COPILOT_BACKEND=auto`）。认证留在 `~/.codex`，服务端不读取 token，这条路径也不需要 `OPENAI_API_KEY`。Codex 不可用时才退回下面的 API key 模型。顶栏按钮的提示会写明当前后端；`GET /api/copilotkit/status` 返回 `backend` 是 `codex` 还是 `builtin`，未启用时 `message` 说明原因。
 
+`/api/copilotkit` 只接受本机回环地址上的同源请求（`localhost`、`127.0.0.1`、`::1`；需要别的回环名时设置 `COPILOT_ALLOWED_HOSTS`）。Codex 同时最多处理 `CODEX_MAX_SESSIONS` 个会话（默认 2，再多返回 429）。每次 Codex 对话的工作目录是空的临时目录，不是项目仓库。一轮用户消息里最多再调用模型 12 次；未知工具，以及说明文字和工具 JSON 混在同一段回复里，都会被拒绝，不会执行。
+
 在 `.env.local` 里配置：
 
 ```bash
