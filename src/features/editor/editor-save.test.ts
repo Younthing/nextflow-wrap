@@ -51,48 +51,78 @@ describe("editor save queue", () => {
   });
 
   it("sends the revision the previous success acknowledged", async () => {
-    const sent: string[] = [];
-    let updatedAt = "t0";
-    let dirty = true;
+    const sent: WorkflowDoc[] = [];
     const save = vi.fn(async (workflow: WorkflowDoc) => {
-      sent.push(workflow.updatedAt);
-      const next = { ...workflow, updatedAt: workflow.updatedAt === "t0" ? "t1" : "t2" };
-      updatedAt = next.updatedAt;
-      dirty = workflow.name === "first";
-      return next;
+      sent.push(workflow);
+      return { ...workflow, updatedAt: workflow.updatedAt === "t0" ? "t1" : "t2" };
     });
-    const run = (announce: boolean) => runEditorSave({
-      announce,
-      read: () => read(updatedAt, dirty ? (updatedAt === "t0" ? "first" : "second") : "second", dirty),
+    const run = (snapshot: EditorSaveRead) => runEditorSave({
+      announce: false,
+      snapshot,
       save,
-      markSaved: (_revision, at) => { updatedAt = at; noteEditorRevision("wf", at); },
+      markSaved: () => {},
       stillOpen: () => true,
-      fetchCurrent: async () => doc(updatedAt, "server"),
+      fetchCurrent: async () => doc("t1", "server"),
       load: vi.fn(),
       toastSaved: vi.fn(),
       toastError: vi.fn(),
     });
-    enqueueEditorSave(true, () => run(false));
-    enqueueEditorSave(true, () => run(false));
+    enqueueEditorSave(true, () => run(read("t0", "first")));
+    enqueueEditorSave(true, () => run(read("t0", "second")));
     await editorSaveSettled();
-    expect(sent).toEqual(["t0", "t1"]);
+    expect(sent.map((workflow) => [workflow.name, workflow.updatedAt])).toEqual([
+      ["first", "t0"],
+      ["second", "t1"],
+    ]);
+  });
+
+  it("keeps a captured workflow when the store later holds a different document", async () => {
+    let openId = "wf";
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const sent: WorkflowDoc[] = [];
+    const load = vi.fn();
+    const run = (snapshot: EditorSaveRead, wait = false) => runEditorSave({
+      announce: false,
+      snapshot,
+      save: async (workflow) => {
+        sent.push(workflow);
+        if (wait) await gate;
+        return { ...workflow, updatedAt: workflow.updatedAt === "t0" ? "t1" : "t2" };
+      },
+      markSaved: vi.fn(),
+      stillOpen: (_generation, docId) => openId === docId,
+      fetchCurrent: async () => doc("t1", "server"),
+      load,
+      toastSaved: vi.fn(),
+      toastError: vi.fn(),
+    });
+    enqueueEditorSave(true, () => run(read("t0", "A-inflight"), true));
+    enqueueEditorSave(true, () => run(read("t0", "A-dirty")));
+    await Promise.resolve();
+    openId = "b";
+    release();
+    await editorSaveSettled();
+    expect(sent.map((workflow) => [workflow.name, workflow.updatedAt])).toEqual([
+      ["A-inflight", "t0"],
+      ["A-dirty", "t1"],
+    ]);
+    expect(load).not.toHaveBeenCalled();
   });
 
   it("does not reload the canvas when a 409 is the editor's own preceding save", async () => {
     noteEditorRevision("wf", "t1");
-    let phase: "stale" | "fresh" = "stale";
     const load = vi.fn();
     const markSaved = vi.fn();
+    const save = vi.fn(async (workflow: WorkflowDoc) => {
+      expect(workflow.name).toBe("newer-local");
+      expect(workflow.updatedAt).toBe("t1");
+      return { ...workflow, updatedAt: "t2" };
+    });
     await runEditorSave({
       announce: false,
-      read: () => phase === "stale" ? read("t0", "newer-local") : read("t1", "newer-local"),
-      save: async (workflow) => {
-        if (workflow.updatedAt === "t0") {
-          phase = "fresh";
-          throw new ApiError(409, "流程已在其他地方更新，请重新打开");
-        }
-        return { ...workflow, updatedAt: "t2" };
-      },
+      snapshot: read("t0", "newer-local"),
+      save,
       markSaved,
       stillOpen: () => true,
       fetchCurrent: async () => doc("t1", "already-saved"),
@@ -109,10 +139,11 @@ describe("editor save queue", () => {
     noteEditorRevision("wf", "t0");
     const load = vi.fn();
     const server = doc("t1", "壳复验改名");
+    const save = vi.fn(async () => { throw new ApiError(409, "流程已在其他地方更新，请重新打开"); });
     await runEditorSave({
       announce: false,
-      read: () => read("t0", "name-dirty"),
-      save: async () => { throw new ApiError(409, "流程已在其他地方更新，请重新打开"); },
+      snapshot: read("t0", "name-dirty"),
+      save,
       markSaved: vi.fn(),
       stillOpen: () => true,
       fetchCurrent: async () => server,
@@ -120,6 +151,7 @@ describe("editor save queue", () => {
       toastSaved: vi.fn(),
       toastError: vi.fn(),
     });
+    expect(save).toHaveBeenCalledOnce();
     expect(load).toHaveBeenCalledWith(server);
   });
 });

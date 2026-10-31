@@ -16,7 +16,7 @@ import { validateWorkflow } from "@/features/workflow/validate";
 import { api } from "@/lib/api";
 import { useShortcutLabels } from "@/lib/use-action-shortcuts";
 import { EDITOR_ACTIONS } from "../commands";
-import { enqueueEditorSave, noteEditorRevision, runEditorSave } from "../editor-save";
+import { enqueueEditorSave, runEditorSave, type EditorSaveRead } from "../editor-save";
 import { fitViewOptions } from "../fit-view";
 import { selectIsDirty, useEditorStore } from "../store";
 import { toast } from "../toast";
@@ -139,32 +139,30 @@ function Editor({ workflowId }: { workflowId: string }) {
     )) {
       store.getState().load(doc);
     }
-    noteEditorRevision(doc.id, doc.updatedAt);
     markWorkflowApplied(workflowId, mountToken);
   }, [workflow.data, workflowId, store, applied.id, applied.token, mountToken]);
 
   const doSave = React.useCallback(
     (silent = false) => {
-      // Queue so a second save waits for the first and then sends the revision
-      // that success acknowledged. mutateAsync still settles after unmount.
+      // Capture this workflow now. A queued save must not read whatever document
+      // is in the shared store when the previous request finally finishes.
+      const state = store.getState();
+      const snapshot: EditorSaveRead = {
+        docId: state.docId,
+        revision: state.revision,
+        generation: state.generation,
+        dirty: selectIsDirty(state),
+        doc: state.toDoc(),
+        issues: editorIssues(state),
+      };
       enqueueEditorSave(silent, (announce) => runEditorSave({
         announce,
-        read: () => {
-          const state = store.getState();
-          return {
-            docId: state.docId,
-            revision: state.revision,
-            generation: state.generation,
-            dirty: selectIsDirty(state),
-            doc: state.toDoc(),
-            issues: editorIssues(state),
-          };
-        },
+        snapshot,
         save: (doc) => save.mutateAsync(doc),
         markSaved: (revision, updatedAt) => store.getState().markSaved(revision, updatedAt),
         stillOpen: (generation, docId) => {
-          const state = store.getState();
-          return state.generation === generation && state.docId === docId;
+          const current = store.getState();
+          return current.generation === generation && current.docId === docId;
         },
         fetchCurrent: (id) => api<WorkflowDoc>(`/workflows/${id}`),
         load: (doc) => store.getState().load(doc),
