@@ -3,6 +3,7 @@ import { fn } from "storybook/test";
 
 import { buildParamsSchema } from "@/features/project/schema";
 import { SAMPLESHEET_ID } from "@/features/workflow/builtins";
+import type { PortDef } from "@/features/workflow/types";
 import { ModuleLibrary } from "../components/module-library";
 import { NodeSearchDialog } from "../components/node-search-dialog";
 import { SchemaForm } from "../components/schema-form";
@@ -53,6 +54,9 @@ export const NodeSearch: Story = {
 };
 
 const samplesheet = storyModules.find((m) => m.id === SAMPLESHEET_ID)!;
+const sortedBam = storyModules
+  .find((module) => module.id === "nf-core/samtools/sort")!
+  .outputs.find((port) => port.name === "bam")!;
 
 export const NodeSearchFromPort: Story = {
   name: "Node search (from a dropped link)",
@@ -61,6 +65,42 @@ export const NodeSearchFromPort: Story = {
       request={{
         position: { x: 0, y: 0 },
         from: { nodeId: "input", port: samplesheet.outputs[0], side: "source" },
+      }}
+      modules={storyModules}
+      onPick={fn()}
+      onClose={fn()}
+    />
+  ),
+};
+
+export const NodeSearchFromBam: Story = {
+  name: "Node search (from a BAM output)",
+  render: () => (
+    <NodeSearchDialog
+      request={{
+        position: { x: 0, y: 0 },
+        from: { nodeId: "sort", port: sortedBam, side: "source" },
+      }}
+      modules={storyModules}
+      onPick={fn()}
+      onClose={fn()}
+    />
+  ),
+};
+
+const countPort: PortDef = {
+  name: "count",
+  description: "",
+  elements: [{ name: "count", type: "integer", kind: "value", description: "A count" }],
+};
+
+export const NodeSearchNoCompatible: Story = {
+  name: "Node search (nothing can connect)",
+  render: () => (
+    <NodeSearchDialog
+      request={{
+        position: { x: 0, y: 0 },
+        from: { nodeId: "count", port: countPort, side: "source" },
       }}
       modules={storyModules}
       onPick={fn()}
