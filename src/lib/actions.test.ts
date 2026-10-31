@@ -1,11 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  EDITOR_CANVAS_SELECTOR,
   createActionRegistry,
   formatShortcut,
   handleShortcutKey,
   isDialogOpen,
   isEditableTarget,
+  isMenuOpen,
+  isTextSelectionOutsideCanvas,
   shortcutHint,
   type Action,
 } from "./actions";
@@ -27,7 +30,14 @@ describe("formatShortcut", () => {
     expect(formatShortcut({ key: "z", ctrl: true, shift: true }, "other")).toBe("Ctrl+Shift+Z");
     expect(formatShortcut({ key: "z", ctrl: true, shift: true }, "mac")).toBe("⇧⌘Z");
     expect(formatShortcut({ key: "y", ctrl: true }, "mac")).toBe("⌘Y");
+    expect(formatShortcut({ key: "1", shift: true }, "other")).toBe("Shift+1");
+    expect(formatShortcut({ key: "1", shift: true }, "mac")).toBe("⇧1");
+    expect(formatShortcut({ key: "Escape" }, "mac")).toBe("Esc");
+    expect(formatShortcut({ key: "f" }, "other")).toBe("F");
     expect(shortcutHint({ key: "z", ctrl: true })).toBe("Ctrl+Z / ⌘Z");
+    expect(shortcutHint({ key: "f" })).toBe("F");
+    expect(shortcutHint({ key: "Escape" })).toBe("Esc");
+    expect(shortcutHint({ key: "/" })).toBe("/");
   });
 });
 
@@ -55,9 +65,56 @@ describe("handleShortcutKey", () => {
     expect(handleShortcutKey([action], { key: "s", ctrlKey: true }, idle)).toBe(true);
     expect(action.run).not.toHaveBeenCalled();
   });
+
+  it("treats Shift+1 as the digit chord, and lets an open menu keep the key", () => {
+    const fit: Action = {
+      id: "Comfy.Canvas.FitView",
+      label: "适应视图",
+      shortcut: { key: "1", shift: true },
+      run: vi.fn(),
+    };
+    expect(handleShortcutKey([fit], { key: "!", shiftKey: true }, idle)).toBe(true);
+    expect(handleShortcutKey([fit], { key: "1", shiftKey: true }, idle)).toBe(true);
+    expect(handleShortcutKey([fit], { key: "!", shiftKey: false }, idle)).toBe(false);
+    expect(fit.run).toHaveBeenCalledTimes(2);
+
+    const action = save();
+    expect(handleShortcutKey([action], { key: "s", ctrlKey: true }, { ...idle, menuOpen: true })).toBe(false);
+    expect(action.run).not.toHaveBeenCalled();
+  });
 });
 
 describe("guards", () => {
+  it("yields to a text selection outside the canvas and keeps one inside it", () => {
+    const range = (inside: boolean, collapsed = false) => ({
+      getSelection: () => ({
+        isCollapsed: collapsed,
+        anchorNode: {
+          nodeType: 3,
+          parentElement: {
+            closest: (selector: string) => {
+              expect(selector).toBe(EDITOR_CANVAS_SELECTOR);
+              return inside ? {} : null;
+            },
+          },
+        },
+      }),
+    });
+    expect(isTextSelectionOutsideCanvas(range(false))).toBe(true);
+    expect(isTextSelectionOutsideCanvas(range(true))).toBe(false);
+    expect(isTextSelectionOutsideCanvas(range(false, true))).toBe(false);
+    expect(isTextSelectionOutsideCanvas({ getSelection: () => null })).toBe(false);
+    expect(isTextSelectionOutsideCanvas(null)).toBe(false);
+    expect(
+      isTextSelectionOutsideCanvas({
+        getSelection: () => ({
+          isCollapsed: false,
+          anchorNode: { nodeType: 1, closest: () => null },
+        }),
+      }),
+    ).toBe(true);
+  });
+
   it("treats inputs, textareas, and contenteditable as typing", () => {
     const closest = (selector: string) => (selector.includes("input") ? {} : null);
     expect(isEditableTarget({ closest } as unknown as EventTarget)).toBe(true);
@@ -76,6 +133,19 @@ describe("guards", () => {
     expect(seen).toContain("[role='dialog'][data-state='open']");
     expect(seen).toContain("[role='alertdialog'][data-state='open']");
     expect(isDialogOpen({ querySelector: () => ({}) } as unknown as ParentNode)).toBe(true);
+  });
+
+  it("looks for an open menu or select popup", () => {
+    let seen = "";
+    isMenuOpen({
+      querySelector: (selector: string) => {
+        seen = selector;
+        return null;
+      },
+    } as unknown as ParentNode);
+    expect(seen).toContain("[role='menu'][data-state='open']");
+    expect(seen).toContain("[role='listbox'][data-state='open']");
+    expect(isMenuOpen({ querySelector: () => ({}) } as unknown as ParentNode)).toBe(true);
   });
 });
 

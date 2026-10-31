@@ -11,9 +11,12 @@ import { useModuleCatalog, useSaveWorkflow, useWorkflow } from "@/features/workf
 import { validateWorkflow } from "@/features/workflow/validate";
 import { EditorAssistant } from "@/features/assistant/editor-assistant";
 import { RunDialog } from "@/features/runs/components/run-dialog";
-import { useEditorCommands } from "../use-editor-commands";
+import { useShortcutLabels } from "@/lib/use-action-shortcuts";
+import { EDITOR_ACTIONS } from "../commands";
+import { fitViewOptions } from "../fit-view";
 import { selectIsDirty, useEditorStore } from "../store";
 import { toast } from "../toast";
+import { useEditorCommands } from "../use-editor-commands";
 import { EditorToolbar } from "./editor-toolbar";
 import { Inspector } from "./inspector";
 import { ModuleLibrary } from "./module-library";
@@ -112,7 +115,24 @@ function Editor() {
     return () => clearTimeout(t);
   }, [dirty, docId, revision, doSave]);
 
-  useEditorCommands(doSave);
+  const openNodeSearch = React.useCallback(() => {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setSearch({
+      position: screenToFlowPosition({
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2,
+      }),
+    });
+  }, [screenToFlowPosition]);
+
+  const fitWorkflow = React.useCallback(() => {
+    void fitView(fitViewOptions(store.getState().nodes));
+  }, [fitView, store]);
+
+  useEditorCommands({ save: doSave, openNodeSearch, fitView: fitWorkflow });
+
+  const searchKeys = useShortcutLabels(EDITOR_ACTIONS.search.shortcut);
 
   const issues = React.useMemo(
     () =>
@@ -243,7 +263,7 @@ function Editor() {
               <div className="glass max-w-sm rounded-xl px-8 py-6 text-center">
                 <div className="font-serif text-lg font-semibold">从空白画布开始</div>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  从左侧模块库拖入模块，或双击画布搜索。先放一个「样本表」作为输入。
+                  从左侧模块库拖入模块，或双击画布搜索（{searchKeys}）。先放一个「样本表」作为输入。
                 </p>
               </div>
             </div>

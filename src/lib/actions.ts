@@ -3,10 +3,9 @@
  * (`id`, `label`, `run`) plus a combo (`key`, `ctrl`, `alt`, `shift`).
  * `ctrl` matches Ctrl or ⌘, the same way ComfyUI's `KeyComboImpl.fromEvent` does.
  *
- * `useActionShortcuts` is the one window listener. Later canvas commands
- * (delete, copy, paste, select-all, …) register here and render through
- * `components/ui/context-menu`. They should use ComfyUI's command ids and
- * chords instead of adding another keydown listener.
+ * `useActionShortcuts` is the one window listener. Canvas commands register
+ * here. Context menus (U3) should render `action.label` and the shortcut
+ * from this registry instead of adding another keydown listener.
  */
 
 export type KeyCombo = {
@@ -29,6 +28,13 @@ export type KeyEvent = {
 export type ShortcutGuard = {
   typing: boolean;
   dialogOpen: boolean;
+  /** An open menu or select popup should keep arrows, Enter, and Escape. */
+  menuOpen?: boolean;
+  /**
+   * A non-collapsed text selection outside the canvas. Commands that yield
+   * leave Ctrl/⌘+C to the browser so it can copy that text.
+   */
+  textSelectionOutsideCanvas?: boolean;
 };
 
 export type Action = {
@@ -53,18 +59,41 @@ export type Action = {
    * already worked with a dialog up, so it is the one command that still does.
    */
   allowWhileDialog?: boolean;
+  /**
+   * Leave the chord to the browser when a text range outside the canvas is
+   * selected. Copy does this. Other chords still run.
+   */
+  yieldToTextSelection?: boolean;
 };
 
 export type ShortcutPlatform = "mac" | "other";
 
 const MODIFIER_KEYS = new Set(["control", "meta", "alt", "shift"]);
 
+/**
+ * US (and similar) layouts report Shift+1 as "!". Chords are stored as the
+ * unshifted digit so the label stays Shift+1 / ⇧1.
+ */
+const SHIFTED_DIGITS: Record<string, string> = {
+  "!": "1",
+  "@": "2",
+  "#": "3",
+  "$": "4",
+  "%": "5",
+  "^": "6",
+  "&": "7",
+  "*": "8",
+  "(": "9",
+  ")": "0",
+};
+
 export function comboFromEvent(event: KeyEvent): KeyCombo {
+  const shift = Boolean(event.shiftKey);
   return {
-    key: event.key,
+    key: shift ? (SHIFTED_DIGITS[event.key] ?? event.key) : event.key,
     ctrl: Boolean(event.ctrlKey || event.metaKey),
     alt: Boolean(event.altKey),
-    shift: Boolean(event.shiftKey),
+    shift,
   };
 }
 
@@ -96,6 +125,7 @@ function sameCombo(expected: KeyCombo, actual: KeyCombo): boolean {
 }
 
 function keyLabel(key: string): string {
+  if (key.toLowerCase() === "escape") return "Esc";
   return key.length === 1 ? key.toUpperCase() : key;
 }
 
@@ -113,10 +143,12 @@ export function formatShortcut(combo: KeyCombo, platform: ShortcutPlatform): str
   return parts.join("+");
 }
 
-/** Both platform labels, for docs and the assistant prompt. */
+/** Both platform labels, for docs and the assistant prompt. A bare key is not repeated. */
 export function shortcutHint(shortcut: KeyCombo | readonly KeyCombo[]): string {
   const combo = primaryCombo(shortcut);
-  return `${formatShortcut(combo, "other")} / ${formatShortcut(combo, "mac")}`;
+  const other = formatShortcut(combo, "other");
+  const mac = formatShortcut(combo, "mac");
+  return other === mac ? other : `${other} / ${mac}`;
 }
 
 export function isActionEnabled(action: Action): boolean {
@@ -124,8 +156,11 @@ export function isActionEnabled(action: Action): boolean {
 }
 
 function isBlocked(action: Action, guard: ShortcutGuard): boolean {
+  // Menus capture keys outright, including save. Dialogs still allow save.
+  if (guard.menuOpen) return true;
   if (guard.typing && !action.allowWhileTyping) return true;
   if (guard.dialogOpen && !action.allowWhileDialog) return true;
+  if (guard.textSelectionOutsideCanvas && action.yieldToTextSelection) return true;
   return false;
 }
 
@@ -133,7 +168,9 @@ function isBlocked(action: Action, guard: ShortcutGuard): boolean {
  * Runs the command for this key, if one is registered.
  * Returns true when the chord belongs to a command, including a disabled one,
  * so the caller can preventDefault. Typing and open dialogs return false
- * unless that command opts out (save).
+ * unless that command opts out (save). An open menu always returns false
+ * so it can handle Escape and arrows. Copy also returns false while a text
+ * range outside the canvas is selected, so the browser can copy that text.
  */
 export function handleShortcutKey(actions: readonly Action[], event: KeyEvent, guard: ShortcutGuard): boolean {
   if (MODIFIER_KEYS.has(event.key.toLowerCase())) return false;
@@ -147,6 +184,7 @@ export function handleShortcutKey(actions: readonly Action[], event: KeyEvent, g
 }
 
 const OPEN_DIALOG = "[role='dialog'][data-state='open'], [role='alertdialog'][data-state='open']";
+const OPEN_MENU = "[role='menu'][data-state='open'], [role='listbox'][data-state='open']";
 
 /** Same fields the previous editor listener treated as typing. */
 export function isEditableTarget(target: EventTarget | null): boolean {
@@ -154,9 +192,50 @@ export function isEditableTarget(target: EventTarget | null): boolean {
   return Boolean((target as Element).closest("input, textarea, [contenteditable=true]"));
 }
 
+/** Flow surface. Text selections inside it still belong to the canvas copy command. */
+export const EDITOR_CANVAS_CLASS = "nf-canvas";
+export const EDITOR_CANVAS_SELECTOR = `.${EDITOR_CANVAS_CLASS}`;
+
+type SelectionNode = {
+  nodeType?: number;
+  closest?: (selector: string) => unknown;
+  parentElement?: { closest: (selector: string) => unknown } | null;
+};
+
+type SelectionLike = {
+  isCollapsed: boolean;
+  anchorNode: SelectionNode | null;
+};
+
+/**
+ * True when the user has a text range whose anchor sits outside the canvas.
+ * A caret, or a range inside `.nf-canvas`, leaves canvas copy in charge.
+ * ComfyUI's canvas hears keys while it is focused; this window listener
+ * yields the same copy when the selection is elsewhere on the page.
+ */
+export function isTextSelectionOutsideCanvas(
+  doc: { getSelection?: () => SelectionLike | null } | null,
+): boolean {
+  const selection = doc?.getSelection?.() ?? null;
+  if (!selection || selection.isCollapsed) return false;
+  const node = selection.anchorNode;
+  if (!node) return false;
+  const element = node.nodeType === 1 && typeof node.closest === "function" ? node : node.parentElement;
+  if (!element || typeof element.closest !== "function") return false;
+  return !element.closest(EDITOR_CANVAS_SELECTOR);
+}
+
 /** Radix dialogs expose this state. ComfyUI consults its dialog stack for the same decision. */
 export function isDialogOpen(root: ParentNode | null = typeof document === "undefined" ? null : document): boolean {
   return Boolean(root?.querySelector(OPEN_DIALOG));
+}
+
+/**
+ * Context menus and select popups. Both use Radix `data-state` and should
+ * keep the key (U3 will open the canvas menu through the same primitive).
+ */
+export function isMenuOpen(root: ParentNode | null = typeof document === "undefined" ? null : document): boolean {
+  return Boolean(root?.querySelector(OPEN_MENU));
 }
 
 export type ActionRegistry = {

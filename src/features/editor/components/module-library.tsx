@@ -9,6 +9,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { groupByCategory, searchModules } from "@/features/workflow/catalog";
 import type { ModuleDef } from "@/features/workflow/types";
 import { cn } from "@/lib/utils";
+import { useShortcutLabels } from "@/lib/use-action-shortcuts";
+import { EDITOR_ACTIONS } from "../commands";
 import { categoryColor } from "../port-style";
 
 export const MODULE_DRAG_TYPE = "application/x-nf-module";
@@ -55,6 +57,7 @@ export function ModuleLibrary({
 }) {
   const [query, setQuery] = React.useState("");
   const [collapsed, setCollapsed] = React.useState<Set<string>>(new Set());
+  const searchKeys = useShortcutLabels(EDITOR_ACTIONS.search.shortcut);
   const groups = React.useMemo(() => groupByCategory(searchModules(modules, query)), [modules, query]);
 
   return (
@@ -100,7 +103,7 @@ export function ModuleLibrary({
         </div>
       </ScrollArea>
       <div className="border-t border-border px-3 py-2 text-[11px] text-muted-foreground">
-        拖到画布或点击添加 · 双击画布搜索
+        拖到画布或点击添加 · 双击画布或 {searchKeys} 搜索
         {syncedAt && <div>nf-core/modules 同步于 {syncedAt}</div>}
       </div>
     </aside>
