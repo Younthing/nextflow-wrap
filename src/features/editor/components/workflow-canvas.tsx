@@ -15,6 +15,9 @@ import "@xyflow/react/dist/style.css";
 
 import { resolveNodeDef } from "@/features/workflow/catalog";
 import { checkCompatibility, findPort } from "@/features/workflow/ports";
+import { useShortcutLabels } from "@/lib/use-action-shortcuts";
+import { EDITOR_ACTIONS } from "../commands";
+import { fitViewOptions } from "../fit-view";
 import { categoryColor, portColor } from "../port-style";
 import { useEditorStore, type FlowEdge, type FlowNode } from "../store";
 import { toast } from "../toast";
@@ -39,6 +42,7 @@ export function WorkflowCanvas({
   const beginChange = useEditorStore((s) => s.beginChange);
   const addNode = useEditorStore((s) => s.addNode);
   const { screenToFlowPosition } = useReactFlow();
+  const fitKeys = useShortcutLabels(EDITOR_ACTIONS.fit.shortcut);
 
   // Edges take the colour of the channel they carry; dubious links are dashed.
   const styledEdges = React.useMemo<FlowEdge[]>(() => {
@@ -133,6 +137,9 @@ export function WorkflowCanvas({
         minZoom={0.2}
         fitView
         fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
+        ariaLabelConfig={{
+          "controls.fitView.ariaLabel": `${EDITOR_ACTIONS.fit.label}（${fitKeys}）`,
+        }}
         proOptions={{ hideAttribution: true }}
       >
         <Background variant={BackgroundVariant.Dots} gap={20} size={1.5} color="var(--canvas-dot)" />
@@ -144,7 +151,7 @@ export function WorkflowCanvas({
           maskColor="color-mix(in oklch, var(--foreground) 8%, transparent)"
           className="!glass !rounded-lg"
         />
-        <Controls className="!glass !rounded-lg !shadow-none" />
+        <Controls className="!glass !rounded-lg !shadow-none" fitViewOptions={fitViewOptions(nodes)} />
       </ReactFlow>
     </div>
   );

@@ -16,6 +16,7 @@ import { resolveNodeDef, type ModuleIndex } from "@/features/workflow/catalog";
 import { emptyWorkflow } from "@/features/workflow/document";
 import { createNode, newId } from "@/features/workflow/nodes";
 import { checkCompatibility, findPort, type Compatibility } from "@/features/workflow/ports";
+import { materializeClipboard, selectionClipboard, type NodeClipboard } from "./clipboard";
 import type {
   ModuleDef,
   PipelineParams,
@@ -63,6 +64,10 @@ interface EditorState {
   past: Snapshot[];
   future: Snapshot[];
   lastSnapshotKey?: string;
+  /** In-memory node clipboard. Survives undo and loading another workflow. */
+  clipboard: NodeClipboard | null;
+  /** How many times the current clipboard has been pasted. The next paste steps further. */
+  clipboardPastes: number;
 
   setIndex: (index: ModuleIndex) => void;
   load: (doc: WorkflowDoc) => void;
@@ -84,16 +89,49 @@ interface EditorState {
   beginChange: (key?: string) => void;
   undo: () => void;
   redo: () => void;
+
+  copySelected: () => void;
+  pasteFromClipboard: () => void;
+  duplicateSelected: () => void;
+  selectAllNodes: () => void;
+  clearSelection: () => void;
 }
 
 function toFlowNode(n: WorkflowDoc["nodes"][number]): FlowNode {
   return { id: n.id, type: "module", position: n.position, data: n.data };
 }
 
+function pastedNode(node: NodeClipboard["nodes"][number]): FlowNode {
+  return { id: node.id, type: "module", position: node.position, data: node.data, selected: true };
+}
+
+function pastedEdge(edge: NodeClipboard["edges"][number]): FlowEdge {
+  return {
+    id: edge.id,
+    source: edge.source,
+    target: edge.target,
+    sourceHandle: edge.sourceHandle,
+    targetHandle: edge.targetHandle,
+  };
+}
+
 export const useEditorStore = create<EditorState>()((set, get) => {
   /** Applies a content change and bumps the revision. */
   const commit = (patch: Partial<EditorState>) =>
     set((s) => ({ ...patch, revision: s.revision + 1 }));
+
+  const applyClipboard = (clip: NodeClipboard, step: number, extra?: Partial<EditorState>) => {
+    const created = materializeClipboard(clip, get().nodes, get().index, step);
+    get().beginChange();
+    commit({
+      nodes: [
+        ...get().nodes.map((node) => (node.selected ? { ...node, selected: false } : node)),
+        ...created.nodes.map(pastedNode),
+      ],
+      edges: [...get().edges, ...created.edges.map(pastedEdge)],
+      ...extra,
+    });
+  };
 
   return {
     ...(() => {
@@ -108,6 +146,8 @@ export const useEditorStore = create<EditorState>()((set, get) => {
     generation: 0,
     past: [],
     future: [],
+    clipboard: null,
+    clipboardPastes: 0,
 
     setIndex: (index) => set({ index }),
 
@@ -185,6 +225,36 @@ export const useEditorStore = create<EditorState>()((set, get) => {
         future: s.future.slice(1),
         lastSnapshotKey: undefined,
       });
+    },
+
+    copySelected: () => {
+      const clip = selectionClipboard(get().nodes, get().edges);
+      if (!clip) return;
+      set({ clipboard: clip, clipboardPastes: 0 });
+    },
+
+    pasteFromClipboard: () => {
+      const { clipboard, clipboardPastes } = get();
+      if (!clipboard?.nodes.length) return;
+      applyClipboard(clipboard, clipboardPastes + 1, { clipboardPastes: clipboardPastes + 1 });
+    },
+
+    duplicateSelected: () => {
+      const clip = selectionClipboard(get().nodes, get().edges);
+      if (!clip) return;
+      applyClipboard(clip, 1);
+    },
+
+    selectAllNodes: () => {
+      const nodes = get().nodes;
+      if (nodes.length === 0 || nodes.every((node) => node.selected)) return;
+      set({ nodes: nodes.map((node) => (node.selected ? node : { ...node, selected: true })) });
+    },
+
+    clearSelection: () => {
+      const nodes = get().nodes;
+      if (!nodes.some((node) => node.selected)) return;
+      set({ nodes: nodes.map((node) => (node.selected ? { ...node, selected: false } : node)) });
     },
 
     onNodesChange: (changes) => {

@@ -22,6 +22,7 @@ ComfyUI 式的 Nextflow 可视化前端：在画布上用 nf-core 模块搭建�
 - 双击画布搜索模块；把连线拖到空白处会搜索能接上的模块并自动连线。
 - 右侧面板编辑节点配置（`ext.args`、`ext.prefix`、资源标签、是否发布）或流程参数（按 `nextflow_schema.json` 自动生成）。
 - 撤销/重做（Ctrl+Z / ⌘Z，重做 Ctrl+Shift+Z / ⇧⌘Z，也可 Ctrl+Y / ⌘Y），Ctrl+S / ⌘S 保存，已保存的流程会自动保存；也可以导入/导出 JSON。
+- 复制、粘贴、创建副本（Ctrl+C / ⌘C、Ctrl+V / ⌘V、Ctrl+D / ⌘D）。粘贴只保留选区内部的连线。Ctrl+A / ⌘A 全选，Esc 取消选择。Ctrl+K / ⌘K 或 / 打开节点搜索，F 或 Shift+1 / ⇧1 适应视图（有选中节点时对准选区）。
 
 ## 一键运行
 

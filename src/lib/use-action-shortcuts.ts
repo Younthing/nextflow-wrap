@@ -4,10 +4,12 @@ import * as React from "react";
 
 import {
   actionRegistry,
+  combosOf,
   formatShortcut,
   handleShortcutKey,
   isDialogOpen,
   isEditableTarget,
+  isMenuOpen,
   primaryCombo,
   type KeyCombo,
   type ShortcutPlatform,
@@ -33,6 +35,12 @@ export function useShortcutLabel(shortcut: KeyCombo | readonly KeyCombo[]): stri
   return formatShortcut(primaryCombo(shortcut), useShortcutPlatform());
 }
 
+/** Every chord, in platform form, for help text that should list alternates. */
+export function useShortcutLabels(shortcut: KeyCombo | readonly KeyCombo[]): string {
+  const platform = useShortcutPlatform();
+  return combosOf({ shortcut }).map((combo) => formatShortcut(combo, platform)).join(" 或 ");
+}
+
 /**
  * Mount once, next to the commands it should hear. The listener reads the
  * registry at keydown time, so commands registered later (canvas menus) are picked up
@@ -41,9 +49,14 @@ export function useShortcutLabel(shortcut: KeyCombo | readonly KeyCombo[]): stri
 export function useActionShortcuts() {
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      // Dialogs and menus listen on document and preventDefault (Escape) before
+      // this window listener. Leave those keys alone so closing an overlay does
+      // not also run a canvas command such as deselect.
+      if (event.defaultPrevented) return;
       const handled = handleShortcutKey(actionRegistry.list(), event, {
         typing: isEditableTarget(event.target),
         dialogOpen: isDialogOpen(),
+        menuOpen: isMenuOpen(),
       });
       if (handled) event.preventDefault();
     };
