@@ -17,7 +17,7 @@ const status = await harness.probe(); // does not start a thread
 const session = await harness.open({
   cwd: process.cwd(),
   model: "gpt-test", // optional; omit to use the CLI default
-  approvalPolicy: "onRequest", // never | onRequest | unlessTrusted
+  approvalPolicy: "on-request", // never | on-request | untrusted (onRequest and unlessTrusted also work)
   sandboxPolicy: "workspace-write", // read-only | workspace-write | danger-full-access
   autoApproval: "decline", // default. "manual" waits for respondToApproval
 });
@@ -34,7 +34,7 @@ await session.close();
 
 `startTurn` calls `ensureThread` when the thread does not exist yet. Command and file-change approvals are answered with `{ decision }`. The default `autoApproval: "decline"` replies immediately so a turn cannot wait forever. Pass `autoApproval: "manual"` and call `respondToApproval(requestId, "accept" | "decline" | ...)`.
 
-`approvalPolicy` and `sandboxPolicy` are normalized to the current app-server tokens (`onRequest`, `unlessTrusted`, `readOnly`, `workspaceWrite`, `dangerFullAccess`). `on-request`, `untrusted`, and kebab-case sandbox names are accepted. Both the thread `sandbox` field and the turn `sandboxPolicy.type` use those camelCase tokens. Unknown strings are forwarded unchanged. Stream errors with `willRetry: true` are ignored; `turn/completed` is the end of the turn.
+`approvalPolicy` is sent as `never`, `on-request`, or `untrusted`. `onRequest` and `unlessTrusted` are accepted aliases. `thread/start` receives `sandbox` as `read-only`, `workspace-write`, or `danger-full-access`. `turn/start` receives `sandboxPolicy.type` as `readOnly`, `workspaceWrite`, or `dangerFullAccess`. Either spelling is accepted on input. Unknown strings are forwarded unchanged. Stream errors with `willRetry: true` are ignored; `turn/completed` is the end of the turn.
 
 `probe()` checks `codex --version`, then opens a short-lived app-server only to read account status and, briefly, `model/list`. A slow model catalog cannot hide an auth result that already came back. It does not call `thread/start`.
 
