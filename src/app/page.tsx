@@ -1,8 +1,8 @@
-import { WorkflowEditor } from "@/features/editor/components/workflow-editor";
+import { redirect } from "next/navigation";
 
-// The editor mounts after the browser's API/mock gate, outside the static shell.
+// The page only redirects, so there is no segment to validate for instant navigation.
 export const instant = false;
 
-export default function EditorPage() {
-  return <WorkflowEditor />;
+export default function HomePage() {
+  redirect("/workflows");
 }

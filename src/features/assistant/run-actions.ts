@@ -1,6 +1,8 @@
 import { z } from "zod";
 
+import { enqueueEditorSave, runEditorSave, type EditorSaveRead } from "@/features/editor/editor-save";
 import { useEditorStore, selectIsDirty } from "@/features/editor/store";
+import { api } from "@/lib/api";
 import { GenerateError, generateProject } from "@/features/project/generate";
 import {
   EXECUTORS,
@@ -256,7 +258,7 @@ export function prepareStartRun(input: StartRunInput): StartRunPlan {
   return { launch, command, runConfig, profile, problems, modulesSha: input.modulesSha, workflow: input.doc, request };
 }
 
-/** Ignores `updatedAt`, which the editor rewrites on every read. */
+/** Ignores `updatedAt`. It is the server revision, not canvas content. */
 export function startPlanStamp(plan: StartRunPlan): string {
   const doc = plan.workflow;
   return JSON.stringify({
@@ -335,27 +337,52 @@ function infoConfirm(title: string, message: string, problems: string[], decline
   return { title, message, type: "info", itemList: problems, hint: reason, problems, declinedMessage };
 }
 
-/** Saves a dirty, already-saved workflow. A new unsaved canvas is refused, matching the run dialog. */
+/** Saves a dirty, already-saved workflow through the editor queue. A new unsaved canvas is refused. */
 export async function ensureWorkflowSaved(
   save: (doc: WorkflowDoc) => Promise<WorkflowDoc>,
 ): Promise<{ doc: WorkflowDoc } | { error: string }> {
-  const state = useEditorStore.getState();
-  if (!state.docId) return { error: "请先保存流程（Ctrl+S）" };
-  if (!selectIsDirty(state)) return { doc: state.toDoc() };
-  const generation = state.generation;
-  const revision = state.revision;
+  if (!useEditorStore.getState().docId) return { error: "请先保存流程（Ctrl+S）" };
+  let failure: string | undefined;
   try {
-    const saved = await save(state.toDoc());
-    const next = useEditorStore.getState();
-    if (next.generation === generation) {
-      if (!next.docId) useEditorStore.setState({ docId: saved.id });
-      next.markSaved(revision);
-    }
-    return { doc: useEditorStore.getState().toDoc() };
+    await enqueueEditorSave(true, async () => {
+      const state = useEditorStore.getState();
+      if (!state.docId) {
+        failure = "请先保存流程（Ctrl+S）";
+        return;
+      }
+      if (!selectIsDirty(state)) return;
+      const snapshot: EditorSaveRead = {
+        docId: state.docId,
+        revision: state.revision,
+        generation: state.generation,
+        dirty: true,
+        doc: state.toDoc(),
+        issues: [],
+      };
+      await runEditorSave({
+        announce: false,
+        snapshot,
+        save,
+        markSaved: (revision, updatedAt) => {
+          const next = useEditorStore.getState();
+          if (next.generation === state.generation && next.docId === state.docId) next.markSaved(revision, updatedAt);
+        },
+        stillOpen: (generation, docId) => {
+          const next = useEditorStore.getState();
+          return next.generation === generation && next.docId === docId;
+        },
+        fetchCurrent: (id) => api<WorkflowDoc>(`/workflows/${id}`),
+        load: (doc) => useEditorStore.getState().load(doc),
+        toastSaved: () => {},
+        toastError: (message) => { failure = message; },
+      });
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return { error: `保存失败：${message}` };
   }
+  if (failure) return { error: failure.startsWith("保存失败") ? failure : `保存失败：${failure}` };
+  return { doc: useEditorStore.getState().toDoc() };
 }
 
 function parseJson(text: string): unknown {

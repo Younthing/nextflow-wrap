@@ -1,20 +1,23 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { ReactFlowProvider, useReactFlow } from "@xyflow/react";
 import { Loader2 } from "lucide-react";
 
-import { BUILTIN_MODULES } from "@/features/workflow/builtins";
-import { API_MOCKING_ENABLED } from "@/lib/mocking";
-import { emptyWorkflow, parseWorkflowDoc } from "@/features/workflow/document";
-import { useModuleCatalog, useSaveWorkflow, useWorkflow } from "@/features/workflow/queries";
-import { validateWorkflow } from "@/features/workflow/validate";
+import { Button } from "@/components/ui/button";
 import { EditorAssistant } from "@/features/assistant/editor-assistant";
 import { RunDialog } from "@/features/runs/components/run-dialog";
+import { BUILTIN_MODULES } from "@/features/workflow/builtins";
+import { useModuleCatalog, useSaveWorkflow, useWorkflow } from "@/features/workflow/queries";
+import { keepLocalWorkflowEdits, revisionIsOlder } from "@/features/workflow/revision";
+import type { WorkflowDoc } from "@/features/workflow/types";
+import { validateWorkflow } from "@/features/workflow/validate";
+import { api } from "@/lib/api";
 import { useShortcutLabels } from "@/lib/use-action-shortcuts";
 import { EDITOR_ACTIONS } from "../commands";
+import { editorEchoKeepsLocalEdits, editorKnownRevision, enqueueEditorSave, runEditorSave, type EditorSaveRead } from "../editor-save";
 import { fitViewOptions } from "../fit-view";
-import { saveConfirmation } from "../save-feedback";
 import { selectIsDirty, useEditorStore } from "../store";
 import { toast } from "../toast";
 import { useEditorCommands } from "../use-editor-commands";
@@ -25,24 +28,30 @@ import { NodeSearchDialog, type SearchPick, type SearchRequest } from "./node-se
 import { Toaster } from "./toaster";
 import { WorkflowCanvas } from "./workflow-canvas";
 
-const CURRENT_KEY = "nf-studio-current-workflow";
-const DEFAULT_WORKFLOW = API_MOCKING_ENABLED ? "wf_demo_rnaseq" : "qc-smoke";
 const AUTOSAVE_MS = 1500;
 
-function readCurrentId() {
-  try {
-    return localStorage.getItem(CURRENT_KEY) ?? DEFAULT_WORKFLOW;
-  } catch {
-    return DEFAULT_WORKFLOW;
-  }
+/**
+ * The editor store outlives the route. This token records that the current
+ * screen has loaded its workflow. A ref cannot be read while rendering, and
+ * setting React state from the load effect is rejected by the hooks lint.
+ */
+type AppliedWorkflow = { id: string | null; token: symbol | null; version: number };
+const SERVER_APPLIED: AppliedWorkflow = { id: null, token: null, version: 0 };
+let appliedWorkflow: AppliedWorkflow = SERVER_APPLIED;
+const appliedListeners = new Set<() => void>();
+
+function markWorkflowApplied(id: string, token: symbol) {
+  appliedWorkflow = { id, token, version: appliedWorkflow.version + 1 };
+  appliedListeners.forEach((listener) => listener());
 }
 
-export function rememberCurrentId(id: string) {
-  try {
-    localStorage.setItem(CURRENT_KEY, id);
-  } catch {
-    // Non-essential: the editor falls back to the demo workflow.
-  }
+function subscribeAppliedWorkflow(listener: () => void) {
+  appliedListeners.add(listener);
+  return () => appliedListeners.delete(listener);
+}
+
+function useAppliedWorkflow() {
+  return React.useSyncExternalStore(subscribeAppliedWorkflow, () => appliedWorkflow, () => SERVER_APPLIED);
 }
 
 function editorIssues(
@@ -57,23 +66,51 @@ function editorIssues(
   );
 }
 
-function downloadJson(name: string, value: unknown) {
-  const blob = new Blob([JSON.stringify(value, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const a = Object.assign(document.createElement("a"), { href: url, download: `${name}.workflow.json` });
-  a.click();
-  URL.revokeObjectURL(url);
+function EditorLoading() {
+  return (
+    <div className="glass grid size-full place-items-center rounded-xl text-sm text-muted-foreground">
+      <span className="flex items-center gap-2">
+        <Loader2 className="size-4 animate-spin" /> 加载模块库和流程…
+      </span>
+    </div>
+  );
 }
 
-function Editor() {
+function EditorNotice({
+  message,
+  tone = "muted",
+  children,
+}: {
+  message: string;
+  tone?: "muted" | "danger";
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className="glass flex size-full flex-col items-center justify-center gap-3 rounded-xl text-sm">
+      <span className={tone === "danger" ? "text-destructive" : "text-muted-foreground"}>{message}</span>
+      {children}
+    </div>
+  );
+}
+
+function BackToLibrary() {
+  return (
+    <Button asChild variant="outline" size="sm">
+      <Link href="/workflows">返回流程库</Link>
+    </Button>
+  );
+}
+
+function Editor({ workflowId }: { workflowId: string }) {
   const catalog = useModuleCatalog();
-  const [currentId, setCurrentId] = React.useState<string>(readCurrentId);
-  const workflow = useWorkflow(currentId || undefined);
+  const workflow = useWorkflow(workflowId);
   const save = useSaveWorkflow();
-  const { fitView, setCenter, screenToFlowPosition } = useReactFlow();
+  const { fitView, screenToFlowPosition } = useReactFlow();
   const canvasRef = React.useRef<HTMLDivElement>(null);
   const [search, setSearch] = React.useState<SearchRequest | null>(null);
   const [runOpen, setRunOpen] = React.useState(false);
+  const [mountToken] = React.useState(() => Symbol("workflow-editor"));
+  const applied = useAppliedWorkflow();
 
   const store = useEditorStore;
   const docId = useEditorStore((s) => s.docId);
@@ -88,39 +125,66 @@ function Editor() {
     if (catalog.data) store.getState().setIndex(catalog.data.index);
   }, [catalog.data, store]);
 
-  // Load the requested workflow once it arrives (not when our own save echoes back).
   React.useEffect(() => {
-    if (workflow.data === null) {
-      toast.warning("找不到上次打开的流程，已新建空白流程");
-      store.getState().load(emptyWorkflow(""));
-    } else if (workflow.data && workflow.data.id !== store.getState().docId) {
-      store.getState().load(workflow.data);
-      requestAnimationFrame(() => void fitView({ padding: 0.2, maxZoom: 1 }));
+    const doc = workflow.data;
+    if (!doc || doc.id !== workflowId) return;
+    const state = store.getState();
+    const appliedThisMount = applied.id === workflowId && applied.token === mountToken;
+    // A save echo for the revision we already have must not reload the canvas.
+    if (appliedThisMount && state.updatedAt === doc.updatedAt) return;
+    // A background GET can still resolve with the revision from before this save.
+    if (state.docId === doc.id && (
+      revisionIsOlder(doc.updatedAt, state.updatedAt) ||
+      revisionIsOlder(doc.updatedAt, editorKnownRevision(doc.id))
+    )) {
+      markWorkflowApplied(workflowId, mountToken);
+      return;
     }
-  }, [workflow.data, store, fitView]);
+    // Our own departing save minted this revision. It is not an external edit.
+    if (editorEchoKeepsLocalEdits(
+      { docId: state.docId, dirty: selectIsDirty(state) },
+      doc,
+    )) {
+      markWorkflowApplied(workflowId, mountToken);
+      return;
+    }
+    // Dirty edits stay only while the server revision they were based on is still current.
+    if (!keepLocalWorkflowEdits(
+      { docId: state.docId, updatedAt: state.updatedAt, dirty: selectIsDirty(state) },
+      doc,
+    )) {
+      store.getState().load(doc);
+    }
+    markWorkflowApplied(workflowId, mountToken);
+  }, [workflow.data, workflowId, store, applied.id, applied.token, mountToken]);
 
   const doSave = React.useCallback(
     (silent = false) => {
+      // Capture this workflow now. A queued save must not read whatever document
+      // is in the shared store when the previous request finally finishes.
       const state = store.getState();
-      const rev = state.revision;
-      const generation = state.generation;
-      const confirmation = saveConfirmation(editorIssues(state));
-      save.mutate(state.toDoc(), {
-        onSuccess: (saved) => {
-          const s = store.getState();
-          // Another workflow was opened while saving: leave its identity alone.
-          if (s.generation !== generation) return;
-          if (!s.docId) useEditorStore.setState({ docId: saved.id });
-          s.markSaved(rev);
-          setCurrentId(saved.id);
-          rememberCurrentId(saved.id);
-          if (!silent) {
-            if (confirmation.tone === "warning") toast.warning(confirmation.message);
-            else toast.success(confirmation.message);
-          }
+      const snapshot: EditorSaveRead = {
+        docId: state.docId,
+        revision: state.revision,
+        generation: state.generation,
+        dirty: selectIsDirty(state),
+        doc: state.toDoc(),
+        issues: editorIssues(state),
+      };
+      enqueueEditorSave(silent, (announce) => runEditorSave({
+        announce,
+        snapshot,
+        save: (doc) => save.mutateAsync(doc),
+        markSaved: (revision, updatedAt) => store.getState().markSaved(revision, updatedAt),
+        stillOpen: (generation, docId) => {
+          const current = store.getState();
+          return current.generation === generation && current.docId === docId;
         },
-        onError: (err) => toast.error(`保存失败：${err.message}`),
-      });
+        fetchCurrent: (id) => api<WorkflowDoc>(`/workflows/${id}`),
+        load: (doc) => store.getState().load(doc),
+        toastSaved: (tone, message) => (tone === "warning" ? toast.warning(message) : toast.success(message)),
+        toastError: (message) => toast.error(message),
+      }));
     },
     [save, store],
   );
@@ -131,6 +195,17 @@ function Editor() {
     const t = setTimeout(() => doSave(true), AUTOSAVE_MS);
     return () => clearTimeout(t);
   }, [dirty, docId, revision, doSave]);
+
+  const doSaveRef = React.useRef(doSave);
+  React.useEffect(() => {
+    doSaveRef.current = doSave;
+  }, [doSave]);
+  React.useEffect(() => {
+    return () => {
+      const state = useEditorStore.getState();
+      if (selectIsDirty(state) && state.docId) doSaveRef.current(true);
+    };
+  }, []);
 
   const openNodeSearch = React.useCallback(() => {
     const rect = canvasRef.current?.getBoundingClientRect();
@@ -191,40 +266,22 @@ function Editor() {
     setSearch(null);
   };
 
-  /** Saves (or confirms discarding) the open workflow before replacing it. */
-  const leaveCurrent = () => {
-    const state = store.getState();
-    if (!selectIsDirty(state)) return true;
-    if (state.docId) {
-      doSave(true);
-      return true;
-    }
-    return window.confirm("当前流程还没保存，确定要放弃这些修改吗？");
-  };
-
-  const onImport = async (file: File) => {
-    if (!leaveCurrent()) return;
-    try {
-      const doc = parseWorkflowDoc(JSON.parse(await file.text()));
-      store.getState().load({ ...doc, id: "" });
-      useEditorStore.setState((s) => ({ revision: s.revision + 1 }));
-      setCurrentId("");
-      requestAnimationFrame(() => void fitView({ padding: 0.2, maxZoom: 1 }));
-      toast.info(`已导入「${doc.name}」，保存后会成为新流程`);
-    } catch (err) {
-      toast.error(`导入失败：${(err as Error).message}`);
-    }
-  };
-
-  if (catalog.isPending || (currentId && workflow.isPending)) {
+  if (catalog.isPending || workflow.isPending) return <EditorLoading />;
+  if (workflow.isError) {
     return (
-      <div className="glass grid size-full place-items-center rounded-xl text-sm text-muted-foreground">
-        <span className="flex items-center gap-2">
-          <Loader2 className="size-4 animate-spin" /> 加载模块库和流程…
-        </span>
-      </div>
+      <EditorNotice message={`加载失败：${workflow.error.message}`} tone="danger">
+        <BackToLibrary />
+      </EditorNotice>
     );
   }
+  if (workflow.data === null) {
+    return (
+      <EditorNotice message="这个流程不存在或已被删除">
+        <BackToLibrary />
+      </EditorNotice>
+    );
+  }
+  if (applied.token !== mountToken || applied.id !== workflowId) return <EditorLoading />;
 
   return (
     <div className="flex size-full gap-3">
@@ -236,33 +293,11 @@ function Editor() {
       />
       <div className="flex min-w-0 flex-1 flex-col gap-3">
         <EditorToolbar
-          issues={issues}
           saving={save.isPending}
-          onSave={() => doSave()}
-          onOpen={(id) => {
-            if (id === store.getState().docId || !leaveCurrent()) return;
-            setCurrentId(id);
-            rememberCurrentId(id);
-          }}
-          onNew={() => {
-            if (!leaveCurrent()) return;
-            store.getState().load(emptyWorkflow(""));
-            setCurrentId("");
-          }}
-          onImport={onImport}
-          onExport={() => {
-            const doc = store.getState().toDoc();
-            downloadJson(doc.name || "workflow", doc);
-          }}
+          onFit={fitWorkflow}
           onRun={() => {
             if (store.getState().docId && selectIsDirty(store.getState())) doSave(true);
             setRunOpen(true);
-          }}
-          onFocusNode={(id) => {
-            const node = store.getState().nodes.find((n) => n.id === id);
-            if (!node) return;
-            useEditorStore.setState((s) => ({ nodes: s.nodes.map((n) => ({ ...n, selected: n.id === id })) }));
-            void setCenter(node.position.x + 128, node.position.y + 80, { zoom: 1, duration: 400 });
           }}
         />
         <section ref={canvasRef} className="glass relative min-h-0 flex-1 overflow-hidden rounded-xl">
@@ -288,10 +323,15 @@ function Editor() {
   );
 }
 
-export function WorkflowEditor() {
+export function WorkflowEditor({ workflowId }: { workflowId: string }) {
   return (
-    <ReactFlowProvider>
-      <Editor />
+    <ReactFlowProvider key={workflowId}>
+      <Editor workflowId={workflowId} />
     </ReactFlowProvider>
   );
+}
+
+export function WorkflowEditorRoute({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = React.use(params);
+  return <WorkflowEditor workflowId={id} />;
 }

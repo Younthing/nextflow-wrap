@@ -6,7 +6,7 @@ import { emptyWorkflow } from "@/features/workflow/document";
 import type { WorkflowNodeData } from "@/features/workflow/types";
 import { PASTE_GAP } from "./clipboard";
 import { PLACEMENT_CLEAR_X, placeWithoutOverlap } from "./placement";
-import { selectHasSelection, useEditorStore, type FlowEdge, type FlowNode } from "./store";
+import { selectHasSelection, selectIsDirty, useEditorStore, type FlowEdge, type FlowNode } from "./store";
 
 function node(
   id: string,
@@ -64,6 +64,18 @@ describe("editor store history", () => {
     const before = useEditorStore.getState().generation;
     useEditorStore.getState().load(emptyWorkflow(""));
     expect(useEditorStore.getState().generation).toBe(before + 1);
+  });
+
+  it("sends the loaded server revision until a save adopts the next one", () => {
+    const doc = emptyWorkflow("wf", "原名");
+    doc.updatedAt = "2026-01-01T00:00:00.000Z";
+    useEditorStore.getState().load(doc);
+    useEditorStore.getState().setName("原名-dirty");
+    expect(useEditorStore.getState().toDoc().updatedAt).toBe("2026-01-01T00:00:00.000Z");
+    const revision = useEditorStore.getState().revision;
+    useEditorStore.getState().markSaved(revision, "2026-01-02T00:00:00.000Z");
+    expect(useEditorStore.getState().toDoc().updatedAt).toBe("2026-01-02T00:00:00.000Z");
+    expect(selectIsDirty(useEditorStore.getState())).toBe(false);
   });
 });
 

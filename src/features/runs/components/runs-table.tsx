@@ -163,7 +163,7 @@ export function RunsTable({ workflowId }: { workflowId?: string }) {
         <History className="size-8" />
         <p className="text-sm">还没有运行记录</p>
         <Button asChild variant="outline" size="sm">
-          <Link href="/">去编辑器运行一个流程</Link>
+          <Link href="/workflows">去流程库</Link>
         </Button>
       </div>
     );
