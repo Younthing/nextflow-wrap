@@ -10,6 +10,25 @@ import { useEditorStore } from "../store";
 import { useEditorCommands } from "../use-editor-commands";
 import { EditorFixture } from "./fixtures";
 
+/** A module widget, so a right-click can land in a text field. */
+function textWidgetWorkflow(): WorkflowDoc {
+  return {
+    ...emptyWorkflow("wf_widget", "输入框"),
+    nodes: [
+      {
+        id: "widget",
+        position: { x: 80, y: 80 },
+        data: {
+          moduleId: "nf-core/hisat2/build",
+          alias: "HISAT2",
+          widgets: { hisat2_memory_input: "12" },
+          config: {},
+        },
+      },
+    ],
+  };
+}
+
 /** Two nodes far apart, so fitting the selection leaves the other one outside the pane. */
 function selectionFitWorkflow(): WorkflowDoc {
   return {
@@ -258,5 +277,37 @@ export const ContextMenuOnNode: Story = {
     expect(useEditorStore.getState().nodes.find((node) => node.id === "outside")?.selected).toBe(true);
     await userEvent.click(menuItem(/粘贴/));
     await waitFor(() => expect(useEditorStore.getState().nodes).toHaveLength(4));
+  },
+};
+
+/** A widget input keeps the browser text menu. The canvas commands stay closed. */
+export const ContextMenuOnTextInput: Story = {
+  name: "Context menu leaves text inputs",
+  render: () => <CommandCanvas />,
+  decorators: [
+    (Story) => (
+      <EditorFixture doc={textWidgetWorkflow()}>
+        <Story />
+      </EditorFixture>
+    ),
+  ],
+  play: async ({ canvasElement }) => {
+    const input = await waitFor(() => {
+      const el = canvasElement.querySelector(".react-flow__node input");
+      if (!(el instanceof HTMLInputElement) || el.getBoundingClientRect().width < 10) {
+        throw new Error("widget input not ready");
+      }
+      return el;
+    });
+    const seen: { event: Event | null } = { event: null };
+    const mark = (event: Event) => {
+      seen.event = event;
+    };
+    window.addEventListener("contextmenu", mark, true);
+    await userEvent.pointer({ keys: "[MouseRight]", target: input });
+    window.removeEventListener("contextmenu", mark, true);
+    expect(seen.event?.defaultPrevented).toBe(false);
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(input.value).toBe("12");
   },
 };

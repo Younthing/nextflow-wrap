@@ -15,7 +15,7 @@ import "@xyflow/react/dist/style.css";
 
 import { resolveNodeDef } from "@/features/workflow/catalog";
 import { checkCompatibility, findPort } from "@/features/workflow/ports";
-import { EDITOR_CANVAS_CLASS } from "@/lib/actions";
+import { EDITOR_CANVAS_CLASS, isEditableTarget } from "@/lib/actions";
 import { useShortcutLabels } from "@/lib/use-action-shortcuts";
 import { selectionForContextTarget } from "../canvas-menu";
 import { EDITOR_ACTIONS } from "../commands";
@@ -114,9 +114,24 @@ export function WorkflowCanvas({
     if (next) useEditorStore.setState(next);
   }, []);
 
+  const surfaceRef = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    const surface = surfaceRef.current;
+    if (!surface) return;
+    // Widget inputs sit on the canvas. Their contextmenu bubbles to the Radix
+    // trigger, which would copy nodes instead of the field text. Stop it here,
+    // before React's root listener, so the browser text menu still opens.
+    const allowTextMenu = (event: Event) => {
+      if (isEditableTarget(event.target)) event.stopPropagation();
+    };
+    surface.addEventListener("contextmenu", allowTextMenu);
+    return () => surface.removeEventListener("contextmenu", allowTextMenu);
+  }, []);
+
   return (
     <CanvasContextMenu>
       <div
+        ref={surfaceRef}
         className={`${EDITOR_CANVAS_CLASS} size-full`}
         onDoubleClick={(e) => {
           if ((e.target as HTMLElement).classList.contains("react-flow__pane")) {
