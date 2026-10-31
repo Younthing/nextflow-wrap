@@ -5,8 +5,8 @@ import { Search } from "lucide-react";
 
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { searchModules } from "@/features/workflow/catalog";
-import { checkCompatibility, portSignature, socketInputs } from "@/features/workflow/ports";
+import { moduleSearchEmptyLabel, modulesForSearch } from "@/features/workflow/module-search";
+import { portSignature } from "@/features/workflow/ports";
 import type { ModuleDef, PortDef } from "@/features/workflow/types";
 import { cn } from "@/lib/utils";
 import { categoryColor } from "../port-style";
@@ -24,13 +24,6 @@ export interface SearchPick {
   port?: string;
 }
 
-function matchingPort(def: ModuleDef, from: NonNullable<SearchRequest["from"]>) {
-  if (from.side === "source") {
-    return socketInputs(def).find((p) => checkCompatibility(from.port, p).ok);
-  }
-  return def.outputs.find((p) => checkCompatibility(p, from.port).ok);
-}
-
 export function NodeSearchDialog({
   request,
   modules,
@@ -46,14 +39,11 @@ export function NodeSearchDialog({
   const [active, setActive] = React.useState(0);
   const listRef = React.useRef<HTMLDivElement>(null);
 
-  const results = React.useMemo(() => {
-    const found = searchModules(modules, query);
-    const from = request?.from;
-    if (!from) return found.map((def) => ({ def, port: undefined as PortDef | undefined }));
-    return found
-      .map((def) => ({ def, port: matchingPort(def, from) }))
-      .filter((r) => r.port);
-  }, [modules, query, request?.from]);
+  const pending = request?.from;
+  const results = React.useMemo(
+    () => modulesForSearch(modules, query, pending),
+    [modules, query, pending],
+  );
 
   const pick = (i: number) => {
     const r = results[i];
@@ -87,8 +77,8 @@ export function NodeSearchDialog({
             autoFocus
             value={query}
             placeholder={
-              request?.from
-                ? `搜索能连接 ${request.from.port.name} [${portSignature(request.from.port)}] 的模块…`
+              pending
+                ? `搜索能连接 ${pending.port.name} [${portSignature(pending.port)}] 的模块…`
                 : "搜索模块：名称、工具、关键词…"
             }
             onChange={(e) => {
@@ -98,7 +88,7 @@ export function NodeSearchDialog({
             onKeyDown={(e) => {
               if (e.key === "ArrowDown") {
                 e.preventDefault();
-                setActive((i) => Math.min(i + 1, results.length - 1));
+                setActive((i) => Math.min(i + 1, Math.max(results.length - 1, 0)));
               } else if (e.key === "ArrowUp") {
                 e.preventDefault();
                 setActive((i) => Math.max(i - 1, 0));
@@ -113,7 +103,9 @@ export function NodeSearchDialog({
         <ScrollArea className="max-h-80">
           <div ref={listRef} className="p-1.5">
             {results.length === 0 && (
-              <div className="px-3 py-6 text-center text-sm text-muted-foreground">没有匹配的模块</div>
+              <div className="px-3 py-6 text-center text-sm text-muted-foreground">
+                {moduleSearchEmptyLabel(pending, query)}
+              </div>
             )}
             {results.map(({ def, port }, i) => (
               <button
