@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { createCodexHarness, CodexHarnessError, type CodexSession } from "../src/features/codex-harness";
 
@@ -48,6 +49,19 @@ function parseArgs(argv: string[]): { model?: string; binary?: string; approval?
   return { model, binary, approval, prompt: prompt.join(" ").trim() || DEFAULT_PROMPT };
 }
 
+/**
+ * Stop a smoke run. `session.close()` signals the detached Codex process group
+ * before the temp directory is removed. `process.exit` skips `finally`, so
+ * cancel and timeout must use this order themselves.
+ */
+export async function stopSmokeSession(
+  session: { close(): Promise<void> } | undefined,
+  removeCwd: () => Promise<void>,
+): Promise<void> {
+  await session?.close();
+  await removeCwd();
+}
+
 async function readTurn(session: CodexSession): Promise<string> {
   let text = "";
   for await (const event of session.events) {
@@ -86,9 +100,20 @@ async function main(): Promise<void> {
   const cwd = await mkdtemp(join(tmpdir(), "nextflow-codex-smoke-"));
   const removeCwd = () => rm(cwd, { recursive: true, force: true }).catch(() => undefined);
   console.error(`cwd ${cwd}`);
-  // Registered before open() so Ctrl+C during startup still deletes the directory.
+  let session: CodexSession | undefined;
+  let finishing = false;
+  // Before open() resolves there is no process group to close, so a signal only
+  // deletes the directory. After open(), these handlers await session.close()
+  // (which signals the detached process group) and only then delete the directory.
   const shutdown = (code: number) => {
-    void removeCwd().finally(() => process.exit(code));
+    if (finishing) return;
+    finishing = true;
+    const current = session;
+    const closed = current ? current.close() : Promise.resolve();
+    void closed.finally(async () => {
+      await removeCwd();
+      process.exit(code);
+    });
   };
   const onSignal = () => shutdown(130);
   process.once("SIGINT", onSignal);
@@ -98,7 +123,6 @@ async function main(): Promise<void> {
     shutdown(1);
   }, TIMEOUT_MS);
   timer.unref();
-  let session: CodexSession | undefined;
   try {
     session = await harness.open({
       cwd,
@@ -115,24 +139,30 @@ async function main(): Promise<void> {
       console.error(`thread ${threadId} turn ${turnId}`);
       await reading;
     } finally {
-      await session.close();
+      if (!finishing) await session.close();
       // Observe a reader that rejected because the session closed first.
       await reading.catch(() => undefined);
     }
   } finally {
-    clearTimeout(timer);
-    process.removeListener("SIGINT", onSignal);
-    process.removeListener("SIGTERM", onSignal);
-    await Promise.race([
-      session?.close() ?? Promise.resolve(),
-      new Promise((resolve) => setTimeout(resolve, 3_000)),
-    ]);
-    await removeCwd();
+    if (!finishing) {
+      clearTimeout(timer);
+      process.removeListener("SIGINT", onSignal);
+      process.removeListener("SIGTERM", onSignal);
+      await stopSmokeSession(session, removeCwd);
+    }
   }
 }
 
-main().catch((error: unknown) => {
-  const message = error instanceof Error ? error.message : String(error);
-  console.error(message);
-  process.exitCode = 1;
-});
+function isEntrypoint(): boolean {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  return import.meta.url === pathToFileURL(entry).href;
+}
+
+if (isEntrypoint()) {
+  main().catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(message);
+    process.exitCode = 1;
+  });
+}

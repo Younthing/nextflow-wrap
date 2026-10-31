@@ -49,7 +49,7 @@ pnpm codex:smoke -- Reply with the single word pong
 pnpm codex:smoke --model gpt-test --approval never -- Say hello
 ```
 
-`--binary` overrides the executable (the same value as `open({ binaryPath })`). The script skips with exit code 0 when `codex` is not on `PATH`. It exits 1 when the CLI is present but `account/read` says the user is not authenticated. Approvals during the smoke run are auto-declined. The sandbox is `workspace-write` and the approval policy defaults to `never`. The working directory is an empty temporary directory, not the repository, so the smoke turn cannot read or write the project. The default prompt does not need local files.
+`--binary` overrides the executable (the same value as `open({ binaryPath })`). The script skips with exit code 0 when `codex` is not on `PATH`. It exits 1 when the CLI is present but `account/read` says the user is not authenticated. Approvals during the smoke run are auto-declined. The sandbox is `workspace-write` and the approval policy defaults to `never`. The working directory is an empty temporary directory, not the repository, so the smoke turn cannot read or write the project. The default prompt does not need local files. On timeout, SIGINT, or SIGTERM after the session is open, the script closes that process before deleting the directory.
 
 ## Assistant
 
