@@ -18,7 +18,6 @@ import { CodeViewer } from "@/features/project/components/code-viewer";
 import { ProjectPreview } from "@/features/project/components/project-preview";
 import { defaultProjectSettings, GenerateError, generateProject } from "@/features/project/generate";
 import {
-  defaultLaunchConfig,
   ENGINE_LABELS,
   EXECUTORS,
   executorDef,
@@ -32,6 +31,7 @@ import {
 } from "@/features/project/launch";
 import type { Issue } from "@/features/workflow/validate";
 import { cn } from "@/lib/utils";
+import { readLaunchConfig, rememberLaunchConfig } from "../saved-launch";
 import { useHealthStatus, useLaunchRun } from "../queries";
 
 const EXECUTOR_ICONS: Record<ExecutorId, React.ComponentType<{ className?: string }>> = {
@@ -42,26 +42,6 @@ const EXECUTOR_ICONS: Record<ExecutorId, React.ComponentType<{ className?: strin
   "azure-batch": Cloud,
   k8s: Ship,
 };
-
-const launchKey = (docId: string) => `nf-studio-launch:${docId || "new"}`;
-
-function readLaunchConfig(docId: string): LaunchConfig {
-  try {
-    const raw = localStorage.getItem(launchKey(docId));
-    if (raw) return { ...defaultLaunchConfig(), ...(JSON.parse(raw) as Partial<LaunchConfig>), runName: undefined };
-  } catch {
-    // Fall through to defaults.
-  }
-  return defaultLaunchConfig();
-}
-
-function rememberLaunchConfig(docId: string, config: LaunchConfig) {
-  try {
-    localStorage.setItem(launchKey(docId), JSON.stringify({ ...config, runName: undefined }));
-  } catch {
-    // Non-essential.
-  }
-}
 
 function Field({ label, htmlFor, children, hint }: { label: string; htmlFor?: string; children: React.ReactNode; hint?: string }) {
   return (
