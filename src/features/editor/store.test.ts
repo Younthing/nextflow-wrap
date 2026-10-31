@@ -158,15 +158,30 @@ describe("editor clipboard", () => {
     expect(pasted.map((n) => n.data.alias).sort()).toEqual(["SAMPLESHEET", "SAMPLESHEET_2"]);
   });
 
-  it("duplicates the selection in place without replacing the clipboard", () => {
+  it("duplicates the selection beside the originals without replacing the clipboard", () => {
     useEditorStore.getState().copySelected();
     useEditorStore.getState().pasteFromClipboard();
     const pastes = useEditorStore.getState().clipboardPastes;
+    const before = useEditorStore.getState();
+    const sources = before.nodes.filter((n) => n.selected);
     useEditorStore.getState().duplicateSelected();
-    expect(useEditorStore.getState().clipboardPastes).toBe(pastes);
-    expect(useEditorStore.getState().nodes.filter((n) => n.selected)).toHaveLength(2);
+    const duplicated = useEditorStore.getState();
+    expect(duplicated.clipboardPastes).toBe(pastes);
+    const copies = duplicated.nodes.filter((n) => n.selected);
+    expect(copies).toHaveLength(2);
+    const copyIds = new Set(copies.map((node) => node.id));
+    const link = duplicated.edges.find((edge) => copyIds.has(edge.source) && copyIds.has(edge.target));
+    expect(link).toMatchObject({ sourceHandle: "out:reads", targetHandle: "in:reads" });
+    expect(copies.map((node) => node.id).sort()).toEqual([link?.source, link?.target].sort());
+    const noted = copies.find((node) => node.data.widgets.note === "a");
+    const source = sources.find((node) => node.data.widgets.note === "a");
+    expect(noted?.position).toEqual({
+      x: (source?.position.x ?? 0) + PASTE_GAP,
+      y: (source?.position.y ?? 0) + PASTE_GAP,
+    });
     useEditorStore.getState().undo();
     expect(useEditorStore.getState().nodes).toHaveLength(5);
+    expect(useEditorStore.getState().edges).toHaveLength(before.edges.length);
 
     useEditorStore.setState({ clipboard: null, clipboardPastes: 0 });
     useEditorStore.getState().clearSelection();
