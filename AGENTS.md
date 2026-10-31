@@ -22,6 +22,8 @@ pnpm sync:modules            # refresh committed nf-core module metadata (networ
 
 Before a PR, run `pnpm typecheck && pnpm lint && pnpm test && pnpm build && pnpm build-storybook`.
 
+Cloud Agent machines install the [CodeGraph](https://github.com/colbymchenry/codegraph) CLI on `PATH` and index this repository during setup. Use `codegraph explore <query>` for symbol source and call paths. The index stays in `.codegraph/` and is not committed. Cursor is wired to `codegraph serve --mcp`.
+
 ## Coding Style & Naming Conventions
 
 Write TypeScript and use the `@/` alias for imports from `src/`. Follow the existing two-space indentation and double-quote style. Use `kebab-case` filenames such as `workflow-canvas.tsx`; use `PascalCase` components and `camelCase` functions, values, and Zustand actions. Add `"use client"` only to modules that require browser state or hooks.
