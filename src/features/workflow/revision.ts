@@ -1,3 +1,5 @@
+import type { WorkflowDoc } from "./types";
+
 /**
  * `updatedAt` is the workflow revision the API already stores.
  * A PUT echoes the revision it read; the server keeps the write only when that
@@ -8,6 +10,22 @@ export function workflowWriteIsStale(
   incoming: { updatedAt: string },
 ): boolean {
   return current != null && current.updatedAt !== incoming.updatedAt;
+}
+
+export type WorkflowPutResult =
+  | { status: "ok"; doc: WorkflowDoc }
+  | { status: "missing" }
+  | { status: "stale" };
+
+/** Read the stored row, compare its revision, then build the next document. Call inside one transaction. */
+export function commitWorkflowPut(
+  current: WorkflowDoc | undefined,
+  incoming: WorkflowDoc,
+  now = new Date().toISOString(),
+): WorkflowPutResult {
+  if (!current) return { status: "missing" };
+  if (workflowWriteIsStale(current, incoming)) return { status: "stale" };
+  return { status: "ok", doc: { ...incoming, updatedAt: now } };
 }
 
 /**

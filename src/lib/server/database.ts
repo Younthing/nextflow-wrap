@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { RunDetail, TaskRecord } from "@/features/runs/types";
+import { commitWorkflowPut, type WorkflowPutResult } from "@/features/workflow/revision";
 import type { WorkflowDoc } from "@/features/workflow/types";
 
 // Runtime data is intentionally outside the deployable Next.js source tree.
@@ -53,6 +54,14 @@ export class StudioStore {
     return row ? JSON.parse(String(row.data)) as WorkflowDoc : undefined;
   }
   saveWorkflow(doc: WorkflowDoc) { this.db.prepare("INSERT INTO workflows VALUES (?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data").run(doc.id, JSON.stringify(doc)); }
+  /** Compare the stored revision and write the next document under one lock. */
+  putWorkflow(incoming: WorkflowDoc): WorkflowPutResult {
+    return this.transaction(() => {
+      const result = commitWorkflowPut(this.workflow(incoming.id), incoming);
+      if (result.status === "ok") this.saveWorkflow(result.doc);
+      return result;
+    });
+  }
   deleteWorkflow(id: string) { this.db.prepare("DELETE FROM workflows WHERE id=?").run(id); }
   runs(includeDeleted = false): StoredExecution[] {
     return this.db.prepare(`SELECT data FROM runs ${includeDeleted ? "" : "WHERE deleted=0"} ORDER BY created DESC`).all().map((r) => JSON.parse(String(r.data)) as StoredExecution);

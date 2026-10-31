@@ -3,7 +3,7 @@ import { delay, http, HttpResponse } from "msw";
 import catalog from "@/data/nf-core-modules.json";
 import samplesheetSchema from "@/data/samplesheet-schema.json";
 import { newId } from "@/features/workflow/nodes";
-import { workflowWriteIsStale } from "@/features/workflow/revision";
+import { commitWorkflowPut } from "@/features/workflow/revision";
 import type { ModuleCatalog, WorkflowDoc, WorkflowSummary } from "@/features/workflow/types";
 import type { HealthStatus } from "@/lib/api-types";
 import { readDb, writeDb } from "./db";
@@ -61,13 +61,13 @@ export const handlers = [
 
   http.put("/api/workflows/:id", async ({ params, request }) => {
     const id = params.id as string;
-    const current = readDb().workflows[id];
-    if (!current) return notFound();
     const body = (await request.json()) as WorkflowDoc;
-    if (workflowWriteIsStale(current, body)) {
+    const result = commitWorkflowPut(readDb().workflows[id], { ...body, id });
+    if (result.status === "missing") return notFound();
+    if (result.status === "stale") {
       return HttpResponse.json({ message: "流程已在其他地方更新，请重新打开" }, { status: 409 });
     }
-    const doc: WorkflowDoc = { ...body, id, updatedAt: new Date().toISOString() };
+    const doc = result.doc;
     writeDb((db) => {
       db.workflows[id] = doc;
     });

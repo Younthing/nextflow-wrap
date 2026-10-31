@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { keepLocalWorkflowEdits, workflowWriteIsStale } from "./revision";
+import { emptyWorkflow } from "./document";
+import { commitWorkflowPut, keepLocalWorkflowEdits, workflowWriteIsStale } from "./revision";
 
 describe("workflowWriteIsStale", () => {
   it("accepts the first write and a retry of the current revision", () => {
@@ -10,6 +11,18 @@ describe("workflowWriteIsStale", () => {
 
   it("rejects a write that still carries an older revision", () => {
     expect(workflowWriteIsStale({ updatedAt: "t1" }, { updatedAt: "t0" })).toBe(true);
+  });
+});
+
+describe("commitWorkflowPut", () => {
+  it("writes only when the stored revision is still the one the client read", () => {
+    const current = emptyWorkflow("wf", "原名");
+    current.updatedAt = "t0";
+    const stale = commitWorkflowPut(current, { ...current, name: "late", updatedAt: "t0-old" }, "t1");
+    expect(stale.status).toBe("stale");
+    const ok = commitWorkflowPut(current, { ...current, name: "新名", updatedAt: "t0" }, "t1");
+    expect(ok).toEqual({ status: "ok", doc: { ...current, name: "新名", updatedAt: "t1" } });
+    expect(commitWorkflowPut(undefined, current, "t1")).toEqual({ status: "missing" });
   });
 });
 

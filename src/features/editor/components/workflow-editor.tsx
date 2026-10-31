@@ -13,11 +13,11 @@ import { useModuleCatalog, useSaveWorkflow, useWorkflow } from "@/features/workf
 import { keepLocalWorkflowEdits } from "@/features/workflow/revision";
 import type { WorkflowDoc } from "@/features/workflow/types";
 import { validateWorkflow } from "@/features/workflow/validate";
-import { ApiError, api } from "@/lib/api";
+import { api } from "@/lib/api";
 import { useShortcutLabels } from "@/lib/use-action-shortcuts";
 import { EDITOR_ACTIONS } from "../commands";
+import { enqueueEditorSave, noteEditorRevision, runEditorSave } from "../editor-save";
 import { fitViewOptions } from "../fit-view";
-import { saveConfirmation } from "../save-feedback";
 import { selectIsDirty, useEditorStore } from "../store";
 import { toast } from "../toast";
 import { useEditorCommands } from "../use-editor-commands";
@@ -52,18 +52,6 @@ function subscribeAppliedWorkflow(listener: () => void) {
 
 function useAppliedWorkflow() {
   return React.useSyncExternalStore(subscribeAppliedWorkflow, () => appliedWorkflow, () => SERVER_APPLIED);
-}
-
-/** A rejected leave-page save must not keep the stale canvas in front of a newer server copy. */
-async function adoptServerWorkflow(generation: number, id: string) {
-  try {
-    const current = await api<WorkflowDoc>(`/workflows/${id}`);
-    const state = useEditorStore.getState();
-    if (state.generation !== generation || state.docId !== id) return;
-    state.load(current);
-  } catch {
-    // The next open compares updatedAt and loads the server copy.
-  }
 }
 
 function editorIssues(
@@ -151,39 +139,38 @@ function Editor({ workflowId }: { workflowId: string }) {
     )) {
       store.getState().load(doc);
     }
+    noteEditorRevision(doc.id, doc.updatedAt);
     markWorkflowApplied(workflowId, mountToken);
   }, [workflow.data, workflowId, store, applied.id, applied.token, mountToken]);
 
   const doSave = React.useCallback(
     (silent = false) => {
-      const state = store.getState();
-      if (!state.docId) return;
-      const rev = state.revision;
-      const generation = state.generation;
-      const confirmation = saveConfirmation(editorIssues(state));
-      // Per-call mutate callbacks only run while this observer has listeners.
-      // Leaving the editor drops them, so completion follows the mutation promise.
-      const docId = state.docId;
-      void save.mutateAsync(state.toDoc()).then(
-        (saved) => {
-          const s = store.getState();
-          // Another workflow was opened while saving: leave its identity alone.
-          if (s.generation !== generation || s.docId !== saved.id) return;
-          s.markSaved(rev, saved.updatedAt);
-          if (!silent) {
-            if (confirmation.tone === "warning") toast.warning(confirmation.message);
-            else toast.success(confirmation.message);
-          }
+      // Queue so a second save waits for the first and then sends the revision
+      // that success acknowledged. mutateAsync still settles after unmount.
+      enqueueEditorSave(silent, (announce) => runEditorSave({
+        announce,
+        read: () => {
+          const state = store.getState();
+          return {
+            docId: state.docId,
+            revision: state.revision,
+            generation: state.generation,
+            dirty: selectIsDirty(state),
+            doc: state.toDoc(),
+            issues: editorIssues(state),
+          };
         },
-        (err: unknown) => {
-          if (err instanceof ApiError && err.status === 409) {
-            void adoptServerWorkflow(generation, docId);
-            return;
-          }
-          const message = err instanceof Error ? err.message : "保存失败";
-          toast.error(`保存失败：${message}`);
+        save: (doc) => save.mutateAsync(doc),
+        markSaved: (revision, updatedAt) => store.getState().markSaved(revision, updatedAt),
+        stillOpen: (generation, docId) => {
+          const state = store.getState();
+          return state.generation === generation && state.docId === docId;
         },
-      );
+        fetchCurrent: (id) => api<WorkflowDoc>(`/workflows/${id}`),
+        load: (doc) => store.getState().load(doc),
+        toastSaved: (tone, message) => (tone === "warning" ? toast.warning(message) : toast.success(message)),
+        toastError: (message) => toast.error(message),
+      }));
     },
     [save, store],
   );
