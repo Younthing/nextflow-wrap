@@ -19,7 +19,8 @@ const languageOf = (path: string): ProjectFile["language"] => {
 
 function FileIcon({ path }: { path: string }) {
   const lang = languageOf(path);
-  const Icon = lang === "groovy" ? FileCode2 : lang === "json" ? FileJson : FileText;
+  const Icon =
+    lang === "groovy" ? FileCode2 : lang === "json" ? FileJson : FileText;
   return <Icon className="size-3.5 shrink-0 text-muted-foreground" />;
 }
 
@@ -30,7 +31,10 @@ function treeRows(files: { path: string }[]) {
     const db = b.path.includes("/") ? 0 : 1;
     return da - db || a.path.localeCompare(b.path);
   });
-  const rows: ({ kind: "dir"; path: string; depth: number } | { kind: "file"; path: string; depth: number })[] = [];
+  const rows: (
+    | { kind: "dir"; path: string; depth: number }
+    | { kind: "file"; path: string; depth: number }
+  )[] = [];
   const seen = new Set<string>();
   for (const f of sorted) {
     const parts = f.path.split("/");
@@ -52,7 +56,11 @@ export function ProjectPreview({
   initialPath = "main.nf",
   className,
 }: {
-  files: { path: string; content: string; language?: ProjectFile["language"] }[];
+  files: {
+    path: string;
+    content: string;
+    language?: ProjectFile["language"];
+  }[];
   components?: RemoteComponent[];
   initialPath?: string;
   className?: string;
@@ -64,7 +72,7 @@ export function ProjectPreview({
   return (
     <div className={cn("flex min-h-0 gap-3", className)}>
       <ScrollArea className="w-60 shrink-0 rounded-lg bg-secondary/40">
-        <ul className="p-1.5 text-xs" role="tree" aria-label="项目文件">
+        <ul className="p-1.5 text-xs" aria-label="项目文件">
           {rows.map((row) =>
             row.kind === "dir" ? (
               <li
@@ -76,13 +84,15 @@ export function ProjectPreview({
                 {row.path.split("/").pop()}/
               </li>
             ) : (
-              <li key={row.path} role="treeitem" aria-selected={row.path === file?.path}>
+              <li key={row.path}>
                 <button
                   type="button"
+                  aria-pressed={row.path === file?.path}
                   onClick={() => setSelected(row.path)}
                   className={cn(
                     "flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left font-mono hover:bg-accent",
-                    row.path === file?.path && "bg-glass-strong text-primary shadow-sm",
+                    row.path === file?.path &&
+                      "bg-glass-strong text-primary shadow-sm",
                   )}
                   style={{ paddingLeft: 8 + row.depth * 12 }}
                 >
@@ -95,13 +105,19 @@ export function ProjectPreview({
         </ul>
         {components.length > 0 && (
           <div className="border-t border-border/60 p-3 text-xs">
-            <div className="mb-1.5 font-semibold text-muted-foreground">安装时从 nf-core 拉取</div>
+            <div className="mb-1.5 font-semibold text-muted-foreground">
+              安装时从 nf-core 拉取
+            </div>
             <ul className="grid gap-1">
               {components.map((c) => (
-                <li key={`${c.kind}:${c.path}`} className="flex items-center gap-1.5 font-mono">
+                <li
+                  key={`${c.kind}:${c.path}`}
+                  className="flex items-center gap-1.5 font-mono"
+                >
                   <Package className="size-3 shrink-0 text-muted-foreground" />
                   <span className="truncate">
-                    {c.kind === "module" ? "modules" : "subworkflows"}/nf-core/{c.path}
+                    {c.kind === "module" ? "modules" : "subworkflows"}/nf-core/
+                    {c.path}
                   </span>
                 </li>
               ))}
@@ -112,8 +128,14 @@ export function ProjectPreview({
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
         {file && (
           <>
-            <div className="font-mono text-xs text-muted-foreground">{file.path}</div>
-            <CodeViewer code={file.content} language={file.language ?? languageOf(file.path)} className="min-h-0 flex-1" />
+            <div className="font-mono text-xs text-muted-foreground">
+              {file.path}
+            </div>
+            <CodeViewer
+              code={file.content}
+              language={file.language ?? languageOf(file.path)}
+              className="min-h-0 flex-1"
+            />
           </>
         )}
       </div>

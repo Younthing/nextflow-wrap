@@ -10,7 +10,6 @@ import {
   ContextMenuShortcut,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { actionRegistry } from "@/lib/actions";
 import { useShortcutLabel } from "@/lib/use-action-shortcuts";
 import {
   canvasContextMenuItems,
@@ -18,22 +17,31 @@ import {
   runRegisteredAction,
   type CanvasMenuItem,
 } from "../canvas-menu";
-import { useEditorStore } from "../store";
+import {
+  useEditorStore,
+  useEditorActions,
+} from "@/features/editor/editor-provider";
 
 function useCanvasMenuItems() {
-  const actions = React.useSyncExternalStore(actionRegistry.subscribe, actionRegistry.list, actionRegistry.list);
+  const actionRegistry = useEditorActions();
+  const actions = React.useSyncExternalStore(
+    actionRegistry.subscribe,
+    actionRegistry.list,
+    actionRegistry.list,
+  );
   // Selecting a node or filling the clipboard does not replace the action list.
   useEditorStore(commandMenuEpoch);
   return canvasContextMenuItems(actions);
 }
 
 function CommandMenuItem({ item }: { item: CanvasMenuItem }) {
+  const actionRegistry = useEditorActions();
   const shortcut = useShortcutLabel(item.shortcut);
   return (
     <ContextMenuItem
       variant={item.destructive ? "destructive" : "default"}
       disabled={item.disabled}
-      onSelect={() => runRegisteredAction(item.id)}
+      onSelect={() => runRegisteredAction(item.id, actionRegistry)}
     >
       {item.label}
       <ContextMenuShortcut>{shortcut}</ContextMenuShortcut>
@@ -57,7 +65,11 @@ function CanvasContextMenuContent() {
 }
 
 /** Right-click target for the flow surface. The browser menu is suppressed by the Radix trigger. */
-export function CanvasContextMenu({ children }: { children: React.ReactElement }) {
+export function CanvasContextMenu({
+  children,
+}: {
+  children: React.ReactElement;
+}) {
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>

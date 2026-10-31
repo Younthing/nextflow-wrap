@@ -7,9 +7,9 @@ import { SAMPLESHEET_ID } from "@/features/workflow/builtins";
 import { emptyWorkflow } from "@/features/workflow/document";
 import type { WorkflowDoc } from "@/features/workflow/types";
 import { WorkflowCanvas } from "../components/workflow-canvas";
-import { useEditorStore } from "../store";
+import { useEditorStoreApi } from "../editor-provider";
 import { useEditorCommands } from "../use-editor-commands";
-import { EditorFixture } from "./fixtures";
+import { EditorFixture, getStoryEditorStore } from "./fixtures";
 
 /** A module widget, so a right-click can land in a text field. */
 function textWidgetWorkflow(): WorkflowDoc {
@@ -38,12 +38,22 @@ function selectionFitWorkflow(): WorkflowDoc {
       {
         id: "selected",
         position: { x: 0, y: 0 },
-        data: { moduleId: SAMPLESHEET_ID, alias: "SELECTED", widgets: {}, config: {} },
+        data: {
+          moduleId: SAMPLESHEET_ID,
+          alias: "SELECTED",
+          widgets: {},
+          config: {},
+        },
       },
       {
         id: "outside",
         position: { x: 2800, y: 1800 },
-        data: { moduleId: SAMPLESHEET_ID, alias: "OUTSIDE", widgets: {}, config: {} },
+        data: {
+          moduleId: SAMPLESHEET_ID,
+          alias: "OUTSIDE",
+          widgets: {},
+          config: {},
+        },
       },
     ],
   };
@@ -62,7 +72,9 @@ function paneBox(root: HTMLElement): DOMRect {
 }
 
 function intersects(a: DOMRect, b: DOMRect) {
-  return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+  return (
+    a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top
+  );
 }
 
 function contains(outer: DOMRect, inner: DOMRect) {
@@ -91,11 +103,23 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const RnaseqDemo: Story = {
-  decorators: [(Story) => <EditorFixture><Story /></EditorFixture>],
+  decorators: [
+    (Story) => (
+      <EditorFixture>
+        <Story />
+      </EditorFixture>
+    ),
+  ],
 };
 
 export const Empty: Story = {
-  decorators: [(Story) => <EditorFixture doc={emptyWorkflow("wf_empty")}><Story /></EditorFixture>],
+  decorators: [
+    (Story) => (
+      <EditorFixture doc={emptyWorkflow("wf_empty")}>
+        <Story />
+      </EditorFixture>
+    ),
+  ],
 };
 
 /** Fit frames the selected node. With nothing selected, the same control frames the whole graph. */
@@ -103,7 +127,10 @@ export const FitSelected: Story = {
   name: "Fit selected nodes",
   decorators: [
     (Story) => (
-      <EditorFixture doc={selectionFitWorkflow()} selectedNodeIds={["selected"]}>
+      <EditorFixture
+        doc={selectionFitWorkflow()}
+        selectedNodeIds={["selected"]}
+      >
         <Story />
       </EditorFixture>
     ),
@@ -140,8 +167,9 @@ const commandCalls = { search: 0 };
 
 /** Registers the same editor commands the app does, so the menu calls those handlers. */
 function CommandCanvas() {
+  const store = useEditorStoreApi();
   useState(() => {
-    useEditorStore.setState({ clipboard: null, clipboardPastes: 0 });
+    store.setState({ clipboard: null, clipboardPastes: 0 });
     return true;
   });
   useEditorCommands({
@@ -168,7 +196,9 @@ async function rightClick(target: Element) {
 }
 
 function menuLabels() {
-  return screen.getAllByRole("menuitem").map((item) => (item.textContent ?? "").replace(/\s+/g, ""));
+  return screen
+    .getAllByRole("menuitem")
+    .map((item) => (item.textContent ?? "").replace(/\s+/g, ""));
 }
 
 function menuItem(name: RegExp) {
@@ -196,10 +226,12 @@ export const ContextMenuEmpty: Story = {
     ),
   ],
   play: async ({ canvasElement }) => {
+    const store = getStoryEditorStore(canvasElement);
     commandCalls.search = 0;
     const surface = await waitFor(() => {
       const el = canvasElement.querySelector(".react-flow__pane");
-      if (!el || el.getBoundingClientRect().width < 10) throw new Error("pane not ready");
+      if (!el || el.getBoundingClientRect().width < 10)
+        throw new Error("pane not ready");
       return el;
     });
 
@@ -216,16 +248,28 @@ export const ContextMenuEmpty: Story = {
       expect.stringMatching(/^搜索节点(Ctrl\+K|⌘K)$/),
       expect.stringMatching(/^适应视图F$/),
     ]);
-    expect(screen.queryByRole("menuitem", { name: /保存|撤销|重做/ })).toBeNull();
+    expect(
+      screen.queryByRole("menuitem", { name: /保存|撤销|重做/ }),
+    ).toBeNull();
 
-    for (const name of [/^复制/, /粘贴/, /创建副本/, /^删除/, /全选/, /取消选择/, /适应视图/]) {
+    for (const name of [
+      /^复制/,
+      /粘贴/,
+      /创建副本/,
+      /^删除/,
+      /全选/,
+      /取消选择/,
+      /适应视图/,
+    ]) {
       expectDisabled(name);
     }
 
     await userEvent.click(menuItem(/搜索节点/));
     await waitFor(() => expect(commandCalls.search).toBe(1));
-    expect(useEditorStore.getState().nodes).toHaveLength(0);
-    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
+    expect(store.getState().nodes).toHaveLength(0);
+    await waitFor(() =>
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument(),
+    );
   },
 };
 
@@ -235,12 +279,16 @@ export const ContextMenuOnNode: Story = {
   render: () => <CommandCanvas />,
   decorators: [
     (Story) => (
-      <EditorFixture doc={selectionFitWorkflow()} selectedNodeIds={["selected"]}>
+      <EditorFixture
+        doc={selectionFitWorkflow()}
+        selectedNodeIds={["selected"]}
+      >
         <Story />
       </EditorFixture>
     ),
   ],
   play: async ({ canvasElement }) => {
+    const store = getStoryEditorStore(canvasElement);
     await waitFor(() => {
       expect(nodeBox(canvasElement, "selected").width).toBeGreaterThan(10);
       expect(nodeBox(canvasElement, "outside").width).toBeGreaterThan(10);
@@ -254,40 +302,62 @@ export const ContextMenuOnNode: Story = {
     expectEnabled(/创建副本/);
     expectEnabled(/^删除/);
     expectEnabled(/取消选择/);
-    expect(useEditorStore.getState().nodes.filter((node) => node.selected).map((node) => node.id)).toEqual(["selected"]);
+    expect(
+      store
+        .getState()
+        .nodes.filter((node) => node.selected)
+        .map((node) => node.id),
+    ).toEqual(["selected"]);
 
     await userEvent.click(menuItem(/创建副本/));
-    await waitFor(() => expect(useEditorStore.getState().nodes).toHaveLength(3));
-    expect(useEditorStore.getState().revision).toBeGreaterThan(0);
-    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
+    await waitFor(() => expect(store.getState().nodes).toHaveLength(3));
+    expect(store.getState().revision).toBeGreaterThan(0);
+    await waitFor(() =>
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument(),
+    );
 
     const outside = canvasElement.querySelector(`[data-id="outside"]`);
     if (!outside) throw new Error("missing node outside");
     await rightClick(outside);
     await waitFor(() => {
-      expect(useEditorStore.getState().nodes.filter((node) => node.selected).map((node) => node.id)).toEqual(["outside"]);
+      expect(
+        store
+          .getState()
+          .nodes.filter((node) => node.selected)
+          .map((node) => node.id),
+      ).toEqual(["outside"]);
     });
     await userEvent.click(menuItem(/^复制/));
     await waitFor(() => {
-      expect(useEditorStore.getState().clipboard?.nodes.map((node) => node.data.alias)).toEqual(["OUTSIDE"]);
+      expect(
+        store.getState().clipboard?.nodes.map((node) => node.data.alias),
+      ).toEqual(["OUTSIDE"]);
     });
-    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument(),
+    );
 
     const surface = canvasElement.querySelector(".react-flow__pane");
     if (!surface) throw new Error("missing pane");
     await rightClick(surface);
     await waitFor(() => expectEnabled(/粘贴/));
-    expect(useEditorStore.getState().nodes.find((node) => node.id === "outside")?.selected).toBe(true);
+    expect(
+      store.getState().nodes.find((node) => node.id === "outside")?.selected,
+    ).toBe(true);
     await userEvent.click(menuItem(/粘贴/));
-    await waitFor(() => expect(useEditorStore.getState().nodes).toHaveLength(4));
+    await waitFor(() => expect(store.getState().nodes).toHaveLength(4));
+    await waitFor(() =>
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument(),
+    );
   },
 };
 
 /** Same commands, with React Flow's box-selection rectangle already showing. */
 function BoxSelectionCanvas() {
-  const store = useStoreApi();
+  const store = useEditorStoreApi();
+  const flowStore = useStoreApi();
   useState(() => {
-    useEditorStore.setState({ clipboard: null, clipboardPastes: 0 });
+    store.setState({ clipboard: null, clipboardPastes: 0 });
     return true;
   });
   useEditorCommands({
@@ -298,8 +368,8 @@ function BoxSelectionCanvas() {
     fitView: () => {},
   });
   useEffect(() => {
-    store.setState({ nodesSelectionActive: true });
-  }, [store]);
+    flowStore.setState({ nodesSelectionActive: true });
+  }, [flowStore]);
   return <WorkflowCanvas onRequestSearch={() => {}} />;
 }
 
@@ -309,15 +379,21 @@ export const ContextMenuClearsSelectionBox: Story = {
   render: () => <BoxSelectionCanvas />,
   decorators: [
     (Story) => (
-      <EditorFixture doc={selectionFitWorkflow()} selectedNodeIds={["selected"]}>
+      <EditorFixture
+        doc={selectionFitWorkflow()}
+        selectedNodeIds={["selected"]}
+      >
         <Story />
       </EditorFixture>
     ),
   ],
   play: async ({ canvasElement }) => {
+    const store = getStoryEditorStore(canvasElement);
     await waitFor(() => {
       expect(nodeBox(canvasElement, "outside").width).toBeGreaterThan(10);
-      expect(canvasElement.querySelector(".react-flow__nodesselection")).toBeTruthy();
+      expect(
+        canvasElement.querySelector(".react-flow__nodesselection"),
+      ).toBeTruthy();
     });
 
     const selected = canvasElement.querySelector(`[data-id="selected"]`);
@@ -325,15 +401,30 @@ export const ContextMenuClearsSelectionBox: Story = {
     if (!selected || !outside) throw new Error("missing nodes");
 
     await rightClick(selected);
-    expect(canvasElement.querySelector(".react-flow__nodesselection")).toBeTruthy();
+    expect(
+      canvasElement.querySelector(".react-flow__nodesselection"),
+    ).toBeTruthy();
     await userEvent.keyboard("{Escape}");
-    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument(),
+    );
 
     await rightClick(outside);
     await waitFor(() => {
-      expect(canvasElement.querySelector(".react-flow__nodesselection")).toBeNull();
-      expect(useEditorStore.getState().nodes.filter((node) => node.selected).map((node) => node.id)).toEqual(["outside"]);
+      expect(
+        canvasElement.querySelector(".react-flow__nodesselection"),
+      ).toBeNull();
+      expect(
+        store
+          .getState()
+          .nodes.filter((node) => node.selected)
+          .map((node) => node.id),
+      ).toEqual(["outside"]);
     });
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() =>
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument(),
+    );
   },
 };
 
@@ -345,12 +436,22 @@ function linkedPair(): WorkflowDoc {
       {
         id: "keep",
         position: { x: 40, y: 80 },
-        data: { moduleId: SAMPLESHEET_ID, alias: "KEEP", widgets: {}, config: {} },
+        data: {
+          moduleId: SAMPLESHEET_ID,
+          alias: "KEEP",
+          widgets: {},
+          config: {},
+        },
       },
       {
         id: "drop",
         position: { x: 420, y: 80 },
-        data: { moduleId: "nf-core/fastqc", alias: "FASTQC", widgets: {}, config: {} },
+        data: {
+          moduleId: "nf-core/fastqc",
+          alias: "FASTQC",
+          widgets: {},
+          config: {},
+        },
       },
     ],
     edges: [
@@ -377,6 +478,7 @@ export const ContextMenuDeletesNode: Story = {
     ),
   ],
   play: async ({ canvasElement }) => {
+    const store = getStoryEditorStore(canvasElement);
     await waitFor(() => {
       expect(nodeBox(canvasElement, "keep").width).toBeGreaterThan(10);
       expect(nodeBox(canvasElement, "drop").width).toBeGreaterThan(10);
@@ -386,31 +488,45 @@ export const ContextMenuDeletesNode: Story = {
     if (!drop) throw new Error("missing node drop");
     await rightClick(drop);
     await waitFor(() => {
-      expect(useEditorStore.getState().nodes.filter((node) => node.selected).map((node) => node.id)).toEqual(["drop"]);
+      expect(
+        store
+          .getState()
+          .nodes.filter((node) => node.selected)
+          .map((node) => node.id),
+      ).toEqual(["drop"]);
     });
     expectEnabled(/^删除/);
-    expect(useEditorStore.getState().edges.map((edge) => edge.id)).toEqual(["e-keep-drop"]);
+    expect(store.getState().edges.map((edge) => edge.id)).toEqual([
+      "e-keep-drop",
+    ]);
 
     await userEvent.click(menuItem(/^删除/));
     await waitFor(() => {
-      expect(useEditorStore.getState().nodes.map((node) => node.id)).toEqual(["keep"]);
-      expect(useEditorStore.getState().edges).toEqual([]);
-      expect(useEditorStore.getState().past).toHaveLength(1);
+      expect(store.getState().nodes.map((node) => node.id)).toEqual(["keep"]);
+      expect(store.getState().edges).toEqual([]);
+      expect(store.getState().past).toHaveLength(1);
       expect(canvasElement.querySelector(`[data-id="drop"]`)).toBeNull();
     });
-    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument(),
+    );
 
-    useEditorStore.getState().undo();
+    store.getState().undo();
     await waitFor(() => {
-      expect(useEditorStore.getState().nodes.map((node) => node.id)).toEqual(["keep", "drop"]);
-      expect(useEditorStore.getState().edges.map((edge) => edge.id)).toEqual(["e-keep-drop"]);
+      expect(store.getState().nodes.map((node) => node.id)).toEqual([
+        "keep",
+        "drop",
+      ]);
+      expect(store.getState().edges.map((edge) => edge.id)).toEqual([
+        "e-keep-drop",
+      ]);
       expect(nodeBox(canvasElement, "drop").width).toBeGreaterThan(10);
     });
 
     await userEvent.keyboard("{Delete}");
     await waitFor(() => {
-      expect(useEditorStore.getState().nodes.map((node) => node.id)).toEqual(["keep"]);
-      expect(useEditorStore.getState().edges).toEqual([]);
+      expect(store.getState().nodes.map((node) => node.id)).toEqual(["keep"]);
+      expect(store.getState().edges).toEqual([]);
     });
   },
 };
@@ -427,13 +543,18 @@ export const ContextMenuOnTextInput: Story = {
     ),
   ],
   play: async ({ canvasElement }) => {
+    const store = getStoryEditorStore(canvasElement);
     const input = await waitFor(() => {
       const el = canvasElement.querySelector(".react-flow__node input");
-      if (!(el instanceof HTMLInputElement) || el.getBoundingClientRect().width < 10) {
+      if (
+        !(el instanceof HTMLInputElement) ||
+        el.getBoundingClientRect().width < 10
+      ) {
         throw new Error("widget input not ready");
       }
       return el;
     });
+    await waitFor(() => expect(input).toBeVisible());
     const seen: { event: Event | null } = { event: null };
     const mark = (event: Event) => {
       seen.event = event;
@@ -445,13 +566,19 @@ export const ContextMenuOnTextInput: Story = {
     expect(screen.queryByRole("menu")).toBeNull();
     expect(input.value).toBe("12");
 
-    useEditorStore.setState({
-      nodes: useEditorStore.getState().nodes.map((node) => ({ ...node, selected: true })),
+    store.setState({
+      nodes: store
+        .getState()
+        .nodes.map((node) => ({ ...node, selected: true })),
     });
+    await waitFor(() => expect(input).toBeVisible());
+    await userEvent.click(input);
     input.focus();
+
+    await waitFor(() => expect(input).toHaveFocus());
     input.setSelectionRange(input.value.length, input.value.length);
     await userEvent.keyboard("{Backspace}");
     await waitFor(() => expect(input.value).toBe("1"));
-    expect(useEditorStore.getState().nodes.map((node) => node.id)).toEqual(["widget"]);
+    expect(store.getState().nodes.map((node) => node.id)).toEqual(["widget"]);
   },
 };

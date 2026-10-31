@@ -6,22 +6,49 @@ import { AlertTriangle, Ban, Boxes } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { resolveNodeDef } from "@/features/workflow/catalog";
-import { inHandle, outHandle, portSignature, socketInputs, widgetInputs } from "@/features/workflow/ports";
-import type { ModuleDef, PortDef, WidgetValue } from "@/features/workflow/types";
+import {
+  inHandle,
+  outHandle,
+  portSignature,
+  socketInputs,
+  widgetInputs,
+} from "@/features/workflow/ports";
+import type {
+  ModuleDef,
+  PortDef,
+  WidgetValue,
+} from "@/features/workflow/types";
 import { cn } from "@/lib/utils";
 import { categoryColor, portColor } from "../port-style";
-import { useEditorStore, type FlowNode } from "../store";
+import { type FlowNode } from "../store";
+import { useEditorStore } from "@/features/editor/editor-provider";
 
-function PortTooltip({ port, children }: { port: PortDef; children: React.ReactNode }) {
+function PortTooltip({
+  port,
+  children,
+}: {
+  port: PortDef;
+  children: React.ReactNode;
+}) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>{children}</TooltipTrigger>
       <TooltipContent side="top" className="max-w-sm">
         <div className="font-mono text-[11px]">[{portSignature(port)}]</div>
-        {port.description && <div className="mt-1 line-clamp-4">{port.description}</div>}
-        {port.collect && <div className="mt-1 text-primary">可连接多个输出，会自动合并收集</div>}
+        {port.description && (
+          <div className="mt-1 line-clamp-4">{port.description}</div>
+        )}
+        {port.collect && (
+          <div className="mt-1 text-primary">
+            可连接多个输出，会自动合并收集
+          </div>
+        )}
       </TooltipContent>
     </Tooltip>
   );
@@ -46,9 +73,16 @@ function PortRow({
               position={Position.Left}
               id={inHandle(input.name)}
               className={cn("nf-handle", input.collect && "nf-handle-collect")}
-              style={{ "--handle-color": portColor(input) } as React.CSSProperties}
+              style={
+                { "--handle-color": portColor(input) } as React.CSSProperties
+              }
             />
-            <span className={cn("truncate", !linkedInputs.has(input.name) && "text-muted-foreground")}>
+            <span
+              className={cn(
+                "truncate",
+                !linkedInputs.has(input.name) && "text-muted-foreground",
+              )}
+            >
               {input.name}
             </span>
           </div>
@@ -65,7 +99,9 @@ function PortRow({
               position={Position.Right}
               id={outHandle(output.name)}
               className="nf-handle"
-              style={{ "--handle-color": portColor(output) } as React.CSSProperties}
+              style={
+                { "--handle-color": portColor(output) } as React.CSSProperties
+              }
             />
           </div>
         </PortTooltip>
@@ -85,16 +121,31 @@ function WidgetField({
 }) {
   const type = port.widget;
   return (
-    <label className="nodrag flex h-7 items-center justify-between gap-2 px-3 text-xs" title={port.description}>
+    <label
+      className="nodrag flex h-7 items-center justify-between gap-2 px-3 text-xs"
+      title={port.description}
+    >
       <span className="truncate text-muted-foreground">{port.name}</span>
       {type === "boolean" ? (
-        <Switch checked={value === true} onCheckedChange={onChange} className="scale-90" />
+        <Switch
+          checked={value === true}
+          onCheckedChange={onChange}
+          className="scale-90"
+        />
       ) : (
         <Input
           value={value === undefined ? "" : String(value)}
-          type={type === "integer" || type === "float" || type === "number" ? "number" : "text"}
+          type={
+            type === "integer" || type === "float" || type === "number"
+              ? "number"
+              : "text"
+          }
           onChange={(e) =>
-            onChange(e.target.type === "number" && e.target.value !== "" ? Number(e.target.value) : e.target.value)
+            onChange(
+              e.target.type === "number" && e.target.value !== ""
+                ? Number(e.target.value)
+                : e.target.value,
+            )
           }
           className="h-6 w-28 px-2 font-mono text-xs"
         />
@@ -103,7 +154,15 @@ function WidgetField({
   );
 }
 
-function NodeBody({ id, def, data }: { id: string; def: ModuleDef; data: FlowNode["data"] }) {
+function NodeBody({
+  id,
+  def,
+  data,
+}: {
+  id: string;
+  def: ModuleDef;
+  data: FlowNode["data"];
+}) {
   const setWidget = useEditorStore((s) => s.setWidget);
   const linked = useEditorStore(
     React.useCallback(
@@ -116,7 +175,10 @@ function NodeBody({ id, def, data }: { id: string; def: ModuleDef; data: FlowNod
       [id],
     ),
   );
-  const linkedInputs = React.useMemo(() => new Set(linked.split("|")), [linked]);
+  const linkedInputs = React.useMemo(
+    () => new Set(linked.split("|")),
+    [linked],
+  );
 
   const inputs = socketInputs(def);
   const widgets = widgetInputs(def);
@@ -126,7 +188,12 @@ function NodeBody({ id, def, data }: { id: string; def: ModuleDef; data: FlowNod
     <>
       <div className="py-1.5">
         {Array.from({ length: rows }, (_, i) => (
-          <PortRow key={i} input={inputs[i]} output={def.outputs[i]} linkedInputs={linkedInputs} />
+          <PortRow
+            key={i}
+            input={inputs[i]}
+            output={def.outputs[i]}
+            linkedInputs={linkedInputs}
+          />
         ))}
       </div>
       {widgets.length > 0 && (
@@ -175,14 +242,25 @@ export function ModuleNode({ id, data, selected }: NodeProps<FlowNode>) {
     >
       <div
         className="flex items-center gap-2 rounded-t-xl border-b border-border px-3 py-2"
-        style={{ background: `linear-gradient(90deg, color-mix(in oklch, ${accent} 28%, transparent), transparent)` }}
+        style={{
+          background: `linear-gradient(90deg, color-mix(in oklch, ${accent} 28%, transparent), transparent)`,
+        }}
       >
-        <span className="size-2.5 shrink-0 rounded-full" style={{ background: accent }} />
+        <span
+          className="size-2.5 shrink-0 rounded-full"
+          style={{ background: accent }}
+        />
         <div className="min-w-0 flex-1">
-          <div className="truncate font-mono text-xs font-semibold">{data.alias}</div>
-          <div className="truncate text-[11px] text-muted-foreground">{subtitle}</div>
+          <div className="truncate font-mono text-xs font-semibold">
+            {data.alias}
+          </div>
+          <div className="truncate text-[11px] text-muted-foreground">
+            {subtitle}
+          </div>
         </div>
-        {data.disabled && <Ban className="size-3.5 text-muted-foreground" aria-label="已禁用" />}
+        {data.disabled && (
+          <Ban className="size-3.5 text-muted-foreground" aria-label="已禁用" />
+        )}
         {(data.config.label ?? def.label) && (
           <span className="flex items-center gap-1 rounded-full bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground">
             <Boxes className="size-3" />

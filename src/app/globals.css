@@ -1,5 +1,8 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "./styles/react-flow.css";
+@import "./styles/code-viewer.css";
+@import "./styles/assistant.css";
 
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -38,6 +41,11 @@
   --ambient-1: oklch(0.85 0.1 255 / 0.55);
   --ambient-2: oklch(0.88 0.09 190 / 0.5);
   --ambient-3: oklch(0.87 0.09 310 / 0.4);
+
+  --syntax-string: oklch(0.55 0.14 150);
+  --syntax-keyword: oklch(0.55 0.2 300);
+  --syntax-number: oklch(0.6 0.16 50);
+  --syntax-key: oklch(0.52 0.15 230);
 
   --canvas-dot: oklch(0.22 0.03 260 / 0.14);
 
@@ -79,6 +87,11 @@
   --ambient-2: oklch(0.45 0.1 195 / 0.35);
   --ambient-3: oklch(0.42 0.14 310 / 0.3);
 
+  --syntax-string: oklch(0.78 0.13 150);
+  --syntax-keyword: oklch(0.75 0.15 300);
+  --syntax-number: oklch(0.8 0.13 60);
+  --syntax-key: oklch(0.78 0.12 230);
+
   --canvas-dot: oklch(1 0 0 / 0.12);
 }
 
@@ -91,6 +104,8 @@
   --radius-md: calc(var(--radius) - 4px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+
+  --shadow-action: 0 6px 20px -6px;
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -160,130 +175,14 @@
   }
 }
 
-/* React Flow chrome follows the glass theme. */
-.nf-canvas .react-flow {
-  --xy-background-color: transparent;
-  --xy-minimap-background-color: transparent;
-  --xy-minimap-mask-background-color: var(--accent);
-  --xy-minimap-mask-stroke-color: var(--border);
-  --xy-controls-button-background-color: transparent;
-  --xy-controls-button-background-color-hover: var(--accent);
-  --xy-controls-button-color: var(--foreground);
-  --xy-controls-button-border-color: var(--border);
-  --xy-edge-stroke: var(--muted-foreground);
-  --xy-edge-stroke-selected: var(--primary);
-  --xy-connectionline-stroke: var(--primary);
-}
-
-.nf-canvas .react-flow__handle.nf-handle {
-  width: 11px;
-  height: 11px;
-  border: 2px solid var(--glass-strong);
-  background: var(--handle-color, var(--port-any));
-  transition: transform 120ms ease;
-}
-.nf-canvas .react-flow__handle.nf-handle-collect {
-  border-radius: 3px;
-}
-.nf-canvas .react-flow__handle.nf-handle:hover,
-.nf-canvas .react-flow__handle.connectingto.valid {
-  transform: translate(var(--handle-shift, 0), -50%) scale(1.45);
-}
-.nf-canvas .react-flow__handle-left.nf-handle {
-  --handle-shift: -50%;
-}
-.nf-canvas .react-flow__handle-right.nf-handle {
-  --handle-shift: 50%;
-}
-.nf-canvas .react-flow__handle.connectingto:not(.valid) {
-  background: var(--destructive);
-}
-.nf-canvas .react-flow__node-module {
-  border-radius: var(--radius-xl);
-}
-.nf-canvas .react-flow__edge.selected .react-flow__edge-path {
-  stroke-width: 3;
-}
-
-/*
- * A Shift-drag marquee hit-tests through the transformed pane and highlights
- * sidebar, inspector, and label text. Chrome opts out; fields opt back in so
- * a focused widget can still select its value. Prose (a module description,
- * a container `<code>`) stays selectable for the copy command, unless a
- * marquee is in progress (`html.nf-marquee`, toggled from the canvas).
- */
-.nf-chrome,
-.nf-canvas {
-  -webkit-user-select: none;
-  user-select: none;
-}
-.nf-chrome :is(input, textarea, [contenteditable="true"]),
-.nf-canvas :is(input, textarea, [contenteditable="true"]) {
-  -webkit-user-select: text;
-  user-select: text;
-}
-.nf-chrome :is(p, code) {
-  -webkit-user-select: text;
-  user-select: text;
-}
-html.nf-marquee * {
-  -webkit-user-select: none;
-  user-select: none;
-}
-html.nf-marquee :is(input, textarea, [contenteditable="true"]),
-html.nf-marquee [contenteditable="true"] * {
-  -webkit-user-select: text;
-  user-select: text;
-}
-
-/* Code viewer tokens */
-.tok-comment {
-  color: var(--muted-foreground);
-  font-style: italic;
-}
-.tok-string {
-  color: oklch(0.55 0.14 150);
-}
-.tok-keyword {
-  color: oklch(0.55 0.2 300);
-}
-.tok-number {
-  color: oklch(0.6 0.16 50);
-}
-.tok-process {
-  color: var(--primary);
-  font-weight: 600;
-}
-.tok-key {
-  color: oklch(0.52 0.15 230);
-}
-.dark .tok-string {
-  color: oklch(0.78 0.13 150);
-}
-.dark .tok-keyword {
-  color: oklch(0.75 0.15 300);
-}
-.dark .tok-number {
-  color: oklch(0.8 0.13 60);
-}
-.dark .tok-key {
-  color: oklch(0.78 0.12 230);
-}
-
-/* CopilotKit sidebar: app fonts and a quieter welcome line. */
-.copilotKitSidebar {
-  --cpk-font-sans: var(--font-noto-sans-sc), ui-sans-serif, system-ui, sans-serif;
-}
-.copilotKitSidebar h1 {
-  padding-inline: 2rem;
-  font-size: 0.95rem;
-  line-height: 1.7;
-  color: var(--muted-foreground);
-}
-/* The sidebar pushes the page aside on wide screens; below that the editor
-   would be too narrow, so it floats over the inspector instead. */
-@media (max-width: 1799px) {
-  body {
-    margin-inline-end: 0 !important;
+/* Honor the OS preference for overlays and canvas/status transitions. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

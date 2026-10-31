@@ -5,13 +5,24 @@ import { ExternalLink, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { REFERENCE_FORMATS, REFERENCE_ID, SAMPLESHEET_ID } from "@/features/workflow/builtins";
+import {
+  REFERENCE_FORMATS,
+  REFERENCE_ID,
+  SAMPLESHEET_ID,
+} from "@/features/workflow/builtins";
 import { resolveNodeDef } from "@/features/workflow/catalog";
 import { portSignature, socketInputs } from "@/features/workflow/ports";
 import { projectMeta } from "@/features/project/generate";
@@ -21,7 +32,8 @@ import type { ModuleDef, PortDef } from "@/features/workflow/types";
 import { cn } from "@/lib/utils";
 import { EDITOR_CHROME_CLASS } from "../marquee-text";
 import { categoryColor, portColor } from "../port-style";
-import { selectSelectedNode, useEditorStore, type FlowNode } from "../store";
+import { selectSelectedNode, type FlowNode } from "../store";
+import { useEditorStore } from "@/features/editor/editor-provider";
 import { SchemaForm } from "./schema-form";
 
 const LABELS = [
@@ -33,10 +45,20 @@ const LABELS = [
   "process_high_memory",
 ];
 
-function Section({ title, children, className }: { title: string; children: React.ReactNode; className?: string }) {
+function Section({
+  title,
+  children,
+  className,
+}: {
+  title: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
     <section className={cn("grid gap-3", className)}>
-      <h3 className="text-xs font-semibold tracking-wide text-muted-foreground">{title}</h3>
+      <h3 className="text-xs font-semibold tracking-wide text-muted-foreground">
+        {title}
+      </h3>
       {children}
     </section>
   );
@@ -49,11 +71,20 @@ function PortList({ ports, title }: { ports: PortDef[]; title: string }) {
       <ul className="grid gap-1.5">
         {ports.map((p) => (
           <li key={p.name} className="flex items-start gap-2 text-xs">
-            <span className="mt-1 size-2 shrink-0 rounded-full" style={{ background: portColor(p) }} />
+            <span
+              className="mt-1 size-2 shrink-0 rounded-full"
+              style={{ background: portColor(p) }}
+            />
             <div className="min-w-0">
               <span className="font-mono font-medium">{p.name}</span>{" "}
-              <span className="font-mono text-muted-foreground">[{portSignature(p)}]</span>
-              {p.description && <p className="line-clamp-2 text-muted-foreground">{p.description}</p>}
+              <span className="font-mono text-muted-foreground">
+                [{portSignature(p)}]
+              </span>
+              {p.description && (
+                <p className="line-clamp-2 text-muted-foreground">
+                  {p.description}
+                </p>
+              )}
             </div>
           </li>
         ))}
@@ -73,19 +104,31 @@ function BuiltinSettings({ node, def }: { node: FlowNode; def: ModuleDef }) {
     const required = new Set(samplesheetSchema.items.required);
     return (
       <Section title="样本表">
-        <div className="grid gap-1.5">
-          <Label htmlFor="samplesheet-path" className="font-mono text-xs">--input</Label>
+        <FormField
+          label={
+            <Label htmlFor="samplesheet-path" className="font-mono text-xs">
+              --input
+            </Label>
+          }
+          htmlFor="samplesheet-path"
+        >
           <Input
             id="samplesheet-path"
             value={String(params.input ?? "")}
             onChange={(e) => setParam("input", e.target.value)}
             className="h-8 font-mono text-xs"
           />
+        </FormField>
+        <div className="text-xs text-muted-foreground">
+          CSV 列（assets/schema_input.json）：
         </div>
-        <div className="text-xs text-muted-foreground">CSV 列（assets/schema_input.json）：</div>
         <div className="flex flex-wrap gap-1.5">
           {columns.map(([name]) => (
-            <Badge key={name} variant={required.has(name) ? "default" : "secondary"} className="font-mono">
+            <Badge
+              key={name}
+              variant={required.has(name) ? "default" : "secondary"}
+              className="font-mono"
+            >
               {name}
             </Badge>
           ))}
@@ -98,22 +141,26 @@ function BuiltinSettings({ node, def }: { node: FlowNode; def: ModuleDef }) {
     const param = String(settings.param ?? "");
     return (
       <Section title="参考文件">
-        <div className="grid gap-1.5">
-          <Label htmlFor="ref-param" className="text-xs">参数名</Label>
+        <FormField label="参数名" htmlFor="ref-param">
           <Input
             id="ref-param"
             value={param}
             onChange={(e) =>
-              update(node.id, { settings: { ...settings, param: e.target.value.trim() } }, `ref:${node.id}:param`)
+              update(
+                node.id,
+                { settings: { ...settings, param: e.target.value.trim() } },
+                `ref:${node.id}:param`,
+              )
             }
             className="h-8 font-mono text-xs"
           />
-        </div>
-        <div className="grid gap-1.5">
-          <Label className="text-xs">文件格式</Label>
+        </FormField>
+        <FormField label="文件格式">
           <Select
             value={String(settings.format ?? "other")}
-            onValueChange={(format) => update(node.id, { settings: { ...settings, format } })}
+            onValueChange={(format) =>
+              update(node.id, { settings: { ...settings, format } })
+            }
           >
             <SelectTrigger size="sm" className="text-xs">
               <SelectValue />
@@ -126,10 +173,16 @@ function BuiltinSettings({ node, def }: { node: FlowNode; def: ModuleDef }) {
               ))}
             </SelectContent>
           </Select>
-        </div>
+        </FormField>
         {param && (
-          <div className="grid gap-1.5">
-            <Label htmlFor="ref-value" className="font-mono text-xs">--{param}</Label>
+          <FormField
+            label={
+              <Label htmlFor="ref-value" className="font-mono text-xs">
+                --{param}
+              </Label>
+            }
+            htmlFor="ref-value"
+          >
             <Input
               id="ref-value"
               value={String(params[param] ?? "")}
@@ -137,7 +190,7 @@ function BuiltinSettings({ node, def }: { node: FlowNode; def: ModuleDef }) {
               onChange={(e) => setParam(param, e.target.value)}
               className="h-8 font-mono text-xs"
             />
-          </div>
+          </FormField>
         )}
       </Section>
     );
@@ -150,17 +203,29 @@ function NodeInspector({ node }: { node: FlowNode }) {
   const update = useEditorStore((s) => s.updateNodeData);
   const removeNodes = useEditorStore((s) => s.removeNodes);
   const def = resolveNodeDef(index, node.data);
-  if (!def) return <div className="p-4 text-sm text-destructive">未知模块 {node.data.moduleId}</div>;
+  if (!def)
+    return (
+      <div className="p-4 text-sm text-destructive">
+        未知模块 {node.data.moduleId}
+      </div>
+    );
 
   const { config } = node.data;
   const setConfig = (patch: Partial<typeof config>, key: string) =>
-    update(node.id, { config: { ...config, ...patch } }, `config:${node.id}:${key}`);
+    update(
+      node.id,
+      { config: { ...config, ...patch } },
+      `config:${node.id}:${key}`,
+    );
 
   return (
     <div className="grid gap-6 p-4">
       <div className="grid gap-2">
         <div className="flex items-center gap-2">
-          <span className="size-2.5 rounded-full" style={{ background: categoryColor(def.category) }} />
+          <span
+            className="size-2.5 rounded-full"
+            style={{ background: categoryColor(def.category) }}
+          />
           <span className="text-xs text-muted-foreground">{def.category}</span>
           {!def.builtin && (
             <a
@@ -173,7 +238,9 @@ function NodeInspector({ node }: { node: FlowNode }) {
             </a>
           )}
         </div>
-        <div className="font-serif text-lg font-semibold">{def.builtin ? def.name : def.process}</div>
+        <div className="font-serif text-lg font-semibold">
+          {def.builtin ? def.name : def.process}
+        </div>
         <p className="text-sm text-muted-foreground">{def.description}</p>
         {def.tools.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
@@ -195,20 +262,30 @@ function NodeInspector({ node }: { node: FlowNode }) {
       </div>
 
       <Section title="节点">
-        <div className="grid gap-1.5">
-          <Label htmlFor="alias" className="text-xs">进程别名</Label>
+        <FormField label="进程别名" htmlFor="alias">
           <Input
             id="alias"
             value={node.data.alias}
             onChange={(e) =>
-              update(node.id, { alias: e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, "_") }, `alias:${node.id}`)
+              update(
+                node.id,
+                {
+                  alias: e.target.value
+                    .toUpperCase()
+                    .replace(/[^A-Z0-9_]/g, "_"),
+                },
+                `alias:${node.id}`,
+              )
             }
             className="h-8 font-mono text-xs"
           />
-        </div>
+        </FormField>
         <label className="flex items-center justify-between text-sm">
           禁用节点
-          <Switch checked={!!node.data.disabled} onCheckedChange={(v) => update(node.id, { disabled: v })} />
+          <Switch
+            checked={!!node.data.disabled}
+            onCheckedChange={(v) => update(node.id, { disabled: v })}
+          />
         </label>
       </Section>
 
@@ -216,8 +293,14 @@ function NodeInspector({ node }: { node: FlowNode }) {
         <BuiltinSettings node={node} def={def} />
       ) : (
         <Section title="模块配置（conf/modules.config）">
-          <div className="grid gap-1.5">
-            <Label htmlFor="ext-args" className="font-mono text-xs">ext.args</Label>
+          <FormField
+            label={
+              <Label htmlFor="ext-args" className="font-mono text-xs">
+                ext.args
+              </Label>
+            }
+            htmlFor="ext-args"
+          >
             <Textarea
               id="ext-args"
               value={config.args ?? ""}
@@ -225,9 +308,15 @@ function NodeInspector({ node }: { node: FlowNode }) {
               onChange={(e) => setConfig({ args: e.target.value }, "args")}
               className="min-h-14 font-mono text-xs"
             />
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="ext-prefix" className="font-mono text-xs">ext.prefix</Label>
+          </FormField>
+          <FormField
+            label={
+              <Label htmlFor="ext-prefix" className="font-mono text-xs">
+                ext.prefix
+              </Label>
+            }
+            htmlFor="ext-prefix"
+          >
             <Input
               id="ext-prefix"
               value={config.prefix ?? ""}
@@ -235,10 +324,14 @@ function NodeInspector({ node }: { node: FlowNode }) {
               onChange={(e) => setConfig({ prefix: e.target.value }, "prefix")}
               className="h-8 font-mono text-xs"
             />
-          </div>
-          <div className="grid gap-1.5">
-            <Label className="text-xs">资源标签</Label>
-            <Select value={config.label ?? def.label ?? "process_single"} onValueChange={(v) => setConfig({ label: v === def.label ? undefined : v }, "label")}>
+          </FormField>
+          <FormField label="资源标签">
+            <Select
+              value={config.label ?? def.label ?? "process_single"}
+              onValueChange={(v) =>
+                setConfig({ label: v === def.label ? undefined : v }, "label")
+              }
+            >
               <SelectTrigger size="sm" className="font-mono text-xs">
                 <SelectValue />
               </SelectTrigger>
@@ -251,15 +344,20 @@ function NodeInspector({ node }: { node: FlowNode }) {
                 ))}
               </SelectContent>
             </Select>
-          </div>
+          </FormField>
           <label className="flex items-center justify-between text-sm">
             发布输出到 outdir
-            <Switch checked={config.publish !== false} onCheckedChange={(v) => setConfig({ publish: v }, "publish")} />
+            <Switch
+              checked={config.publish !== false}
+              onCheckedChange={(v) => setConfig({ publish: v }, "publish")}
+            />
           </label>
           {def.container && (
             <div className="grid gap-1">
               <span className="text-xs text-muted-foreground">容器</span>
-              <code className="break-all rounded bg-secondary px-2 py-1 font-mono text-[11px]">{def.container}</code>
+              <code className="break-all rounded bg-secondary px-2 py-1 font-mono text-[11px]">
+                {def.container}
+              </code>
             </div>
           )}
         </Section>
@@ -268,7 +366,12 @@ function NodeInspector({ node }: { node: FlowNode }) {
       <PortList ports={socketInputs(def)} title="输入" />
       <PortList ports={def.outputs} title="输出" />
 
-      <Button variant="outline" size="sm" className="text-destructive" onClick={() => removeNodes([node.id])}>
+      <Button
+        variant="outline"
+        size="sm"
+        className="text-destructive"
+        onClick={() => removeNodes([node.id])}
+      >
         <Trash2 /> 删除节点
       </Button>
     </div>
@@ -286,7 +389,11 @@ function PipelineInspector() {
   // Same schema the generated project ships as nextflow_schema.json.
   const schema = React.useMemo(() => {
     const meta = projectMeta({ name, description, project });
-    return buildParamsSchema(meta.name, meta.description, referenceParams({ nodes }));
+    return buildParamsSchema(
+      meta.name,
+      meta.description,
+      referenceParams({ nodes }),
+    );
   }, [nodes, name, description, project]);
 
   return (
@@ -294,7 +401,8 @@ function PipelineInspector() {
       <div>
         <div className="font-serif text-lg font-semibold">流程参数</div>
         <p className="text-sm text-muted-foreground">
-          与生成项目的 nextflow_schema.json 一致。选中画布中的节点可编辑节点配置。
+          与生成项目的 nextflow_schema.json
+          一致。选中画布中的节点可编辑节点配置。
         </p>
       </div>
       <SchemaForm schema={schema} values={params} onChange={setParam} />
@@ -305,9 +413,20 @@ function PipelineInspector() {
 export function Inspector({ className }: { className?: string }) {
   const node = useEditorStore(selectSelectedNode);
   return (
-    <aside className={cn(EDITOR_CHROME_CLASS, "glass flex min-h-0 flex-col rounded-xl", className)}>
+    <aside
+      aria-label="流程检查器"
+      className={cn(
+        EDITOR_CHROME_CLASS,
+        "glass flex min-h-0 flex-col rounded-xl",
+        className,
+      )}
+    >
       <ScrollArea className="min-h-0 flex-1">
-        {node ? <NodeInspector key={node.id} node={node} /> : <PipelineInspector />}
+        {node ? (
+          <NodeInspector key={node.id} node={node} />
+        ) : (
+          <PipelineInspector />
+        )}
       </ScrollArea>
     </aside>
   );

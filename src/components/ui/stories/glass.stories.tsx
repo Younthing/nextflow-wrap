@@ -2,10 +2,23 @@ import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 
 import { Badge } from "../badge";
 import { Button } from "../button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "../card";
 import { Input } from "../input";
 import { Label } from "../label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../select";
 import { Switch } from "../switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../tabs";
 
@@ -29,9 +42,9 @@ export const ParameterCard: Story = {
           <Input id="outdir" defaultValue="results/" className="font-mono" />
         </div>
         <div className="grid gap-2">
-          <Label>执行环境</Label>
+          <Label htmlFor="example-engine">执行环境</Label>
           <Select defaultValue="docker">
-            <SelectTrigger>
+            <SelectTrigger id="example-engine">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -66,9 +79,15 @@ export const TabsPanel: Story = {
         <TabsTrigger value="code">代码</TabsTrigger>
         <TabsTrigger value="logs">日志</TabsTrigger>
       </TabsList>
-      <TabsContent value="params" className="text-sm">参数面板</TabsContent>
-      <TabsContent value="code" className="font-mono text-sm">workflow &#123; &#125;</TabsContent>
-      <TabsContent value="logs" className="font-mono text-sm">[a1/b2c3] FASTQC (1) ✔</TabsContent>
+      <TabsContent value="params" className="text-sm">
+        参数面板
+      </TabsContent>
+      <TabsContent value="code" className="font-mono text-sm">
+        workflow &#123; &#125;
+      </TabsContent>
+      <TabsContent value="logs" className="font-mono text-sm">
+        [a1/b2c3] FASTQC (1) ✔
+      </TabsContent>
     </Tabs>
   ),
 };
@@ -78,7 +97,9 @@ export const Typography: Story = {
     <div className="glass grid max-w-xl gap-3 rounded-xl p-6">
       <p className="font-serif text-2xl font-semibold">思源宋体 · 流程标题</p>
       <p className="font-sans">思源黑体 · 正文用于界面和说明文字。</p>
-      <p className="font-mono text-sm">nextflow run main.nf -profile docker -resume</p>
+      <p className="font-mono text-sm">
+        nextflow run main.nf -profile docker -resume
+      </p>
     </div>
   ),
 };

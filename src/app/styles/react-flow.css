@@ -1,0 +1,75 @@
+/* React Flow chrome follows the glass theme. */
+.nf-canvas .react-flow {
+  --xy-background-color: transparent;
+  --xy-minimap-background-color: transparent;
+  --xy-minimap-mask-background-color: var(--accent);
+  --xy-minimap-mask-stroke-color: var(--border);
+  --xy-controls-button-background-color: transparent;
+  --xy-controls-button-background-color-hover: var(--accent);
+  --xy-controls-button-color: var(--foreground);
+  --xy-controls-button-border-color: var(--border);
+  --xy-edge-stroke: var(--muted-foreground);
+  --xy-edge-stroke-selected: var(--primary);
+  --xy-connectionline-stroke: var(--primary);
+}
+
+.nf-canvas .react-flow__handle.nf-handle {
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--glass-strong);
+  background: var(--handle-color, var(--port-any));
+  transition: transform 120ms ease;
+}
+.nf-canvas .react-flow__handle.nf-handle-collect {
+  border-radius: 3px;
+}
+.nf-canvas .react-flow__handle.nf-handle:hover,
+.nf-canvas .react-flow__handle.connectingto.valid {
+  transform: translate(var(--handle-shift, 0), -50%) scale(1.45);
+}
+.nf-canvas .react-flow__handle-left.nf-handle {
+  --handle-shift: -50%;
+}
+.nf-canvas .react-flow__handle-right.nf-handle {
+  --handle-shift: 50%;
+}
+.nf-canvas .react-flow__handle.connectingto:not(.valid) {
+  background: var(--destructive);
+}
+.nf-canvas .react-flow__node-module {
+  border-radius: var(--radius-xl);
+}
+.nf-canvas .react-flow__edge.selected .react-flow__edge-path {
+  stroke-width: 3;
+}
+
+/*
+ * A Shift-drag marquee hit-tests through the transformed pane and highlights
+ * sidebar, inspector, and label text. Chrome opts out; fields opt back in so
+ * a focused widget can still select its value. Prose (a module description,
+ * a container `<code>`) stays selectable for the copy command, unless a
+ * marquee is in progress (`html.nf-marquee`, toggled from the canvas).
+ */
+.nf-chrome,
+.nf-canvas {
+  -webkit-user-select: none;
+  user-select: none;
+}
+.nf-chrome :is(input, textarea, [contenteditable="true"]),
+.nf-canvas :is(input, textarea, [contenteditable="true"]) {
+  -webkit-user-select: text;
+  user-select: text;
+}
+.nf-chrome :is(p, code) {
+  -webkit-user-select: text;
+  user-select: text;
+}
+html.nf-marquee * {
+  -webkit-user-select: none;
+  user-select: none;
+}
+html.nf-marquee :is(input, textarea, [contenteditable="true"]),
+html.nf-marquee [contenteditable="true"] * {
+  -webkit-user-select: text;
+  user-select: text;
+}
