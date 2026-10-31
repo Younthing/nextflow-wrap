@@ -14,6 +14,7 @@ import { RunDialog } from "@/features/runs/components/run-dialog";
 import { useShortcutLabels } from "@/lib/use-action-shortcuts";
 import { EDITOR_ACTIONS } from "../commands";
 import { fitViewOptions } from "../fit-view";
+import { saveConfirmation } from "../save-feedback";
 import { selectIsDirty, useEditorStore } from "../store";
 import { toast } from "../toast";
 import { useEditorCommands } from "../use-editor-commands";
@@ -42,6 +43,18 @@ export function rememberCurrentId(id: string) {
   } catch {
     // Non-essential: the editor falls back to the demo workflow.
   }
+}
+
+function editorIssues(
+  state: Pick<ReturnType<typeof useEditorStore.getState>, "nodes" | "edges" | "params" | "index">,
+) {
+  if (!state.index.size) return [];
+  return validateWorkflow(
+    state.nodes.map((n) => ({ id: n.id, position: n.position, data: n.data })),
+    state.edges.map((e) => ({ ...e, sourceHandle: e.sourceHandle ?? "", targetHandle: e.targetHandle ?? "" })),
+    state.params,
+    state.index,
+  );
 }
 
 function downloadJson(name: string, value: unknown) {
@@ -91,6 +104,7 @@ function Editor() {
       const state = store.getState();
       const rev = state.revision;
       const generation = state.generation;
+      const confirmation = saveConfirmation(editorIssues(state));
       save.mutate(state.toDoc(), {
         onSuccess: (saved) => {
           const s = store.getState();
@@ -100,7 +114,10 @@ function Editor() {
           s.markSaved(rev);
           setCurrentId(saved.id);
           rememberCurrentId(saved.id);
-          if (!silent) toast.success("已保存");
+          if (!silent) {
+            if (confirmation.tone === "warning") toast.warning(confirmation.message);
+            else toast.success(confirmation.message);
+          }
         },
         onError: (err) => toast.error(`保存失败：${err.message}`),
       });
@@ -135,15 +152,7 @@ function Editor() {
   const searchKeys = useShortcutLabels(EDITOR_ACTIONS.search.shortcut);
 
   const issues = React.useMemo(
-    () =>
-      index.size
-        ? validateWorkflow(
-            nodes.map((n) => ({ id: n.id, position: n.position, data: n.data })),
-            edges.map((e) => ({ ...e, sourceHandle: e.sourceHandle ?? "", targetHandle: e.targetHandle ?? "" })),
-            params,
-            index,
-          )
-        : [],
+    () => editorIssues({ nodes, edges, params, index }),
     [nodes, edges, params, index],
   );
 
