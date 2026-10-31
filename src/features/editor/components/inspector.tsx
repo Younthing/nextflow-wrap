@@ -5,6 +5,7 @@ import { ExternalLink, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -103,17 +104,21 @@ function BuiltinSettings({ node, def }: { node: FlowNode; def: ModuleDef }) {
     const required = new Set(samplesheetSchema.items.required);
     return (
       <Section title="样本表">
-        <div className="grid gap-1.5">
-          <Label htmlFor="samplesheet-path" className="font-mono text-xs">
-            --input
-          </Label>
+        <FormField
+          label={
+            <Label htmlFor="samplesheet-path" className="font-mono text-xs">
+              --input
+            </Label>
+          }
+          htmlFor="samplesheet-path"
+        >
           <Input
             id="samplesheet-path"
             value={String(params.input ?? "")}
             onChange={(e) => setParam("input", e.target.value)}
             className="h-8 font-mono text-xs"
           />
-        </div>
+        </FormField>
         <div className="text-xs text-muted-foreground">
           CSV 列（assets/schema_input.json）：
         </div>
@@ -136,10 +141,7 @@ function BuiltinSettings({ node, def }: { node: FlowNode; def: ModuleDef }) {
     const param = String(settings.param ?? "");
     return (
       <Section title="参考文件">
-        <div className="grid gap-1.5">
-          <Label htmlFor="ref-param" className="text-xs">
-            参数名
-          </Label>
+        <FormField label="参数名" htmlFor="ref-param">
           <Input
             id="ref-param"
             value={param}
@@ -152,9 +154,8 @@ function BuiltinSettings({ node, def }: { node: FlowNode; def: ModuleDef }) {
             }
             className="h-8 font-mono text-xs"
           />
-        </div>
-        <div className="grid gap-1.5">
-          <Label className="text-xs">文件格式</Label>
+        </FormField>
+        <FormField label="文件格式">
           <Select
             value={String(settings.format ?? "other")}
             onValueChange={(format) =>
@@ -172,12 +173,16 @@ function BuiltinSettings({ node, def }: { node: FlowNode; def: ModuleDef }) {
               ))}
             </SelectContent>
           </Select>
-        </div>
+        </FormField>
         {param && (
-          <div className="grid gap-1.5">
-            <Label htmlFor="ref-value" className="font-mono text-xs">
-              --{param}
-            </Label>
+          <FormField
+            label={
+              <Label htmlFor="ref-value" className="font-mono text-xs">
+                --{param}
+              </Label>
+            }
+            htmlFor="ref-value"
+          >
             <Input
               id="ref-value"
               value={String(params[param] ?? "")}
@@ -185,7 +190,7 @@ function BuiltinSettings({ node, def }: { node: FlowNode; def: ModuleDef }) {
               onChange={(e) => setParam(param, e.target.value)}
               className="h-8 font-mono text-xs"
             />
-          </div>
+          </FormField>
         )}
       </Section>
     );
@@ -257,10 +262,7 @@ function NodeInspector({ node }: { node: FlowNode }) {
       </div>
 
       <Section title="节点">
-        <div className="grid gap-1.5">
-          <Label htmlFor="alias" className="text-xs">
-            进程别名
-          </Label>
+        <FormField label="进程别名" htmlFor="alias">
           <Input
             id="alias"
             value={node.data.alias}
@@ -277,7 +279,7 @@ function NodeInspector({ node }: { node: FlowNode }) {
             }
             className="h-8 font-mono text-xs"
           />
-        </div>
+        </FormField>
         <label className="flex items-center justify-between text-sm">
           禁用节点
           <Switch
@@ -291,10 +293,14 @@ function NodeInspector({ node }: { node: FlowNode }) {
         <BuiltinSettings node={node} def={def} />
       ) : (
         <Section title="模块配置（conf/modules.config）">
-          <div className="grid gap-1.5">
-            <Label htmlFor="ext-args" className="font-mono text-xs">
-              ext.args
-            </Label>
+          <FormField
+            label={
+              <Label htmlFor="ext-args" className="font-mono text-xs">
+                ext.args
+              </Label>
+            }
+            htmlFor="ext-args"
+          >
             <Textarea
               id="ext-args"
               value={config.args ?? ""}
@@ -302,11 +308,15 @@ function NodeInspector({ node }: { node: FlowNode }) {
               onChange={(e) => setConfig({ args: e.target.value }, "args")}
               className="min-h-14 font-mono text-xs"
             />
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="ext-prefix" className="font-mono text-xs">
-              ext.prefix
-            </Label>
+          </FormField>
+          <FormField
+            label={
+              <Label htmlFor="ext-prefix" className="font-mono text-xs">
+                ext.prefix
+              </Label>
+            }
+            htmlFor="ext-prefix"
+          >
             <Input
               id="ext-prefix"
               value={config.prefix ?? ""}
@@ -314,9 +324,8 @@ function NodeInspector({ node }: { node: FlowNode }) {
               onChange={(e) => setConfig({ prefix: e.target.value }, "prefix")}
               className="h-8 font-mono text-xs"
             />
-          </div>
-          <div className="grid gap-1.5">
-            <Label className="text-xs">资源标签</Label>
+          </FormField>
+          <FormField label="资源标签">
             <Select
               value={config.label ?? def.label ?? "process_single"}
               onValueChange={(v) =>
@@ -335,7 +344,7 @@ function NodeInspector({ node }: { node: FlowNode }) {
                 ))}
               </SelectContent>
             </Select>
-          </div>
+          </FormField>
           <label className="flex items-center justify-between text-sm">
             发布输出到 outdir
             <Switch

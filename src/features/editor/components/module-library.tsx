@@ -1,10 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { ChevronRight, Search } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 
-import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { SearchField } from "@/components/ui/search-field";
 import {
   Tooltip,
   TooltipContent,
@@ -92,15 +92,12 @@ export function ModuleLibrary({
     >
       <div className="flex flex-col gap-2 border-b border-border p-3">
         <div className="text-sm font-semibold">模块库</div>
-        <div className="relative">
-          <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="搜索模块"
-            className="h-8 pl-8 text-xs"
-          />
-        </div>
+        <SearchField
+          size="compact"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="搜索模块"
+        />
       </div>
       <ScrollArea className="min-h-0 flex-1">
         <div className="p-2">

@@ -2,12 +2,11 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { PanelLoading, PanelNotice } from "@/components/ui/panel-notice";
-import { Loader2 } from "lucide-react";
-
+import { AsyncPlaceholder } from "@/components/ui/async-placeholder";
 import { Button } from "@/components/ui/button";
+import { PanelLoading, PanelNotice } from "@/components/ui/panel-notice";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CodeViewer } from "@/features/project/components/code-viewer";
+import { LabeledCode } from "@/features/project/components/labeled-code";
 import { ProjectPreview } from "@/features/project/components/project-preview";
 import { ApiError } from "@/lib/api";
 import { useModuleCatalog } from "@/features/workflow/queries";
@@ -84,9 +83,7 @@ function RunBody({ run: data }: { run: RunDetail }) {
               className="min-h-0 flex-1"
             />
           ) : (
-            <div className="grid flex-1 place-items-center">
-              <Loader2 className="size-5 animate-spin text-muted-foreground" />
-            </div>
+            <AsyncPlaceholder status="pending" className="flex-1" />
           )}
           <p className="pt-2 text-xs text-muted-foreground">
             点击节点查看它的任务和日志。
@@ -118,31 +115,25 @@ function RunBody({ run: data }: { run: RunDetail }) {
           value="launch"
           className="grid min-h-0 content-start gap-4 overflow-auto lg:grid-cols-2"
         >
-          <div className="grid content-start gap-1.5 lg:col-span-2">
-            <span className="text-xs font-semibold text-muted-foreground">
-              命令
-            </span>
-            <CodeViewer
-              code={data.command}
-              language="text"
-              lineNumbers={false}
-            />
-          </div>
-          <div className="grid content-start gap-1.5">
-            <span className="text-xs font-semibold text-muted-foreground">
-              run.config
-            </span>
-            <CodeViewer code={data.runConfig} language="groovy" />
-          </div>
-          <div className="grid content-start gap-1.5">
-            <span className="text-xs font-semibold text-muted-foreground">
-              params.json
-            </span>
-            <CodeViewer
-              code={JSON.stringify(data.params, null, 2)}
-              language="json"
-            />
-          </div>
+          <LabeledCode
+            title="命令"
+            code={data.command}
+            language="text"
+            lineNumbers={false}
+            className="content-start lg:col-span-2"
+          />
+          <LabeledCode
+            title="run.config"
+            code={data.runConfig}
+            language="groovy"
+            className="content-start"
+          />
+          <LabeledCode
+            title="params.json"
+            code={JSON.stringify(data.params, null, 2)}
+            language="json"
+            className="content-start"
+          />
         </TabsContent>
         <TabsContent value="project" className="flex min-h-0 flex-col">
           <ProjectPreview

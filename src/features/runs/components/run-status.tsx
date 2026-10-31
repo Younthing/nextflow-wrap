@@ -64,3 +64,57 @@ export function ProgressBar({
     </div>
   );
 }
+
+const COUNT_TONE = {
+  running: "text-primary",
+  failed: "text-destructive",
+  aborted: "text-warning",
+} as const;
+
+function ProgressCount({
+  count,
+  label,
+  tone,
+  kind,
+}: {
+  count: number;
+  label: string;
+  tone: "inherit" | "status";
+  kind: keyof typeof COUNT_TONE;
+}) {
+  if (count <= 0) return null;
+  const text = ` · ${count} ${label}`;
+  if (tone === "inherit") return text;
+  return <span className={COUNT_TONE[kind]}>{text}</span>;
+}
+
+export function ProgressSummary({
+  progress,
+  showRunning = false,
+  tone = "inherit",
+}: {
+  progress: RunProgress;
+  showRunning?: boolean;
+  tone?: "inherit" | "status";
+}) {
+  return (
+    <>
+      {`已发现 ${progress.total} · 完成 ${progress.completed + progress.cached}`}
+      {showRunning && (
+        <ProgressCount
+          count={progress.running}
+          label="运行中"
+          tone={tone}
+          kind="running"
+        />
+      )}
+      <ProgressCount count={progress.failed} label="失败" tone={tone} kind="failed" />
+      <ProgressCount
+        count={progress.aborted}
+        label="中止"
+        tone={tone}
+        kind="aborted"
+      />
+    </>
+  );
+}

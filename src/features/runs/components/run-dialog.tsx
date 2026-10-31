@@ -4,6 +4,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Loader2, Play, XCircle } from "lucide-react";
 
+import { AsyncPlaceholder } from "@/components/ui/async-placeholder";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -19,7 +20,7 @@ import {
   useEditorStoreApi,
 } from "@/features/editor/editor-provider";
 import { useShortcutLabel } from "@/lib/use-action-shortcuts";
-import { CodeViewer } from "@/features/project/components/code-viewer";
+import { LabeledCode } from "@/features/project/components/labeled-code";
 import { ProjectPreview } from "@/features/project/components/project-preview";
 import { GenerateError, generateProject } from "@/features/project/generate";
 import {
@@ -180,9 +181,15 @@ export function RunDialog({
                 components={generated.project.components}
                 className="min-h-0 flex-1"
               />
+            ) : generated && "error" in generated ? (
+              <AsyncPlaceholder
+                status="error"
+                className="flex-1"
+                message={generated.error}
+              />
             ) : (
               <div className="grid flex-1 place-items-center text-sm text-destructive">
-                {generated?.error ?? "正在生成…"}
+                正在生成…
               </div>
             )}
           </TabsContent>
@@ -190,27 +197,18 @@ export function RunDialog({
             value="command"
             className="grid min-h-0 content-start gap-4 overflow-auto"
           >
-            <div className="grid gap-1.5">
-              <span className="text-xs font-semibold text-muted-foreground">
-                启动命令（在项目目录中执行）
-              </span>
-              <CodeViewer code={command} language="text" lineNumbers={false} />
-            </div>
-            <div className="grid gap-1.5">
-              <span className="text-xs font-semibold text-muted-foreground">
-                run.config（-c）
-              </span>
-              <CodeViewer code={runConfig} language="groovy" />
-            </div>
-            <div className="grid gap-1.5">
-              <span className="text-xs font-semibold text-muted-foreground">
-                params.json（-params-file）
-              </span>
-              <CodeViewer
-                code={JSON.stringify(params, null, 2)}
-                language="json"
-              />
-            </div>
+            <LabeledCode
+              title="启动命令（在项目目录中执行）"
+              code={command}
+              language="text"
+              lineNumbers={false}
+            />
+            <LabeledCode title="run.config（-c）" code={runConfig} language="groovy" />
+            <LabeledCode
+              title="params.json（-params-file）"
+              code={JSON.stringify(params, null, 2)}
+              language="json"
+            />
           </TabsContent>
         </Tabs>
 

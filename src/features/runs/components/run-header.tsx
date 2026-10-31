@@ -16,7 +16,7 @@ import { ENGINE_LABELS, executorDef } from "@/features/project/launch";
 import { formatDuration, formatTime, runDuration } from "../format";
 import { isActive, useCancelRun, useDeleteRun, useResumeRun } from "../queries";
 import type { RunDetail } from "../types";
-import { ProgressBar, StatusBadge } from "./run-status";
+import { ProgressBar, ProgressSummary, StatusBadge } from "./run-status";
 
 function Stat({
   label,
@@ -163,16 +163,7 @@ export function RunHeader({ run }: { run: RunDetail }) {
         </Stat>
         <Stat label="任务">
           <span className="font-mono">
-            已发现 {p.total} · 完成 {p.completed + p.cached}
-            {p.running > 0 && (
-              <span className="text-primary"> · {p.running} 运行中</span>
-            )}
-            {p.failed > 0 && (
-              <span className="text-destructive"> · {p.failed} 失败</span>
-            )}
-            {p.aborted > 0 && (
-              <span className="text-warning"> · {p.aborted} 中止</span>
-            )}
+            <ProgressSummary progress={p} showRunning tone="status" />
           </span>
         </Stat>
       </div>

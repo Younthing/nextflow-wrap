@@ -1,8 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { BarChart3, FileText, Folder, FolderOpen, Loader2, PackageOpen } from "lucide-react";
+import { BarChart3, FileText, Folder, FolderOpen, PackageOpen } from "lucide-react";
 
+import { AsyncPlaceholder } from "@/components/ui/async-placeholder";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { CodeViewer } from "@/features/project/components/code-viewer";
@@ -27,21 +28,28 @@ function Preview({ runId, file, outdir }: { runId: string; file: ResultFile; out
 
   if (!file.preview) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
-        <PackageOpen className="size-8" />
-        <span>{file.path.endsWith("/") ? "目录" : "二进制文件"}，{formatBytes(file.size)}，无法在浏览器里预览</span>
+      <AsyncPlaceholder
+        status="empty"
+        className="flex-1"
+        icon={<PackageOpen />}
+        description={`${file.path.endsWith("/") ? "目录" : "二进制文件"}，${formatBytes(file.size)}，无法在浏览器里预览`}
+      >
         <code className="rounded bg-secondary px-2 py-1 font-mono text-xs">{fullPath}</code>
-      </div>
+      </AsyncPlaceholder>
     );
   }
   if (content.isPending) {
+    return <AsyncPlaceholder status="pending" className="flex-1" />;
+  }
+  if (content.error) {
     return (
-      <div className="grid flex-1 place-items-center">
-        <Loader2 className="size-5 animate-spin text-muted-foreground" />
-      </div>
+      <AsyncPlaceholder
+        status="error"
+        className="h-auto"
+        message={`读取失败：${content.error.message}`}
+      />
     );
   }
-  if (content.error) return <div className="p-6 text-sm text-destructive">读取失败：{content.error.message}</div>;
   if (file.preview === "html") {
     return (
       <iframe
@@ -77,18 +85,16 @@ export function RunResults({ runId, active, outdir }: { runId: string; active: b
   const current = files.find((f) => f.path === selected) ?? files.find((f) => f.path === MULTIQC) ?? files[0];
 
   if (results.isPending) {
-    return (
-      <div className="grid flex-1 place-items-center">
-        <Loader2 className="size-5 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <AsyncPlaceholder status="pending" className="flex-1" />;
   }
   if (!files.length) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
-        <PackageOpen className="size-8" />
-        {active ? "任务完成后，发布到 outdir 的文件会出现在这里" : "这次运行没有发布任何文件"}
-      </div>
+      <AsyncPlaceholder
+        status="empty"
+        className="flex-1"
+        icon={<PackageOpen />}
+        description={active ? "任务完成后，发布到 outdir 的文件会出现在这里" : "这次运行没有发布任何文件"}
+      />
     );
   }
 

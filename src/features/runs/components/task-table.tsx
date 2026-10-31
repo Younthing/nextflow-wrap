@@ -10,9 +10,19 @@ import {
   tableFeatures,
   useTable,
 } from "@tanstack/react-table";
-import { ArrowDown, ArrowUp, ArrowUpDown, X } from "lucide-react";
+import { X } from "lucide-react";
 
+import { AsyncPlaceholder } from "@/components/ui/async-placeholder";
 import { Button } from "@/components/ui/button";
+import {
+  SortHeader,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { CodeViewer } from "@/features/project/components/code-viewer";
 import { cn } from "@/lib/utils";
 import { formatBytes, formatDuration, TASK_STATUS } from "../format";
@@ -171,45 +181,58 @@ export function TaskTable({
           </div>
         )}
         <div className="min-h-0 flex-1 overflow-auto">
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-background/80 backdrop-blur">
+          <Table>
+            <TableHeader className="sticky top-0 bg-background/80 backdrop-blur">
               {table.getHeaderGroups().map((group) => (
-                <tr key={group.id} className="border-b border-border/60 text-left text-xs text-muted-foreground">
+                <TableRow key={group.id}>
                   {group.headers.map((header) => {
                     const sorted = header.column.getIsSorted();
-                    const Icon = sorted === "asc" ? ArrowUp : sorted === "desc" ? ArrowDown : ArrowUpDown;
                     return (
-                      <th key={header.id} className="px-2.5 py-2 font-medium whitespace-nowrap">
-                        <button type="button" className="group flex items-center gap-1 hover:text-foreground" onClick={header.column.getToggleSortingHandler()}>
+                      <TableHead
+                        key={header.id}
+                        className="px-2.5 whitespace-nowrap"
+                        aria-sort={
+                          sorted === "asc"
+                            ? "ascending"
+                            : sorted === "desc"
+                              ? "descending"
+                              : "none"
+                        }
+                      >
+                        <SortHeader
+                          direction={sorted}
+                          onClick={header.column.getToggleSortingHandler()}
+                        >
                           <table.FlexRender header={header} />
-                          <Icon className={cn("size-3", !sorted && "opacity-0 group-hover:opacity-60")} />
-                        </button>
-                      </th>
+                        </SortHeader>
+                      </TableHead>
                     );
                   })}
-                </tr>
+                </TableRow>
               ))}
-            </thead>
-            <tbody>
+            </TableHeader>
+            <TableBody>
               {table.getRowModel().rows.map((row) => (
-                <tr
+                <TableRow
                   key={row.id}
                   onClick={() => setSelected(row.id === selected ? null : row.id)}
                   className={cn(
-                    "cursor-pointer border-b border-border/40 transition-colors hover:bg-accent/50",
+                    "cursor-pointer last:border-b!",
                     row.id === selected && "bg-accent",
                   )}
                 >
                   {row.getAllCells().map((cell) => (
-                    <td key={cell.id} className="px-2.5 py-1.5 whitespace-nowrap">
+                    <TableCell key={cell.id} className="px-2.5 py-1.5 whitespace-nowrap">
                       <table.FlexRender cell={cell} />
-                    </td>
+                    </TableCell>
                   ))}
-                </tr>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
-          {data.length === 0 && <div className="p-6 text-center text-sm text-muted-foreground">还没有任务</div>}
+            </TableBody>
+          </Table>
+          {data.length === 0 && (
+            <AsyncPlaceholder status="empty" className="h-auto" description="还没有任务" />
+          )}
         </div>
       </div>
       {selectedTask && <TaskLogPanel runId={runId} task={selectedTask} active={active} onClose={() => setSelected(null)} />}

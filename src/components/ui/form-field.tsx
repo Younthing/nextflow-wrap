@@ -8,16 +8,20 @@ export function FormField({
   children,
   hint,
 }: {
-  label: string;
+  label: ReactNode;
   htmlFor?: string;
   children: ReactNode;
   hint?: string;
 }) {
   return (
     <div className="grid gap-1.5">
-      <Label htmlFor={htmlFor} className="text-xs">
-        {label}
-      </Label>
+      {typeof label === "string" ? (
+        <Label htmlFor={htmlFor} className="text-xs">
+          {label}
+        </Label>
+      ) : (
+        label
+      )}
       {children}
       {hint && (
         <p

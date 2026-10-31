@@ -3,6 +3,7 @@
 import * as React from "react";
 import { ChevronRight, HelpCircle } from "lucide-react";
 
+import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -99,8 +100,7 @@ function Field({
 
   if (spec.enum) {
     return (
-      <div className="grid gap-1.5">
-        {label}
+      <FormField label={label}>
         <Select
           value={value === undefined ? String(spec.default ?? "") : String(value)}
           onValueChange={(v) => onChange(v === spec.default ? undefined : v)}
@@ -116,14 +116,13 @@ function Field({
             ))}
           </SelectContent>
         </Select>
-      </div>
+      </FormField>
     );
   }
 
   const numeric = type === "integer" || type === "number";
   return (
-    <div className="grid gap-1.5">
-      {label}
+    <FormField label={label}>
       <Input
         id={id}
         type={numeric ? "number" : "text"}
@@ -137,7 +136,7 @@ function Field({
         }}
         className={cn("h-8 text-xs", (isPathFormat(spec.format) || numeric) && "font-mono")}
       />
-    </div>
+    </FormField>
   );
 }
 

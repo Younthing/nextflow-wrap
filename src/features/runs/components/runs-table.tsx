@@ -12,24 +12,25 @@ import {
   tableFeatures,
   useTable,
 } from "@tanstack/react-table";
-import {
-  ArrowDown,
-  ArrowUp,
-  ArrowUpDown,
-  History,
-  Loader2,
-  Square,
-  Trash2,
-} from "lucide-react";
+import { History, Square, Trash2 } from "lucide-react";
 
+import { AsyncPlaceholder } from "@/components/ui/async-placeholder";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import {
+  SortHeader,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { executorDef } from "@/features/project/launch";
 import { formatDuration, formatTime, runDuration } from "../format";
 import { isActive, useCancelRun, useDeleteRun, useRuns } from "../queries";
 import type { RunSummary } from "../types";
 
-import { ProgressBar, StatusBadge } from "./run-status";
+import { ProgressBar, ProgressSummary, StatusBadge } from "./run-status";
 
 const features = tableFeatures({
   rowSortingFeature,
@@ -117,9 +118,7 @@ const columns = helper.columns([
           <div className="grid w-36 gap-1">
             <ProgressBar progress={p} />
             <span className="font-mono text-[11px] text-muted-foreground">
-              已发现 {p.total} · 完成 {p.completed + p.cached}
-              {p.failed > 0 && ` · ${p.failed} 失败`}
-              {p.aborted > 0 && ` · ${p.aborted} 中止`}
+              <ProgressSummary progress={p} />
             </span>
           </div>
         );
@@ -165,96 +164,80 @@ export function RunsTable({ workflowId }: { workflowId?: string }) {
   });
 
   if (runs.isPending) {
-    return (
-      <div className="grid h-40 place-items-center text-sm text-muted-foreground">
-        <Loader2 className="size-5 animate-spin" />
-      </div>
-    );
+    return <AsyncPlaceholder status="pending" className="h-40" />;
   }
   if (runs.error) {
     return (
-      <div className="p-6 text-sm text-destructive">
-        加载运行记录失败：{runs.error.message}
-      </div>
+      <AsyncPlaceholder
+        status="error"
+        className="h-auto"
+        message={`加载运行记录失败：${runs.error.message}`}
+      />
     );
   }
   if (!runs.data?.length) {
     return (
-      <div className="flex h-60 flex-col items-center justify-center gap-2 text-muted-foreground">
-        <History className="size-8" />
-        <p className="text-sm">还没有运行记录</p>
+      <AsyncPlaceholder
+        status="empty"
+        className="h-60"
+        icon={<History />}
+        description="还没有运行记录"
+      >
         <Button asChild variant="outline" size="sm">
           <Link href="/workflows">去流程库</Link>
         </Button>
-      </div>
+      </AsyncPlaceholder>
     );
   }
 
   return (
-    <table className="w-full text-sm">
-      <thead>
+    <Table>
+      <TableHeader>
         {table.getHeaderGroups().map((group) => (
-          <tr
-            key={group.id}
-            className="border-b border-border/60 text-left text-xs text-muted-foreground"
-          >
+          <TableRow key={group.id}>
             {group.headers.map((header) => {
               const sorted = header.column.getIsSorted();
-              const SortIcon =
-                sorted === "asc"
-                  ? ArrowUp
-                  : sorted === "desc"
-                    ? ArrowDown
-                    : ArrowUpDown;
+              const canSort = header.column.getCanSort();
               return (
-                <th
+                <TableHead
                   key={header.id}
-                  className="px-3 py-2 font-medium"
                   aria-sort={
-                    sorted
+                    canSort
                       ? sorted === "asc"
                         ? "ascending"
-                        : "descending"
+                        : sorted === "desc"
+                          ? "descending"
+                          : "none"
                       : undefined
                   }
                 >
-                  {header.isPlaceholder ? null : header.column.getCanSort() ? (
-                    <button
-                      type="button"
-                      className="group flex items-center gap-1 hover:text-foreground"
+                  {header.isPlaceholder ? null : canSort ? (
+                    <SortHeader
+                      direction={sorted}
                       onClick={header.column.getToggleSortingHandler()}
                     >
                       <table.FlexRender header={header} />
-                      <SortIcon
-                        className={cn(
-                          "size-3",
-                          !sorted && "opacity-0 group-hover:opacity-60",
-                        )}
-                      />
-                    </button>
+                    </SortHeader>
                   ) : (
                     <table.FlexRender header={header} />
                   )}
-                </th>
+                </TableHead>
               );
             })}
-          </tr>
+          </TableRow>
         ))}
-      </thead>
-      <tbody>
+      </TableHeader>
+      <TableBody>
         {table.getRowModel().rows.map((row) => (
-          <tr
-            key={row.id}
-            className="border-b border-border/40 transition-colors last:border-0 hover:bg-accent/50"
-          >
+          <TableRow key={row.id}>
             {row.getAllCells().map((cell) => (
-              <td key={cell.id} className="px-3 py-2.5 align-middle">
+              <TableCell key={cell.id}>
                 <table.FlexRender cell={cell} />
-              </td>
+              </TableCell>
             ))}
-          </tr>
+          </TableRow>
         ))}
-      </tbody>
-    </table>
+      </TableBody>
+    </Table>
   );
 }

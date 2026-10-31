@@ -20,7 +20,8 @@ import { resolveNodeDef, type ModuleIndex } from "@/features/workflow/catalog";
 import type { WorkflowDoc } from "@/features/workflow/types";
 import { cn } from "@/lib/utils";
 import { TASK_STATUS } from "../format";
-import type { TaskRecord, TaskStatus } from "../types";
+import type { RunProgress, TaskRecord, TaskStatus } from "../types";
+import { ProgressBar } from "./run-status";
 
 interface StatusNodeData extends Record<string, unknown> {
   alias: string;
@@ -40,7 +41,15 @@ function StatusNode({ data, selected }: NodeProps<StatusFlowNode>) {
   const running = (counts.running ?? 0) + (counts.submitted ?? 0);
   const failed = counts.failed ?? 0;
   const aborted = counts.aborted ?? 0;
-  const pct = (n: number) => `${total ? (n / total) * 100 : 0}%`;
+  const progress: RunProgress = {
+    total,
+    pending: counts.pending ?? 0,
+    running,
+    completed: counts.completed ?? 0,
+    cached: counts.cached ?? 0,
+    failed,
+    aborted,
+  };
   const state = failed ? "failed" : running ? "running" : total && done === total ? "done" : "idle";
 
   return (
@@ -69,12 +78,7 @@ function StatusNode({ data, selected }: NodeProps<StatusFlowNode>) {
           <span className="text-[11px] text-muted-foreground">输入，不产生任务</span>
         ) : (
           <>
-            <div className="flex h-1.5 overflow-hidden rounded-full bg-secondary">
-              <div className="bg-success transition-[width] duration-500" style={{ width: pct(done) }} />
-              <div className="bg-destructive transition-[width] duration-500" style={{ width: pct(failed) }} />
-              <div className="bg-warning transition-[width] duration-500" style={{ width: pct(aborted) }} />
-              <div className="animate-pulse bg-primary transition-[width] duration-500" style={{ width: pct(running) }} />
-            </div>
+            <ProgressBar progress={progress} />
             <span className="font-mono text-[11px] text-muted-foreground">
               {total ? `${done}/${total}` : "等待上游"}
               {running > 0 && <span className="text-primary"> · {running} 运行</span>}
