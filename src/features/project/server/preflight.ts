@@ -3,6 +3,7 @@ import { constants } from "node:fs";
 import { arch, cpus, totalmem } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { executorDef, launchTools, type LaunchConfig } from "../launch";
+import { nextflowCacheEnv } from "@/lib/server/paths";
 import { runCommand } from "./command";
 
 async function executable(name: string, override: string | undefined, fallbacks: string[] = [], path = process.env.PATH): Promise<string> {
@@ -40,7 +41,8 @@ export async function preflight() {
     } catch { /* Check another installed JDK. */ }
   }
   if (!javaHome) throw new Error("Nextflow needs a supported Java 17–26. Set NEXTFLOW_JAVA_HOME to an installed JDK.");
-  const env: NodeJS.ProcessEnv = { ...process.env, JAVA_HOME: javaHome, NXF_JAVA_HOME: javaHome, NXF_ANSI_LOG: "false", NXF_VER: "26.10.4" };
+  // Conda environments and container images go to the shared cache that the notebook try-run also uses.
+  const env: NodeJS.ProcessEnv = { ...process.env, ...nextflowCacheEnv(), JAVA_HOME: javaHome, NXF_JAVA_HOME: javaHome, NXF_ANSI_LOG: "false", NXF_VER: "26.10.4" };
   env.PATH = [join(javaHome, "bin"), dockerCli ? join(dockerCli, "..") : "", process.env.PATH].filter(Boolean).join(delimiter);
   // Java's Nextflow launcher does not support SOCKS proxy URLs. Explicit HTTP overrides win.
   for (const key of ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"]) {

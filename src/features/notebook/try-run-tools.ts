@@ -1,12 +1,14 @@
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import { access, readFile, stat } from "node:fs/promises";
-import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
+
+import { condaCacheDirectory } from "@/lib/server/paths";
 
 import type { CondaKind, CondaTool, ContainerKind, ContainerTool, TryRunTools } from "./try-run-env";
 
-export const condaCacheDir = () => join(homedir(), ".cache", "nextflow-wrap", "conda");
+/** Shares the conda cache that Nextflow runs use, so the cache panel and cleanup see one place. */
+export const condaCacheDir = () => condaCacheDirectory();
 
 function basename(bin: string): string {
   return bin.split(/[/\\]/).pop()?.toLowerCase() ?? "";
