@@ -109,6 +109,8 @@ pnpm smoke:nextflow --star         # 加入 fastp、小型参考序列和 STAR�
 
 需要已运行的 Docker、nf-core/tools、Git 和 Java 17–26。脚本固定 Nextflow 26.10.4，优先使用受支持的 Java；Apple Silicon 的质控运行使用 `docker,emulate_amd64`。默认限制计算任务使用最多 2 CPU / 2 GB，执行器总预算为 2 CPU / 4 GB。
 
+Vitest 里的 Nextflow 模式测试和 host-chain 测试会直接调用 `nextflow`，二进制不存在时失败而不是跳过。`bash scripts/install-nextflow.sh` 安装官方 GitHub release 中的 26.10.4 launcher（本机需已有 Java 17–26，脚本不安装 JDK）。CI 在 Temurin 21 之后执行同一脚本。Cloud Agent 环境不读取仓库里的 `environment.json`，需要在 dashboard 的 `install` 里运行该脚本，镜像里已有的 OpenJDK 21 即可。
+
 脚本生成一个单端样本和一个双端样本，每个 FASTQ 含 200 条确定性的 100 bp 合成读段，无外部生物数据下载。它验证两个 FastQC 任务和一个 MultiQC 任务成功、三份 HTML/ZIP 已发布，以及 MultiQC 中三个读段文件各有 200 条序列。合成数据可能出现质控警告，这是测试数据特征，不影响执行验收。
 
 每次执行写入独立目录，默认 `~/.local/share/nextflow-studio/smoke/<timestamp>/`；控制台打印实际位置。目录包含生成项目、工作流快照、输入文件校验和、预期组件锁 `components.lock.json`、实际安装清单 `modules.json` / `installed-components.json`、启动参数、完整日志、结果和 `verification.json`。运行数据不放入 Git，nf-core 自身缓存可复用已下载的模块仓库。

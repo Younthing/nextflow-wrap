@@ -34,6 +34,8 @@ Use theme variables and `glass` utility classes from `src/app/globals.css`; do n
 
 Vitest runs `src/**/*.test.ts` in Node. Name tests next to the logic they cover (for example, `ports.test.ts` for `ports.ts`) and keep the simulator deterministic. Run one file with `pnpm vitest run src/features/workflow/ports.test.ts` or filter with `-t "description"`. Add or update a Storybook story for reusable UI changes.
 
+`src/features/project/patterns.test.ts` and `src/features/project/host-chain.test.ts` spawn a real `nextflow` binary. They are not skipped when it is missing; the run fails. Install the pinned official release with `bash scripts/install-nextflow.sh` (Java 17–26 must already be on `PATH`; the script does not install a JDK). GitHub Actions runs that script after Temurin 21. This Cloud Agent environment is dashboard-managed (`environment.json` is not in the repo) and its image already has OpenJDK 21. Its `install` command must run the same script, or keep the equivalent launcher from `https://github.com/nextflow-io/nextflow/releases/download/v26.10.4/nextflow` on `PATH`, so later agents do not lose the binary. `~/.nextflow` is filled on the first `nextflow -version`.
+
 ## Commit & Pull Request Guidelines
 
 Recent history uses concise, imperative English subjects, often scoped by delivery step (for example, `Step 4a: track runs live and browse their results`). Keep commits focused. PRs should describe behavior, note checks run, link issues when available, and include screenshots or Storybook evidence for visual changes. Do not commit `.env.local` or API keys.
