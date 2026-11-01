@@ -8,6 +8,7 @@ import { notebookFromLibrary, storedLibraryCopy, type ModuleLibraryCopy } from "
 import { publishScriptModule } from "@/features/notebook/publish";
 import { demoLibraryCopies, demoNotebooks, demoRevisions, demoScriptModules } from "@/features/notebook/seed";
 import { executeTryRun, runNotebookCells } from "@/features/notebook/execute";
+import { NotebookConflictError, notebookFiles } from "@/features/notebook/server/notebook-files";
 import { ensureModuleLibrary, ModuleLibraryError, readEnvironmentYml, writeLibraryModule } from "@/features/notebook/server/module-library";
 import { existingKernel, kernelFor, kernelInfo, KernelUnavailableError, listKernelSpecs, shutdownKernel } from "@/features/notebook/server/kernels";
 import { referenceCounts, scriptModuleViews, summarizeNotebook } from "@/features/notebook/library";
@@ -133,7 +134,26 @@ async function saveToLibrary(db: StudioStore, def: ModuleDef, copy?: ModuleLibra
 export async function handleNotebookApi(method: string, path: string[], request: Request, db: StudioStore = store()): Promise<Response> {
   ensureNotebookDemo(db);
   await ensureModuleLibrary(db);
+  const files = await notebookFiles(db);
   const [resource, id, action, extra] = path;
+  // Pick up edits made to the notebook files outside the app before anything reads them. A save checks instead.
+  if (files && !(resource === "notebooks" && id && !action && method === "PUT")) {
+    await files.refresh(db, resource === "notebooks" && id ? id : undefined);
+  }
+  /** Save a notebook to the database and its workspace file. */
+  const saveNotebook = async (doc: NotebookDoc) => {
+    if (files) {
+      try {
+        await files.write(doc);
+      } catch (error) {
+        if (error instanceof NotebookConflictError) throw new HttpError(409, error.message);
+        throw error;
+      }
+    }
+    const saved = db.saveNotebook(doc);
+    // The database assigns rev and timestamps; the file only holds content, so it is already current.
+    return saved;
+  };
 
   if (resource === "kernels" && !id && method === "GET") return json(await listKernelSpecs());
 
@@ -176,7 +196,7 @@ export async function handleNotebookApi(method: string, path: string[], request:
       if (error instanceof PercentError) throw new HttpError(400, error.message);
       throw error;
     }
-    return json(db.saveNotebook(doc), 201);
+    return json(await saveNotebook(doc), 201);
   }
 
   if (resource !== "notebooks") throw new HttpError(404, "接口不存在");
@@ -200,7 +220,7 @@ export async function handleNotebookApi(method: string, path: string[], request:
       createdAt: now,
       updatedAt: now,
     };
-    return json(db.saveNotebook(doc), 201);
+    return json(await saveNotebook(doc), 201);
   }
 
   if (!id) throw new HttpError(404, "接口不存在");
@@ -211,7 +231,7 @@ export async function handleNotebookApi(method: string, path: string[], request:
   if (!action && method === "PUT") {
     const current = requireNotebook(db, id);
     const body = writeSchema.parse(await request.json());
-    return json(db.saveNotebook({
+    return json(await saveNotebook({
       ...current,
       name: body.name,
       description: body.description?.trim() ?? "",
