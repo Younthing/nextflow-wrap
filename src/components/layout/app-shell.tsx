@@ -1,3 +1,4 @@
+import { Toaster } from "@/components/ui/toaster";
 import { AssistantButton } from "@/features/assistant/assistant-button";
 
 import { BackendStatus } from "./backend-status";
@@ -24,6 +25,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </header>
         <main className="min-h-0 flex-1">{children}</main>
       </div>
+      <Toaster />
     </div>
   );
 }

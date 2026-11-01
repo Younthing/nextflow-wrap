@@ -12,10 +12,12 @@ export function BackendStatus() {
   if (data.status === "degraded") return <Badge variant="warning" title={data.diagnostics}>Runner 未就绪</Badge>;
 
   return (
-    <Badge variant={data.mocked ? "warning" : "success"}>
-      <span className="size-1.5 rounded-full bg-current" />
-      Nextflow {data.nextflowVersion}
-      {data.mocked && " · 模拟"}
-    </Badge>
+    <span className="inline-flex items-center gap-1.5">
+      <Badge variant={data.mocked ? "warning" : "success"} className="font-mono">
+        <span className="size-1.5 rounded-full bg-current" />
+        Nextflow {data.nextflowVersion}
+      </Badge>
+      {data.mocked && <Badge variant="warning">模拟</Badge>}
+    </span>
   );
 }

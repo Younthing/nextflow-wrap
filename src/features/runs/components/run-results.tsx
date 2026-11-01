@@ -6,62 +6,80 @@ import { BarChart3, FileText, Folder, FolderOpen, PackageOpen } from "lucide-rea
 import { AsyncPlaceholder } from "@/components/ui/async-placeholder";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { CodeViewer } from "@/features/project/components/code-viewer";
+import { OutputRenderer } from "@/features/output/output-renderer";
+import { viewFromText, type OutputView } from "@/features/output/model";
 import { cn } from "@/lib/utils";
 import { formatBytes } from "../format";
 import type { ResultFile } from "../outputs";
-import { useHealthStatus, useResultContent, useRunLog, useRunResults } from "../queries";
+import { firstPreviewable, imageMime, isBinaryPreview } from "../preview";
+import { useHealthStatus, useResultBlob, useResultContent, useRunLog, useRunResults } from "../queries";
 import { staticReportHtml } from "../report-preview";
 
 const MULTIQC = "multiqc/multiqc_report.html";
 
-function languageOf(path: string) {
-  if (path.endsWith(".json")) return "json" as const;
-  if (/\.ya?ml$/.test(path)) return "yaml" as const;
-  return "text" as const;
+function DirectoryPlaceholder({ path, description }: { path: string; description: string }) {
+  return (
+    <AsyncPlaceholder status="empty" className="flex-1" icon={<FolderOpen />} description={description}>
+      <code className="rounded bg-secondary px-2 py-1 font-mono text-xs">{path}</code>
+    </AsyncPlaceholder>
+  );
+}
+
+function BlobPreview({ blob, view }: { blob: Blob; view: (src: string) => OutputView }) {
+  const src = React.useMemo(() => URL.createObjectURL(blob), [blob]);
+  React.useEffect(() => () => URL.revokeObjectURL(src), [src]);
+  return <OutputRenderer view={view(src)} className="min-h-0 flex-1" />;
 }
 
 function Preview({ runId, file, outdir }: { runId: string; file: ResultFile; outdir: string }) {
-  const content = useResultContent(runId, file.preview ? file.path : null);
-  const reportHtml = React.useMemo(() => file.preview === "html" && content.data ? staticReportHtml(content.data.body) : "", [file.preview, content.data]);
+  const binary = isBinaryPreview(file.preview);
+  const textual = file.preview === "html" || file.preview === "markdown" || file.preview === "csv" || file.preview === "tsv" || file.preview === "text";
+  const content = useResultContent(runId, textual ? file.path : null);
+  const blob = useResultBlob(runId, binary ? file.path : null);
   const fullPath = `${outdir.replace(/\/$/, "")}/${file.path}`;
+  const reportHtml = React.useMemo(
+    () => (file.preview === "html" && content.data ? staticReportHtml(content.data.body) : ""),
+    [file.preview, content.data],
+  );
 
   if (!file.preview) {
+    if (file.path.endsWith("/")) return <DirectoryPlaceholder path={fullPath} description="这是一个目录。打开其中的文件后再预览。" />;
     return (
       <AsyncPlaceholder
         status="empty"
         className="flex-1"
         icon={<PackageOpen />}
-        description={`${file.path.endsWith("/") ? "目录" : "二进制文件"}，${formatBytes(file.size)}，无法在浏览器里预览`}
+        description={`二进制文件，${formatBytes(file.size)}，无法在浏览器里预览`}
       >
         <code className="rounded bg-secondary px-2 py-1 font-mono text-xs">{fullPath}</code>
       </AsyncPlaceholder>
     );
   }
-  if (content.isPending) {
-    return <AsyncPlaceholder status="pending" className="flex-1" />;
+  const pending = binary ? blob.isPending : content.isPending;
+  const error = binary ? blob.error : content.error;
+  if (pending) return <AsyncPlaceholder status="pending" className="flex-1" />;
+  if (error) {
+    return <AsyncPlaceholder status="error" className="h-auto" message={`读取失败：${error.message}`} />;
   }
-  if (content.error) {
+  if (binary && blob.data) {
+    const mime = imageMime(file.preview);
     return (
-      <AsyncPlaceholder
-        status="error"
-        className="h-auto"
-        message={`读取失败：${content.error.message}`}
+      <BlobPreview
+        blob={blob.data}
+        view={(src) => mime
+          ? { kind: "image", mime, src, alt: file.path }
+          : { kind: "pdf", src, title: file.path }}
       />
     );
   }
+  if (!content.data) return <AsyncPlaceholder status="pending" className="flex-1" />;
   if (file.preview === "html") {
-    return (
-      <iframe
-        title={file.path}
-        srcDoc={reportHtml}
-        // Reports are untrusted output: no scripts or same-origin access.
-        sandbox=""
-        className="min-h-0 flex-1 rounded-lg border border-border bg-white"
-      />
-    );
+    return <OutputRenderer view={{ kind: "html-document", html: reportHtml, title: file.path }} className="min-h-0 flex-1" />;
   }
-  return <CodeViewer code={content.data.body} language={languageOf(file.path)} className="min-h-0 flex-1" />;
+  if (file.preview === "markdown" || file.preview === "csv" || file.preview === "tsv" || file.preview === "text") {
+    return <OutputRenderer view={viewFromText(file.preview, content.data.body)} className="min-h-0 flex-1" />;
+  }
+  return <AsyncPlaceholder status="pending" className="flex-1" />;
 }
 
 /** Files under --outdir grouped by their first directory (one per module). */
@@ -78,11 +96,13 @@ export function RunResults({ runId, active, outdir }: { runId: string; active: b
   const health = useHealthStatus();
   const results = useRunResults(runId, active);
   const files = React.useMemo(() => results.data ?? [], [results.data]);
-  const [selected, setSelected] = React.useState<string | null>(null);
+  const [chosen, setChosen] = React.useState<string | null>(null);
   const [collapsed, setCollapsed] = React.useState<Set<string>>(new Set());
-
-  // Open the MultiQC report as soon as it exists, unless the user picked a file.
-  const current = files.find((f) => f.path === selected) ?? files.find((f) => f.path === MULTIQC) ?? files[0];
+  const picked = chosen ? files.find((file) => file.path === chosen) : undefined;
+  const fallback = firstPreviewable(files);
+  // Keep the first previewable file until the reader picks one, including after the list grows.
+  if (!picked && fallback && chosen !== fallback.path) setChosen(fallback.path);
+  const current = picked ?? fallback;
 
   if (results.isPending) {
     return <AsyncPlaceholder status="pending" className="flex-1" />;
@@ -107,7 +127,7 @@ export function RunResults({ runId, active, outdir }: { runId: string; active: b
               variant={current?.path === MULTIQC ? "default" : "outline"}
               size="sm"
               className="justify-start"
-              onClick={() => setSelected(MULTIQC)}
+              onClick={() => setChosen(MULTIQC)}
             >
               <BarChart3 /> MultiQC 报告
             </Button>
@@ -140,7 +160,7 @@ export function RunResults({ runId, active, outdir }: { runId: string; active: b
                         <li key={f.path}>
                           <button
                             type="button"
-                            onClick={() => setSelected(f.path)}
+                            onClick={() => setChosen(f.path)}
                             className={cn(
                               "flex w-full items-center gap-1.5 rounded-md py-1 pr-2 pl-6 text-left font-mono hover:bg-accent",
                               f.path === current?.path && "bg-glass-strong text-primary shadow-sm",
@@ -160,8 +180,8 @@ export function RunResults({ runId, active, outdir }: { runId: string; active: b
           </ul>
         </div>
       </ScrollArea>
-      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-        {current && (
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5" aria-label="结果预览">
+        {current ? (
           <>
             <div className="font-mono text-xs text-muted-foreground">
               {outdir.replace(/\/$/, "")}/{current.path}
@@ -170,6 +190,8 @@ export function RunResults({ runId, active, outdir }: { runId: string; active: b
             {current.preview === "html" && <p className="text-xs text-muted-foreground">静态预览；交互图表请下载报告后查看。</p>}
             <Preview key={current.path} runId={runId} file={current} outdir={outdir} />
           </>
+        ) : (
+          <DirectoryPlaceholder path={outdir} description="这个目录里还没有可预览的文件" />
         )}
       </div>
     </div>

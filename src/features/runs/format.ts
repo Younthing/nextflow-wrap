@@ -1,4 +1,4 @@
-import type { RunStatus, TaskStatus } from "./types";
+import type { RunProgress, RunStatus, TaskStatus } from "./types";
 
 export const RUN_STATUS: Record<RunStatus, { label: string; variant: "default" | "secondary" | "success" | "warning" | "destructive" }> = {
   submitted: { label: "排队中", variant: "secondary" },
@@ -45,6 +45,48 @@ export function formatBytes(bytes?: number): string {
   return `${v < 10 && i ? v.toFixed(1) : Math.round(v)} ${units[i]}`;
 }
 
-export function formatTime(iso?: string): string {
-  return iso ? new Date(iso).toLocaleString("zh-CN", { hour12: false }) : "—";
+export function currentTimeZone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+}
+
+function zonedParts(iso: string, timeZone: string): Intl.DateTimeFormatPart[] | undefined {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return undefined;
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).formatToParts(date);
+}
+
+/** Local date and time. Pass `timeZone` in tests; the default is the runtime zone. */
+export function formatTime(iso?: string, timeZone = currentTimeZone()): string {
+  if (!iso) return "—";
+  const parts = zonedParts(iso, timeZone);
+  if (!parts) return "—";
+  const pick = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? "";
+  const pad = (value: string) => value.padStart(2, "0");
+  return `${pick("year")}/${pad(pick("month"))}/${pad(pick("day"))} ${pad(pick("hour"))}:${pad(pick("minute"))}:${pad(pick("second"))}`;
+}
+
+/** Short offset such as GMT+8, for the clock the run page is showing. */
+export function localTimeZoneLabel(timeZone = currentTimeZone(), date = new Date()): string {
+  const value = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    timeZoneName: "shortOffset",
+    hour: "2-digit",
+  }).formatToParts(date).find((part) => part.type === "timeZoneName")?.value;
+  return value ?? timeZone;
+}
+
+/** `任务 4/13 完成`, or a discovery line before any task exists. */
+export function taskProgressLabel(progress: RunProgress): string {
+  if (progress.total <= 0) return "正在发现任务";
+  const done = progress.completed + progress.cached;
+  return `任务 ${done}/${progress.total} 完成`;
 }

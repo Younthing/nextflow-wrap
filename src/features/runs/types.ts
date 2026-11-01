@@ -1,5 +1,6 @@
 import type { LaunchConfig } from "@/features/project/launch";
 import type { PipelineParams, WorkflowDoc } from "@/features/workflow/types";
+import type { ResultPreview } from "./preview";
 
 export type RunStatus = "submitted" | "running" | "succeeded" | "failed" | "cancelled" | "interrupted";
 export type TaskStatus = "pending" | "submitted" | "running" | "completed" | "cached" | "failed" | "aborted";
@@ -7,7 +8,7 @@ export type TaskStatus = "pending" | "submitted" | "running" | "completed" | "ca
 export interface ResultFile {
   path: string;
   size: number;
-  preview: "text" | "html" | null;
+  preview: ResultPreview;
   nodeId?: string;
 }
 

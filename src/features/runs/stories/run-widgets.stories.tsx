@@ -77,9 +77,7 @@ export const DiscoveringTasks: Story = {
           aborted: 0,
         }}
       />
-      <p className="text-xs text-muted-foreground">
-        已发现 0 · 完成 0；任务数量随流程展开更新。
-      </p>
+      <p className="text-xs text-muted-foreground">正在发现任务；任务数量随流程展开更新。</p>
     </div>
   ),
 };

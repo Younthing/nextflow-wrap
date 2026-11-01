@@ -2,6 +2,7 @@ import { http, HttpResponse } from "msw";
 import catalog from "@/data/nf-core-modules.json";
 import { demoRnaseqWorkflow } from "@/features/workflow/demo";
 import { defaultLaunchConfig } from "@/features/project/launch";
+import { NEXTFLOW_VERSION } from "@/features/project/templates";
 import type { RunDetail } from "@/features/runs/types";
 
 export const storyWorkflow = {
@@ -49,7 +50,7 @@ export const storyHandlers = [
     HttpResponse.json({
       status: "ok",
       mocked: true,
-      nextflowVersion: "25.10.0",
+      nextflowVersion: NEXTFLOW_VERSION,
     }),
   ),
   http.get("/api/copilotkit/status", () =>

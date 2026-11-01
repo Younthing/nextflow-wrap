@@ -3,6 +3,7 @@
 import * as React from "react";
 import { RadioGroup } from "radix-ui";
 import { Cloud, Server, Ship } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { FormField as Field } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import {
@@ -101,6 +102,12 @@ export function EnvironmentForm({
 
   return (
     <div className="grid gap-6">
+      {!real && (
+        <p className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm">
+          <Badge variant="warning" className="mt-0.5">预览</Badge>
+          <span>预览环境不会连接真实的集群或云执行器。启动后由模拟运行展示流程和结果。</span>
+        </p>
+      )}
       <section className="grid gap-2">
         <h3 className="text-xs font-semibold text-muted-foreground">
           运行在哪里
@@ -146,6 +153,7 @@ export function EnvironmentForm({
                     )}
                   />
                   {e.name}
+                  {(!real || e.id !== "local") && <Badge variant="warning">预览</Badge>}
                 </span>
                 <span className="text-[11px] leading-snug text-muted-foreground">
                   {e.description}

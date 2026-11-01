@@ -5,18 +5,18 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
-  Loader2,
   PencilRuler,
-  Square,
   Trash2,
   TriangleAlert,
 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ENGINE_LABELS, executorDef } from "@/features/project/launch";
-import { formatDuration, formatTime, runDuration } from "../format";
-import { isActive, useCancelRun, useDeleteRun, useResumeRun } from "../queries";
+import { formatDuration, formatTime, localTimeZoneLabel, runDuration } from "../format";
+import { isActive, useCancelRun, useDeleteRun, useHealthStatus, useResumeRun } from "../queries";
 import type { RunDetail } from "../types";
 import { ProgressBar, ProgressSummary, StatusBadge } from "./run-status";
+import { StopRunButton } from "./stop-run-button";
 
 function Stat({
   label,
@@ -49,6 +49,7 @@ export function RunHeader({ run }: { run: RunDetail }) {
   const cancel = useCancelRun();
   const del = useDeleteRun();
   const resume = useResumeRun();
+  const health = useHealthStatus();
   const active = isActive(run.status);
   const now = useNow(active);
   const p = run.progress;
@@ -92,19 +93,12 @@ export function RunHeader({ run }: { run: RunDetail }) {
             </Button>
           )}
           {active ? (
-            <Button
-              variant="destructive"
-              size="sm"
-              disabled={cancel.isPending || run.phase === "cancelling"}
-              onClick={() => cancel.mutate(run.id)}
-            >
-              {cancel.isPending ? (
-                <Loader2 className="animate-spin" />
-              ) : (
-                <Square />
-              )}{" "}
-              停止
-            </Button>
+            <StopRunButton
+              runName={run.runName}
+              pending={cancel.isPending}
+              disabled={run.phase === "cancelling"}
+              onStop={() => cancel.mutate(run.id)}
+            />
           ) : (
             <Button
               variant="outline"
@@ -140,7 +134,12 @@ export function RunHeader({ run }: { run: RunDetail }) {
       )}
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
-        <Stat label="运行环境">{executorDef(run.executor).name}</Stat>
+        <Stat label="运行环境">
+          <span className="flex items-center gap-1.5">
+            {executorDef(run.executor).name}
+            {health.data?.mocked && <Badge variant="warning">预览</Badge>}
+          </span>
+        </Stat>
         <Stat label="软件环境">
           {ENGINE_LABELS[run.launch.engine]}
           {run.launch.extraProfiles.length > 0 && (
@@ -150,7 +149,10 @@ export function RunHeader({ run }: { run: RunDetail }) {
             </span>
           )}
         </Stat>
-        <Stat label="提交时间">{formatTime(run.submittedAt)}</Stat>
+        <Stat label="提交时间">
+          <span className="font-mono text-xs">{formatTime(run.submittedAt)}</span>
+          <span className="ml-1 text-[10px] text-muted-foreground">{localTimeZoneLabel()}</span>
+        </Stat>
         <Stat label="耗时">
           <span className="font-mono">
             {formatDuration(runDuration(run, now))}

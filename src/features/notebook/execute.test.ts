@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { convertNotebook, scriptFileName } from "./convert";
 import { executeCells, executeTryRun } from "./execute";
+import { SAMPLE_PDF } from "@/features/output/samples";
 import { planMime } from "./mime";
 import { demoNotebooks } from "./seed";
 import { simulateTryRun } from "./simulate";
@@ -134,6 +135,33 @@ describe("executeCells", () => {
         ].join("\n"),
       },
       {
+        id: "sheet",
+        role: "code",
+        source: [
+          "class Sheet:",
+          "    def _repr_csv_(self):",
+          "        return 'sample,reads\\nS1,10\\n'",
+          "    def __repr__(self):",
+          "        return 'sheet'",
+          "Sheet()",
+          "",
+        ].join("\n"),
+      },
+      {
+        id: "pdf",
+        role: "code",
+        source: [
+          "import base64",
+          "class Doc:",
+          "    def _repr_pdf_(self):",
+          `        return base64.b64decode('${SAMPLE_PDF}')`,
+          "    def __repr__(self):",
+          "        return '报告'",
+          "Doc()",
+          "",
+        ].join("\n"),
+      },
+      {
         id: "stack",
         role: "code",
         source: [
@@ -229,6 +257,12 @@ describe("executeCells", () => {
     expect(planMime(bundleOf(byId.png?.outputs, "png").data)).toMatchObject({ kind: "image", mime: "image/png", alt: "散点图" });
     expect(planMime(bundleOf(byId.jpeg?.outputs, "jpeg").data)).toMatchObject({ kind: "image", mime: "image/jpeg", alt: "照片" });
     expect(planMime(bundleOf(byId.svg?.outputs, "svg").data)).toMatchObject({ kind: "image", mime: "image/svg+xml", alt: "色块" });
+    expect(planMime(bundleOf(byId.sheet?.outputs, "sheet").data)).toMatchObject({
+      kind: "table",
+      columns: ["sample", "reads"],
+      rows: [["S1", "10"]],
+    });
+    expect(planMime(bundleOf(byId.pdf?.outputs, "pdf").data)).toMatchObject({ kind: "pdf", title: "报告" });
 
     expect(byId.stack?.outputs?.map((item) => item.outputType === "stream" ? item.text.trim() : item.outputType)).toEqual([
       "before",

@@ -1,43 +1,13 @@
 "use client";
 
+import { OutputRenderer } from "@/features/output/output-renderer";
 import { planMime } from "@/features/notebook/mime";
 import { segmentsOf, type CellOutputModel } from "@/features/notebook/outputs";
 import type { CellMimeBundle, CellOutput } from "@/features/notebook/types";
 import { cn } from "@/lib/utils";
-import { MarkdownView } from "./markdown-view";
-import { SafeHtml } from "./safe-html";
 
 function RichBundle({ data }: { data: CellMimeBundle }) {
-  const plan = planMime(data);
-  if (plan.kind === "html") {
-    return (
-      <div data-output="html" className="text-sm">
-        <SafeHtml nodes={plan.nodes} />
-      </div>
-    );
-  }
-  if (plan.kind === "image") {
-    return (
-      // Cell images are generated data URLs.
-      // eslint-disable-next-line @next/next/no-img-element
-      <img data-output="image" data-mime={plan.mime} src={plan.src} alt={plan.alt} className="max-w-full" />
-    );
-  }
-  if (plan.kind === "markdown") {
-    return (
-      <div data-output="markdown" className="text-sm">
-        <MarkdownView source={plan.source} />
-      </div>
-    );
-  }
-  if (plan.kind === "text") {
-    return (
-      <pre data-output="text" className="overflow-auto whitespace-pre-wrap font-mono text-xs text-muted-foreground">
-        {plan.text}
-      </pre>
-    );
-  }
-  return <p className="font-mono text-xs text-muted-foreground">（这个输出无法安全显示）</p>;
+  return <OutputRenderer view={planMime(data)} />;
 }
 
 function OutputSegment({ segment }: { segment: CellOutput }) {
