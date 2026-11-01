@@ -6,6 +6,7 @@ import { indexModules } from "@/features/workflow/catalog";
 import { demoRnaseqWorkflow } from "@/features/workflow/demo";
 import type { ModuleCatalog } from "@/features/workflow/types";
 import { consoleLog, fileNameFor, resultContent, resultFiles } from "./outputs";
+import { firstPreviewable } from "./preview";
 import { simulateRun } from "./simulate";
 
 const index = indexModules((catalog as ModuleCatalog).modules);
@@ -51,6 +52,11 @@ describe("run outputs", () => {
     const report = resultContent(run, tasks, index, "multiqc/multiqc_report.html");
     expect(report?.contentType).toMatch(/html/);
     expect(report?.body).toContain("TREATED_REP2");
+    const files = resultFiles(run, tasks, index);
+    const opened = firstPreviewable(files);
+    const openedAt = files.findIndex((file) => file.path === opened?.path);
+    expect(opened?.preview).toBeTruthy();
+    expect(files.slice(0, openedAt).every((file) => !file.preview)).toBe(true);
   });
 
   it("logs submissions and the completion summary", () => {

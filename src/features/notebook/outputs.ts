@@ -28,7 +28,8 @@ function normalizeBundle(value: unknown): CellMimeBundle | undefined {
   for (const [key, item] of Object.entries(value)) {
     if (!MIME_KEYS.has(key) || typeof item !== "string" || item.length === 0) continue;
     const mime = key as OutputMimeType;
-    const limit = mime.startsWith("image/") && mime !== "image/svg+xml" ? MAX_IMAGE : mime === "text/plain" ? MAX_TEXT : MAX_RICH;
+    const binary = (mime.startsWith("image/") && mime !== "image/svg+xml") || mime === "application/pdf";
+    const limit = binary ? MAX_IMAGE : mime === "text/plain" ? MAX_TEXT : MAX_RICH;
     bundle[mime] = clip(item, limit);
   }
   return Object.keys(bundle).length > 0 ? bundle : undefined;

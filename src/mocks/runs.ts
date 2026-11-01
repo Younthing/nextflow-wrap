@@ -133,7 +133,8 @@ export const runHandlers = [
     const path = new URL(request.url).searchParams.get("path") ?? "";
     const content = resultContent(detail, sim.tasks, moduleIndex(), path);
     if (!content) return HttpResponse.json({ message: "文件不存在或无法预览" }, { status: 404 });
-    return new HttpResponse(content.body, { headers: { "content-type": content.contentType } });
+    const body = content.encoding === "base64" ? Uint8Array.from(atob(content.body), (char) => char.charCodeAt(0)) : content.body;
+    return new HttpResponse(body, { headers: { "content-type": content.contentType } });
   }),
 
   http.post("/api/runs/:id/cancel", async ({ params }) => {

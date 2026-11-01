@@ -9,7 +9,8 @@ MAX_HTML = 200_000
 MAX_IMAGE = 1_500_000
 MAX_OUTPUTS = 40
 IMAGE_MIMES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
-TEXT_MIMES = {"text/html", "text/plain", "text/markdown", "image/svg+xml"}
+TEXT_MIMES = {"text/html", "text/plain", "text/markdown", "text/csv", "text/tab-separated-values", "image/svg+xml"}
+PDF_MIMES = {"application/pdf"}
 _open = open
 _dump = json.dump
 _real_import = builtins.__import__
@@ -105,6 +106,27 @@ def _encode_image(value):
         return None
     return encoded
 
+def _encode_pdf(value):
+    if isinstance(value, bytes):
+        if not value.startswith(b"%PDF"):
+            return None
+        encoded = base64.b64encode(value).decode("ascii")
+    elif isinstance(value, str):
+        compact = "".join(value.split())
+        try:
+            decoded = base64.b64decode(compact, validate=True)
+        except Exception:
+            decoded = None
+        if decoded and decoded.startswith(b"%PDF"):
+            encoded = compact
+        else:
+            return None
+    else:
+        return None
+    if len(encoded) > MAX_IMAGE:
+        return None
+    return encoded
+
 def _as_text(value, limit):
     if isinstance(value, bytes):
         text = value.decode("utf-8", "replace")
@@ -132,6 +154,10 @@ def _normalize(data):
             text = _as_text(value, limit)
             if text:
                 out[key] = text
+        elif key in PDF_MIMES:
+            encoded = _encode_pdf(value)
+            if encoded:
+                out[key] = encoded
     return out or None
 
 def _bundle(obj):
@@ -150,6 +176,9 @@ def _bundle(obj):
         ("image/jpeg", "_repr_jpeg_"),
         ("image/gif", "_repr_gif_"),
         ("image/svg+xml", "_repr_svg_"),
+        ("application/pdf", "_repr_pdf_"),
+        ("text/csv", "_repr_csv_"),
+        ("text/tab-separated-values", "_repr_tsv_"),
     ):
         if data.get(mime) is None:
             value = _call(obj, method)

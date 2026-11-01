@@ -92,8 +92,7 @@ export interface TryRunOutput {
 
 /**
  * MIME types a cell output can carry, best first.
- * Same order as the notebook UI reference: HTML, then SVG, then raster images,
- * then markdown, then plain text.
+ * HTML, then SVG, then raster images, then PDF, then tables, then markdown, then plain text.
  */
 export const OUTPUT_MIME_ORDER = [
   "text/html",
@@ -102,6 +101,9 @@ export const OUTPUT_MIME_ORDER = [
   "image/jpeg",
   "image/webp",
   "image/gif",
+  "application/pdf",
+  "text/csv",
+  "text/tab-separated-values",
   "text/markdown",
   "text/plain",
 ] as const;
