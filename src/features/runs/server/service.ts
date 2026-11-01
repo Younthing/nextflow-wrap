@@ -141,6 +141,7 @@ export function cancelRun(id: string) {
 export function resumeRun(id: string) {
   const source = requireRun(id);
   if (active(source) || !source.sessionId) throw new HttpError(409, "只能恢复具有 Nextflow session 的已结束运行");
+  if (source.detail.workCleanedAt) throw new HttpError(409, "这次运行的 work 目录已在磁盘页清理，不能再续跑；请重新运行");
   if (!runnerReady()) throw new HttpError(503, "Runner 未就绪");
   return store().transaction(() => {
     if (store().runs(true).some((run) => active(run) && run.lineageId === source.lineageId)) throw new HttpError(409, "同一运行链已有活动运行");

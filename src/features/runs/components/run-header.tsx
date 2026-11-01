@@ -78,7 +78,12 @@ export function RunHeader({ run }: { run: RunDetail }) {
               <PencilRuler /> 在编辑器中打开
             </Link>
           </Button>
-          {!active && run.nextflowSessionId && (
+          {!active && run.nextflowSessionId && run.workCleanedAt && (
+            <span className="self-center text-xs text-muted-foreground" title={`work 目录在 ${run.workCleanedAt} 清理`}>
+              work 已清理，不能续跑
+            </span>
+          )}
+          {!active && run.nextflowSessionId && !run.workCleanedAt && (
             <Button
               variant="outline"
               size="sm"

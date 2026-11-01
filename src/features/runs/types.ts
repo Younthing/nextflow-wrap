@@ -65,6 +65,10 @@ export interface RunDetail extends RunSummary {
   project: ProjectSnapshot;
   workflow: WorkflowDoc;
   cancelledAt?: string;
+  /** The session's task directories were removed on the disk page; `-resume` can no longer use them. */
+  workCleanedAt?: string;
+  /** Published results were removed too. */
+  resultsRemovedAt?: string;
 }
 
 export interface TaskRecord {
