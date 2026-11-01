@@ -212,17 +212,17 @@ export function RunConsole({ runId, active }: { runId: string; active: boolean }
 
   return (
     <><div className="flex justify-end pb-2">{health.data?.mocked === false && <Button asChild variant="outline" size="sm"><a href={`/api/runs/${runId}/log?download=1`}>下载完整日志</a></Button>}</div>
-    <div ref={ref} className="min-h-0 flex-1 overflow-auto rounded-lg bg-[oklch(0.2_0.02_260)] p-3 font-mono text-[12px] leading-5 text-[oklch(0.9_0.01_260)]">
+    <div ref={ref} className="min-h-0 flex-1 overflow-auto rounded-lg bg-console p-3 font-mono text-[12px] leading-5 text-console-foreground">
       {log.isPending && <span className="opacity-60">加载日志…</span>}
       {lines?.map((line, i) => (
         <div
           key={i}
           className={cn(
             "whitespace-pre-wrap",
-            /^ERROR|Pipeline completed with errors/.test(line) && "text-[oklch(0.72_0.18_25)]",
-            /^WARN/.test(line) && "text-[oklch(0.82_0.14_80)]",
-            /completed successfully/.test(line) && "text-[oklch(0.78_0.15_155)]",
-            /^\[[0-9a-f]{2}\//.test(line) && "text-[oklch(0.8_0.06_230)]",
+            /^ERROR|Pipeline completed with errors/.test(line) && "text-console-error",
+            /^WARN/.test(line) && "text-console-warning",
+            /completed successfully/.test(line) && "text-console-success",
+            /^\[[0-9a-f]{2}\//.test(line) && "text-console-task",
           )}
         >
           {line || " "}
