@@ -41,7 +41,7 @@ export interface RunSummary {
 
 export interface ProjectSnapshot {
   name: string;
-  files: { path: string; content: string }[];
+  files: { path: string; content: string; executable?: boolean }[];
 }
 
 /** POST /api/runs */

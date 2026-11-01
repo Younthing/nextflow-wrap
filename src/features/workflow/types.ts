@@ -77,6 +77,10 @@ export interface ModuleDef {
   kernel?: string;
   /** Conda environment yaml path for the process `conda` directive. Hand-filled, not taken from the kernel. */
   condaYaml?: string;
+  /** Contents of `condaYaml` captured at publish time; written as the module's own `environment.yml`. */
+  environmentYml?: string;
+  /** Module library namespace, as in `<namespace>/<name>`. Defaults to `local`. */
+  namespace?: string;
   /** Container image for the process `container` directive. Hand-filled, not taken from the kernel. */
   containerImage?: string;
   /** Free-text note saved with this published version. */

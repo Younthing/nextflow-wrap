@@ -8,6 +8,7 @@ import { checkCompatibility, findPort, portFromHandle, socketInputs } from "@/fe
 import type { ModuleDef, PortDef, WorkflowDoc, WorkflowEdge, WorkflowNode } from "@/features/workflow/types";
 import { ChannelOpError, paren, renderOperator } from "./channel-ops";
 import { gvalue, indent, nf, section } from "./groovy";
+import { moduleNamespace } from "./script-process";
 
 export class GenerateError extends Error {
   constructor(
@@ -397,7 +398,7 @@ export function renderTemporaryModuleText(doc: WorkflowDoc, index: ModuleIndex):
 
 export function workflowIncludes(order: PlannedNode[]): string[] {
   const rows = order.flatMap(({ node, def }) =>
-    moduleOrigin(def) === "script" ? [{ node, def, from: `./modules/local/${def.path}/main` }] : [],
+    moduleOrigin(def) === "script" ? [{ node, def, from: `./modules/${moduleNamespace(def)}/${def.path}/main` }] : [],
   );
   if (!rows.length) return [];
   const width = Math.max(

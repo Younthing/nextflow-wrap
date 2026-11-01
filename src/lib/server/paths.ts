@@ -50,6 +50,16 @@ export function cacheDirectory(input?: PathEnv): string {
 export const condaCacheDirectory = (input?: PathEnv) => join(cacheDirectory(input), "conda");
 export const singularityCacheDirectory = (input?: PathEnv) => join(cacheDirectory(input), "singularity");
 
+/**
+ * The module library: every published script module, one immutable folder per version,
+ * `<namespace>/<name>/<version>/`, next to the database. Set `NEXTFLOW_STUDIO_MODULE_LIBRARY` to share one, for example a team Git checkout.
+ */
+export function moduleLibraryDirectory(input?: PathEnv, data?: string): string {
+  const { env } = context(input);
+  if (env.NEXTFLOW_STUDIO_MODULE_LIBRARY) return resolve(/* turbopackIgnore: true */ env.NEXTFLOW_STUDIO_MODULE_LIBRARY);
+  return join(data ?? dataDirectory(input), "library", "modules");
+}
+
 /** Shared local work directory. Task hashes do not depend on it, so every workflow can use one. */
 export const workDirectory = (input?: PathEnv) => join(dataDirectory(input), "work");
 

@@ -4,14 +4,16 @@ import { z } from "zod";
 import { ConvertError } from "@/features/notebook/convert";
 import { EnvFieldError, patchModuleEnv } from "@/features/notebook/env";
 import { PercentError } from "@/features/notebook/jupytext";
-import { notebookFromLibrary, storedLibraryCopy } from "@/features/notebook/library-copy";
+import { notebookFromLibrary, storedLibraryCopy, type ModuleLibraryCopy } from "@/features/notebook/library-copy";
 import { publishScriptModule } from "@/features/notebook/publish";
 import { demoLibraryCopies, demoNotebooks, demoRevisions, demoScriptModules } from "@/features/notebook/seed";
 import { executeTryRun, runNotebookCells } from "@/features/notebook/execute";
+import { ensureModuleLibrary, ModuleLibraryError, readEnvironmentYml, writeLibraryModule } from "@/features/notebook/server/module-library";
 import { existingKernel, kernelFor, kernelInfo, KernelUnavailableError, listKernelSpecs, shutdownKernel } from "@/features/notebook/server/kernels";
 import { referenceCounts, scriptModuleViews, summarizeNotebook } from "@/features/notebook/library";
 import { languageForKernel, type NotebookDoc } from "@/features/notebook/types";
 import { HttpError } from "@/features/runs/server/service";
+import type { ModuleDef } from "@/features/workflow/types";
 import type { StudioStore } from "@/lib/server/database";
 import { store } from "@/lib/server/database";
 
@@ -117,8 +119,20 @@ function libraryForModule(db: StudioStore, moduleId: string) {
   return storedLibraryCopy(moduleId, db.libraryCopy(moduleId), moduleDef, notebook, revision);
 }
 
+/** The library folder is written first, so a module the database lists always has one. */
+async function saveToLibrary(db: StudioStore, def: ModuleDef, copy?: ModuleLibraryCopy) {
+  if (!db.moduleLibrary) return;
+  try {
+    await writeLibraryModule(def, db.moduleLibrary, copy);
+  } catch (error) {
+    if (error instanceof ModuleLibraryError) throw new HttpError(409, error.message);
+    throw error;
+  }
+}
+
 export async function handleNotebookApi(method: string, path: string[], request: Request, db: StudioStore = store()): Promise<Response> {
   ensureNotebookDemo(db);
+  await ensureModuleLibrary(db);
   const [resource, id, action, extra] = path;
 
   if (resource === "kernels" && !id && method === "GET") return json(await listKernelSpecs());
@@ -143,6 +157,8 @@ export async function handleNotebookApi(method: string, path: string[], request:
     } catch (error) {
       throw new HttpError(400, error instanceof Error ? error.message : "无法保存环境");
     }
+    next = { ...next, environmentYml: await readEnvironmentYml(next.condaYaml) };
+    await saveToLibrary(db, next, db.libraryCopy(next.id));
     db.saveScriptModule(next);
     const revisions = allRevisions(db);
     return json(scriptModuleViews([next], db.notebooks(), revisions, db.workflows())[0]);
@@ -281,6 +297,8 @@ export async function handleNotebookApi(method: string, path: string[], request:
     } catch (error) {
       throw new HttpError(400, error instanceof Error ? error.message : "无法发布");
     }
+    published.module.environmentYml = await readEnvironmentYml(published.module.condaYaml);
+    await saveToLibrary(db, published.module, published.library);
     db.transaction(() => {
       db.saveScriptModule(published.module);
       db.saveLibraryCopy(published.library);

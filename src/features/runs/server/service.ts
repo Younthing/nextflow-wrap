@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { z } from "zod";
 import { generateProject } from "@/features/project/generate";
+import type { ScriptLayout } from "@/features/project/script-process";
 import {
   defaultLaunchConfig,
   ENGINES,
@@ -86,6 +87,13 @@ export function runnerReady() {
   return runtime && !runtime.error && Date.now() - runtime.heartbeat < 15_000 ? runtime : undefined;
 }
 
+/**
+ * Module binaries reach remote nodes of cloud batch services and Kubernetes only through Wave,
+ * so those runs put script CLIs in the project's bin/, which Nextflow ships itself.
+ */
+const BIN_EXECUTORS = new Set(["aws-batch", "google-batch", "azure-batch", "k8s"]);
+export const scriptLayoutFor = (executor: string): ScriptLayout => (BIN_EXECUTORS.has(executor) ? "bin" : "module");
+
 export function submitRun(body: unknown, idempotency?: string) {
   const request = z.object({ workflow: z.unknown(), params: paramsSchema, launch: launchSchema }).parse(body);
   if (!runnerReady()) throw new HttpError(503, "Runner 未就绪，请先启动 pnpm runner 并检查健康状态");
@@ -98,7 +106,7 @@ export function submitRun(body: unknown, idempotency?: string) {
   if (new Set(workflow.nodes.map((node) => node.id)).size !== workflow.nodes.length) throw new HttpError(400, "节点 ID 重复");
   if (request.launch.resume) throw new HttpError(400, "续跑需要从运行详情选择来源记录");
   const launch = checkedLaunch(request.launch);
-  const project = generateProject(workflow, index, { registry: launch.registry });
+  const project = generateProject(workflow, index, { registry: launch.registry, scriptLayout: scriptLayoutFor(launch.executor) });
   const id = randomUUID();
   const root = executionDirectory(id);
   const now = new Date().toISOString();
@@ -109,7 +117,7 @@ export function submitRun(body: unknown, idempotency?: string) {
       id, runName: launch.runName ?? `studio_${id.replaceAll("-", "").slice(0, 12)}`, workflowId: workflow.id, workflowName: workflow.name,
       executor: launch.executor, profile: profileList(launch), status: "submitted", phase: "queued", submittedAt: now, progress: emptyProgress(),
       command: launchCommand(launch), launch, params: { ...request.params, outdir: join(root, "attempts", id, "results") }, runConfig: renderRunConfig(launch),
-      project: { name: project.meta.name, files: project.files.map(({ path, content }) => ({ path, content })) }, workflow,
+      project: { name: project.meta.name, files: project.files.map(({ path, content, executable }) => ({ path, content, ...(executable ? { executable } : {}) })) }, workflow,
     },
   };
   return store().transaction(() => {

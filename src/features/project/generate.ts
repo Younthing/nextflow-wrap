@@ -4,7 +4,7 @@ import type { NodeConfig, ProjectSettings, PublishDir, WorkflowDoc } from "@/fea
 import { gdynamic, gstr, section } from "./groovy";
 import { buildParamsSchema, paramsBlock, patternParams, referenceParams, usesSamplesheet } from "./schema";
 import { LABEL_RESOURCES, SAMPLESHEET_CSV, baseConfig, nextflowConfig, type ProjectMeta } from "./templates";
-import { scriptProjectFiles } from "./script-process";
+import { scriptProjectFiles, type ScriptLayout } from "./script-process";
 import { GenerateError, generateMainScript, planNodes } from "./workflow-script";
 
 export { GenerateError };
@@ -13,6 +13,8 @@ export interface ProjectFile {
   path: string;
   content: string;
   language: "groovy" | "json" | "yaml" | "csv" | "markdown" | "text";
+  /** Written with the executable bit, for CLIs that tasks find on PATH. */
+  executable?: boolean;
 }
 
 export interface GeneratedProject {
@@ -22,6 +24,8 @@ export interface GeneratedProject {
 
 export interface GenerateOptions {
   registry?: string;
+  /** Where script CLIs go; see `ScriptLayout`. Defaults to the module's own `resources/usr/bin`. */
+  scriptLayout?: ScriptLayout;
 }
 
 export function slugify(name: string): string {
@@ -172,6 +176,12 @@ Without \`-profile\`, tasks run in the plain shell with the tools already on PAT
 `;
 }
 
+/** Module CLIs in `resources/usr/bin` reach PATH only with this flag. */
+function withModuleBinaries(config: string, scripts: readonly ProjectFile[], layout: ScriptLayout): string {
+  if (layout !== "module" || !scripts.some((file) => file.executable)) return config;
+  return `${config.trimEnd()}\n\n// Put each module's resources/usr/bin on PATH and mount it in containers\nnextflow.enable.moduleBinaries = true\n`;
+}
+
 export function generateProject(doc: WorkflowDoc, index: ModuleIndex, opts: GenerateOptions = {}): GeneratedProject {
   const refs = referenceParams(doc);
   const { order } = planNodes(doc, index);
@@ -179,9 +189,11 @@ export function generateProject(doc: WorkflowDoc, index: ModuleIndex, opts: Gene
   const samplesheet = usesSamplesheet(doc);
   const schema = buildParamsSchema(meta.name, meta.description, refs, patternParams(doc), { input: samplesheet });
 
+  const layout = opts.scriptLayout ?? "module";
+  const scripts = scriptProjectFiles(order, layout);
   const files: ProjectFile[] = [
     { path: "main.nf", language: "groovy", content: generateMainScript(doc, index, { name: meta.name, description: meta.description }) },
-    { path: "nextflow.config", language: "groovy", content: nextflowConfig(meta, paramsBlock(schema), opts.registry ?? "quay.io") },
+    { path: "nextflow.config", language: "groovy", content: withModuleBinaries(nextflowConfig(meta, paramsBlock(schema), opts.registry ?? "quay.io"), scripts, layout) },
     { path: "conf/base.config", language: "groovy", content: baseConfig(meta) },
     { path: "conf/modules.config", language: "groovy", content: modulesConfig(doc, index, meta) },
     { path: "nextflow_schema.json", language: "json", content: `${JSON.stringify(schema, null, 4)}\n` },
@@ -204,7 +216,7 @@ export function generateProject(doc: WorkflowDoc, index: ModuleIndex, opts: Gene
         ]
       : []),
     { path: "README.md", language: "markdown", content: readme(meta, doc, index) },
-    ...scriptProjectFiles(order),
+    ...scripts,
   ];
 
   return { meta, files };

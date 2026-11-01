@@ -101,7 +101,14 @@ describe("generateProject", () => {
     const project = generateProject(doc, indexModules([hello]));
     const paths = project.files.map((f) => f.path);
     expect(paths).toContain(`modules/local/${hello.path}/main.nf`);
-    expect(paths).toContain(hello.command);
+    expect(paths).toContain(`modules/local/${hello.path}/meta.yml`);
+    const cli = project.files.find((f) => f.path === `modules/local/${hello.path}/resources/usr/bin/hello_py_v2.py`)!;
+    expect(cli.executable).toBe(true);
+    expect(project.files.find((f) => f.path === "nextflow.config")!.content).toContain("nextflow.enable.moduleBinaries = true");
+
+    const remote = generateProject(doc, indexModules([hello]), { scriptLayout: "bin" });
+    expect(remote.files.map((f) => f.path)).toContain(hello.command);
+    expect(remote.files.find((f) => f.path === "nextflow.config")!.content).not.toContain("moduleBinaries");
   });
 
   it("skips disabled nodes and rejects a missing main input", () => {
