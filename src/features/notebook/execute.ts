@@ -289,7 +289,8 @@ async function readCellResults(dir: string, cells: { id: string }[], fallback: s
   }
 }
 
-const R_EDIT_ONLY = "R 单元格在笔记本里只作编辑；发布后的试跑会调用 Rscript。";
+const R_EDIT_ONLY = "没有 R 内核时 R 单元格只作编辑；发布后的试跑会调用 Rscript。";
+const R_KERNEL_HINT = "在 R 里运行 install.packages(\"IRkernel\"); IRkernel::installspec() 后，R 单元格在常驻内核里运行。";
 const ONESHOT_HINT = "单元格每次从头在新进程里运行。安装 ipykernel 后改用常驻 Jupyter 内核：python3 -m pip install ipykernel";
 
 /**
@@ -300,22 +301,20 @@ const ONESHOT_HINT = "单元格每次从头在新进程里运行。安装 ipyker
 export async function runNotebookCells(notebook: NotebookDoc, cellId?: string): Promise<NotebookRunResult> {
   const cells = cellsForKernelRun(notebook, cellId);
   if (cells.length === 0) return { cells: [] };
-  if (notebook.language !== "python") {
-    return { cells: cells.map((cell) => finalizeCellResult(cell.id, { error: R_EDIT_ONLY })) };
-  }
-  const oneshot = async (note: string): Promise<NotebookRunResult> => ({
+  const r = notebook.language !== "python";
+  const oneshot = async (note: string): Promise<NotebookRunResult> => r ? { cells: cells.map((cell) => finalizeCellResult(cell.id, { error: `${note}${R_EDIT_ONLY}` })) } : ({
     cells: await executeCells(notebook, cellId),
     kernel: { mode: "oneshot", note },
   });
-  if (process.env.NEXTFLOW_STUDIO_KERNEL === "oneshot") return oneshot(ONESHOT_HINT);
+  if (process.env.NEXTFLOW_STUDIO_KERNEL === "oneshot") return oneshot(r ? "" : ONESHOT_HINT);
 
   if (!cellId) shutdownKernel(notebook.id);
   let session: Awaited<ReturnType<typeof kernelFor>>;
   try {
-    session = await kernelFor(notebook.id, notebook.kernel);
+    session = await kernelFor(notebook.id, notebook.kernel, r ? "r" : "python");
     await session.whenReady();
   } catch (error) {
-    if (error instanceof KernelUnavailableError) return oneshot(`${error.message}。${ONESHOT_HINT}`);
+    if (error instanceof KernelUnavailableError) return oneshot(r ? `${error.message}。${R_KERNEL_HINT}` : `${error.message}。${ONESHOT_HINT}`);
     const message = `内核启动失败：${failureText(error)}`;
     return { cells: cells.map((cell) => finalizeCellResult(cell.id, { error: message })) };
   }

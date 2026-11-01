@@ -11,10 +11,17 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { PathInput } from "@/features/files/components/path-input";
+import { isDesktop } from "@/lib/desktop";
 import { ENGINES, type ContainerEngine } from "@/features/project/launch";
 import { SECRET_KEYS, type SecretKey, type SettingsUpdate, type SettingsView, type StudioSettings } from "../types";
 
 const ENGINE_LABEL: Partial<Record<ContainerEngine, string>> = { shell: "本机 shell（不加 profile）" };
+/** A browser shows run notifications only after the user allows them; the desktop shell needs no permission. */
+function askNotificationPermission() {
+  if (isDesktop() || typeof Notification === "undefined" || Notification.permission !== "default") return;
+  void Notification.requestPermission();
+}
+
 const SECRET_LABEL: Record<SecretKey, string> = { ANTHROPIC_API_KEY: "Anthropic API key", OPENAI_API_KEY: "OpenAI API key", GOOGLE_API_KEY: "Google API key" };
 
 /** Runtime defaults, notifications and the AI assistant. API keys are write-only: the page only knows if one is set. */
@@ -79,7 +86,7 @@ export function SettingsForm({ view, onSave, saving }: { view: SettingsView; onS
         <CardHeader><CardTitle>通知</CardTitle></CardHeader>
         <CardContent>
           <div className="flex items-center gap-3">
-            <Switch id="notify-finished" checked={draft.notifications.runFinished} onCheckedChange={(checked) => setDraft((current) => ({ ...current, notifications: { runFinished: checked } }))} />
+            <Switch id="notify-finished" checked={draft.notifications.runFinished} onCheckedChange={(checked) => { setDraft((current) => ({ ...current, notifications: { runFinished: checked } })); if (checked) askNotificationPermission(); }} />
             <Label htmlFor="notify-finished" className="text-sm">运行完成或失败时发系统通知</Label>
           </div>
         </CardContent>

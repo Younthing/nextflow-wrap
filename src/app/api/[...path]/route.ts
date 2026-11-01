@@ -4,6 +4,8 @@ import { isAbsolute, join } from "node:path";
 import { ZodError } from "zod";
 import samplesheetSchema from "@/data/samplesheet-schema.json";
 import { containedFile, fileResponse, readTail, resultFiles } from "@/features/runs/server/files";
+import { summarizeAnnData } from "@/features/runs/server/anndata";
+import { previewKind } from "@/features/runs/preview";
 import { active, assertSameOrigin, resumable, cancelRun, HttpError, requireRun, resumeRun, runnerReady, submitRun, workflowInput } from "@/features/runs/server/service";
 import { handleNotebookApi } from "@/features/notebook/server/http";
 import { handleSetupApi } from "@/features/setup/server/http";
@@ -106,6 +108,11 @@ async function handle(request: Request, context: Context): Promise<Response> {
           const download = url.searchParams.get("download") === "1";
           if (!download && (await stat(path)).size > 10 * 1024 ** 2) throw new HttpError(413, "文件较大，请下载查看");
           return fileResponse(path, download);
+        }
+        if (path[3] === "summary") {
+          const file = await containedFile(String(run.detail.params.outdir), url.searchParams.get("path") ?? "");
+          if (previewKind(file) !== "anndata") throw new HttpError(400, "只有 .h5ad 文件有摘要");
+          return json(await summarizeAnnData(file));
         }
       }
     }

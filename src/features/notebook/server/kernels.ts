@@ -48,6 +48,7 @@ interface Pending {
 export class KernelSession {
   readonly notebookId: string;
   readonly requested: string;
+  readonly language: "python" | "r";
   state: KernelState = "starting";
   kernel = "";
   note = "";
@@ -64,9 +65,10 @@ export class KernelSession {
   private idleTimer?: NodeJS.Timeout;
   private onExit: () => void;
 
-  constructor(notebookId: string, requested: string, cwd: string, onExit: () => void) {
+  constructor(notebookId: string, requested: string, cwd: string, onExit: () => void, language: "python" | "r" = "python") {
     this.notebookId = notebookId;
     this.requested = requested;
+    this.language = language;
     this.onExit = onExit;
     this.ready = this.start(cwd);
     // Keep an unobserved start failure from crashing the server; execute() reports it.
@@ -75,7 +77,7 @@ export class KernelSession {
 
   private start(cwd: string): Promise<void> {
     return new Promise((resolve, reject) => {
-      const child = spawn(/* turbopackIgnore: true */ bridgePython(), ["-u", "-c", KERNEL_BRIDGE, "--kernel", this.requested, "--cwd", cwd], {
+      const child = spawn(/* turbopackIgnore: true */ bridgePython(), ["-u", "-c", KERNEL_BRIDGE, "--kernel", this.requested, "--cwd", cwd, "--language", this.language], {
         cwd,
         env: { ...process.env, PYTHONUNBUFFERED: "1", PYDEVD_DISABLE_FILE_VALIDATION: "1" },
         stdio: ["pipe", "pipe", "pipe"],
@@ -221,15 +223,15 @@ const registry = globalThis as typeof globalThis & { __nfStudioKernels?: Map<str
 const sessions = (registry.__nfStudioKernels ??= new Map<string, KernelSession>());
 
 /** The notebook's running kernel, started when missing or when the notebook switched kernels. */
-export async function kernelFor(notebookId: string, requested: string): Promise<KernelSession> {
+export async function kernelFor(notebookId: string, requested: string, language: "python" | "r" = "python"): Promise<KernelSession> {
   const current = sessions.get(notebookId);
-  if (current && current.state !== "dead" && current.requested === requested) return current;
+  if (current && current.state !== "dead" && current.requested === requested && current.language === language) return current;
   current?.shutdown();
   const cwd = notebookWorkDir(notebookId);
   await mkdir(cwd, { recursive: true });
   const session: KernelSession = new KernelSession(notebookId, requested, cwd, () => {
     if (sessions.get(notebookId) === session) sessions.delete(notebookId);
-  });
+  }, language);
   sessions.set(notebookId, session);
   return session;
 }

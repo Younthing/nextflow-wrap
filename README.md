@@ -28,7 +28,7 @@ ComfyUI 式的 Nextflow 可视化前端：在笔记本里写分析脚本并发�
 
 - Python 笔记本的单元格在常驻 Jupyter 内核里运行，每本笔记本一个内核，变量和工作目录（`<数据目录>/scratch/notebooks/<笔记本 id>/`）里的文件在多次运行之间保留。运行单个单元格只跑这一格；「运行全部」先重启内核，再从第一格依次运行，遇到报错停下。工具栏显示内核状态，可以中断正在跑的单元格或重启内核。
 - 内核选择器列出本机已安装的 Jupyter kernelspec（如 `python -m ipykernel install --user --name scanpy` 注册的环境）。笔记本记的内核名不是已安装的 kernelspec 时改用 `python3`，并在工具栏下方说明。
-- 需要 `python3 -m pip install ipykernel`（`NEXTFLOW_STUDIO_JUPYTER_PYTHON` 可换解释器）。没有 Jupyter 时退回旧行为：每次在新进程里从头运行到所选单元格。内核空闲 2 小时后自动关闭（`NEXTFLOW_STUDIO_KERNEL_IDLE_MS`）。R 笔记本本期只编辑，试跑时调用 `Rscript`。
+- 需要 `python3 -m pip install ipykernel`（`NEXTFLOW_STUDIO_JUPYTER_PYTHON` 可换解释器）。没有 Jupyter 时退回旧行为：每次在新进程里从头运行到所选单元格。内核空闲 2 小时后自动关闭（`NEXTFLOW_STUDIO_KERNEL_IDLE_MS`）。R 笔记本同样在持久内核里运行，需要 IRkernel（在 R 里执行 `install.packages("IRkernel"); IRkernel::installspec()`）；没有 R 内核时 R 单元格只能编辑，试跑仍调用 `Rscript`。结果页能直接看 `.h5ad` 摘要（只读 HDF5 元数据，需要 `h5py`）和 PDB/PDBQT/SDF 结构（Mol*）。
 
 | 方法   | 路径                         | 说明                                                              |
 | ------ | ---------------------------- | ----------------------------------------------------------------- |
@@ -149,7 +149,7 @@ pnpm smoke:runner # 幂等提交 → 实时任务 → 成功/下载 → 缓存�
 - `e2e/user-path.spec.ts`：Python 和 R 笔记本出图、发布、画布运行、源改动提示、发布 v2 后从原运行恢复命中缓存。
 - `e2e/single-cell.spec.ts`：两本 scanpy 笔记本（质控、聚类）在常驻 Jupyter 内核里逐格运行，用本机 Python 试跑后发布；画布上把「参考文件」接到质控、再接到聚类，用 Shell 运行时跑真实 Nextflow，结果页显示 UMAP 和 marker 表。数据由 `scripts/make-pbmc-demo.py` 准备：优先 `PBMC3K_H5AD` 指向的文件，其次下载 10x PBMC 3k，都不可用时生成确定性的合成 PBMC 计数。
 
-需要 `python3 -m pip install ipykernel matplotlib scanpy igraph leidenalg`，R 部分另需 `Rscript`。runner 首次运行要从 Nextflow 插件仓库下载 `nf-weblog@1.2.0`。
+需要 `python3 -m pip install ipykernel matplotlib scanpy igraph leidenalg`，R 部分另需 `Rscript`。runner 首次运行要从 Nextflow 插件仓库下载 `nf-weblog@1.2.0`；下载不到时进度改为每 3 秒读取 trace 文件。
 
 ### Codex harness
 

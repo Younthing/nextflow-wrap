@@ -11,6 +11,7 @@ import {
 import { api } from "@/lib/api";
 import type { HealthStatus } from "@/lib/api-types";
 import { toast } from "@/lib/toast";
+import type { AnnDataSummary } from "./anndata";
 import type { ResultFile } from "./outputs";
 import type {
   LaunchRequest,
@@ -214,5 +215,16 @@ export function useResultContent(id: string, path: string | null) {
     },
     enabled: !!path,
     staleTime: Infinity,
+  });
+}
+
+/** Server-side summary of an `.h5ad` result: shape, columns and embeddings. */
+export function useAnnDataSummary(id: string, path: string | null) {
+  return useQuery({
+    queryKey: [...runKeys.detail(id), "summary", path],
+    queryFn: () => api<AnnDataSummary>(`/runs/${id}/results/summary?path=${encodeURIComponent(path ?? "")}`),
+    enabled: !!path,
+    staleTime: Infinity,
+    retry: false,
   });
 }

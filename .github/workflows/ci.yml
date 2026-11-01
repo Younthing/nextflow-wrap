@@ -25,7 +25,7 @@ jobs:
       - name: Install Nextflow
         run: bash scripts/install-nextflow.sh
       - name: Install Jupyter kernel
-        run: python3 -m pip install --user --break-system-packages ipykernel matplotlib
+        run: python3 -m pip install --user --break-system-packages ipykernel matplotlib h5py
       - run: pnpm test
         env:
           NXF_DISABLE_CHECK_LATEST: "true"
