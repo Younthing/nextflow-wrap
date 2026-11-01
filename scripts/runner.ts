@@ -12,7 +12,7 @@ import { preflight, requireLaunchTools, type RuntimeTools } from "@/features/pro
 import { smokeFastq } from "@/features/project/smoke-data";
 import { usesSamplesheet } from "@/features/project/schema";
 import { active } from "@/features/runs/server/service";
-import { historyStatus, nextQueued, slotLimits } from "@/features/runs/server/queue";
+import { historySession, historyStatus, nextQueued, slotLimits } from "@/features/runs/server/queue";
 import { ingestEvent, reconcileTrace, refreshProgress } from "@/features/runs/server/tasks";
 import { resultFiles } from "@/features/runs/server/files";
 import { publishMode } from "@/features/runs/server/publish-mode";
@@ -20,6 +20,7 @@ import { hostChainWorkflow, writeHostChainInputs } from "@/features/workflow/hos
 import type { PipelineParams } from "@/features/workflow/types";
 import { dataDirectory, store, type StoredExecution } from "@/lib/server/database";
 import { workDirectory } from "@/lib/server/paths";
+import { WEBLOG_PLUGIN } from "@/lib/server/toolchain";
 
 const db = store();
 const owner = randomUUID();
@@ -131,7 +132,7 @@ async function supervise(id: string, tools: RuntimeTools, controller: AbortContr
   controller.signal.addEventListener("abort", terminate, { once: true });
   if (controller.signal.aborted) terminate();
   // Weblog events go to the port the head was started with; if this runner could not reuse it, read the trace instead.
-  const traceTimer = pollTrace ? setInterval(() => { reconcileTrace(db, db.run(id, true)!).catch(console.error); }, 10_000) : undefined;
+  const traceTimer = pollTrace ? setInterval(() => { reconcileTrace(db, db.run(id, true)!).catch(console.error); }, tools.weblog ? 10_000 : 3_000) : undefined;
   let code: number | null | undefined;
   try {
     const result = await Promise.race([exited ?? waitForExit(run), stopped]);
@@ -142,7 +143,11 @@ async function supervise(id: string, tools: RuntimeTools, controller: AbortContr
     clearTimeout(killTimer);
     clearInterval(traceTimer);
   }
-  const recorded = historyStatus(await readFile(join(run.projectDir, ".nextflow/history"), "utf8").catch(() => ""), run.detail.runName);
+  const history = await readFile(join(run.projectDir, ".nextflow/history"), "utf8").catch(() => "");
+  const recorded = historyStatus(history, run.detail.runName);
+  // Weblog reports the session id; without it the launch directory's history has it, and resume needs it.
+  const session = historySession(history, run.detail.runName);
+  if (session && !db.run(id, true)?.sessionId) db.updateRun(id, (record) => { record.sessionId = session; record.detail.nextflowSessionId = session; });
   if (code !== 0 && !(code === undefined && recorded === "OK")) {
     const reason = code === undefined ? `Nextflow 在 runner 停止期间结束，history 记录为 ${recorded ?? "未完成"}` : `${tools.nextflow} exited with ${code ?? "a signal"}`;
     const tail = await logTail(join(run.attemptDir, "console.log"));
@@ -203,8 +208,11 @@ async function execute(run: StoredExecution, tools: RuntimeTools, port: number, 
       renderRunConfig(launch),
       ...(local ? [`executor.cpus = ${cpus}`, `executor.memory = ${gstr(String(memory))}`, "executor.queueSize = 2"] : []),
       ...(!docker ? [] : [`docker.runOptions = ${gstr(`-u ${process.getuid?.() ?? 0}:${process.getgid?.() ?? 0} --label nextflow-studio.run=${id}${emulation}`)}`]),
-      "plugins { id 'nf-weblog@1.2.0' }",
-      `weblog { enabled = true; url = ${gstr(`http://127.0.0.1:${port}/events/${id}/${token}`)} }`,
+      // Without the plugin (offline and never installed) the runner polls the trace file instead.
+      ...(tools.weblog ? [
+        `plugins { id '${WEBLOG_PLUGIN}' }`,
+        `weblog { enabled = true; url = ${gstr(`http://127.0.0.1:${port}/events/${id}/${token}`)} }`,
+      ] : []),
       "trace.enabled = true", "trace.raw = true",
       `trace.file = ${gstr(join(run.attemptDir, "trace.tsv"))}`,
       "trace.fields = 'task_id,hash,native_id,process,name,tag,status,exit,submit,start,complete,duration,realtime,cpus,%cpu,peak_rss,workdir,attempt'",
@@ -234,7 +242,7 @@ async function execute(run: StoredExecution, tools: RuntimeTools, port: number, 
       record.eventPort = port;
       record.eventToken = token;
     });
-    await supervise(id, tools, controller, head.exited);
+    await supervise(id, tools, controller, head.exited, !tools.weblog);
   } catch (error) {
     await failRun(id, tools, error);
   }
@@ -293,7 +301,7 @@ async function main() {
     const port = (events.address() as { port: number }).port;
     adoptOrphans(tools, port);
     db.setRuntime({ owner, pid: process.pid, heartbeat: Date.now(), eventPort: port, versions: tools.versions, resources: tools.resources });
-    console.log(`Runner ready. Data: ${dataDirectory()}; event port: ${port}; slots: local ${limits.local}, cluster/cloud ${limits.remote}`);
+    console.log(`Runner ready. Data: ${dataDirectory()}; event port: ${port}; slots: local ${limits.local}, cluster/cloud ${limits.remote}; live progress: ${tools.weblog ? WEBLOG_PLUGIN : "trace polling"}`);
     while (!stopping) {
       const queued = db.transaction(() => {
         const next = nextQueued(db.runs(), limits);

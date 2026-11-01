@@ -1,9 +1,11 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 
 import { dataDirectory } from "@/lib/server/database";
+import { managedPaths } from "@/lib/server/toolchain";
 import type { KernelInfo, KernelSpecList, KernelState } from "../types";
 import { KERNEL_BRIDGE } from "./kernel-bridge";
 
@@ -26,7 +28,13 @@ const IDLE_SHUTDOWN_MS = Number(process.env.NEXTFLOW_STUDIO_KERNEL_IDLE_MS ?? 2 
 const START_TIMEOUT_MS = 180_000;
 
 /** Interpreter that runs the bridge and, through it, the default python3 kernelspec. */
-export const bridgePython = () => process.env.NEXTFLOW_STUDIO_JUPYTER_PYTHON?.trim() || "python3";
+export const bridgePython = () => {
+  const configured = process.env.NEXTFLOW_STUDIO_JUPYTER_PYTHON?.trim();
+  if (configured) return configured;
+  // The setup page's notebook environment, created when this machine had no Jupyter of its own.
+  const managed = managedPaths().notebookPython;
+  return existsSync(managed) ? managed : "python3";
+};
 
 /** Working directory a notebook's kernel keeps between runs. Files written by cells stay here. */
 export const notebookWorkDir = (notebookId: string) => join(dataDirectory(), "scratch", "notebooks", notebookId);

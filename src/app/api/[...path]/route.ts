@@ -6,6 +6,7 @@ import samplesheetSchema from "@/data/samplesheet-schema.json";
 import { containedFile, fileResponse, readTail, resultFiles } from "@/features/runs/server/files";
 import { active, assertSameOrigin, cancelRun, HttpError, requireRun, resumeRun, runnerReady, submitRun, workflowInput } from "@/features/runs/server/service";
 import { handleNotebookApi } from "@/features/notebook/server/http";
+import { handleSetupApi } from "@/features/setup/server/http";
 import type { HealthStatus } from "@/lib/api-types";
 import { store } from "@/lib/server/database";
 
@@ -28,6 +29,7 @@ async function handle(request: Request, context: Context): Promise<Response> {
       const ready = runnerReady();
       return json({ status: ready ? "ok" : "degraded", nextflowVersion: state?.versions?.nextflow ?? "未就绪", mocked: false, runnerReady: !!ready, diagnostics: state?.error ?? (ready ? undefined : "请启动 pnpm runner"), resources: state?.resources } satisfies HealthStatus);
     }
+    if (resource === "setup") return handleSetupApi(method, path, request);
     if (resource === "notebooks" || resource === "script-modules" || resource === "kernels") return handleNotebookApi(method, path, request);
     if (resource === "schemas" && id === "samplesheet" && method === "GET") return json(samplesheetSchema);
     if (resource === "workflows") {
