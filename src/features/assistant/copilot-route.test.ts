@@ -64,7 +64,15 @@ function user(content: string) {
   return { id: crypto.randomUUID(), role: "user" as const, content };
 }
 
-function runBody(threadId: string, messages: unknown[], extra?: { tools?: typeof tools; context?: { description: string; value: string }[] }) {
+function runBody(
+  threadId: string,
+  messages: unknown[],
+  extra?: {
+    tools?: typeof tools;
+    context?: { description: string; value: string }[];
+    forwardedProps?: Record<string, unknown>;
+  },
+) {
   return {
     threadId,
     runId: `run-${threadId}`,
@@ -72,6 +80,7 @@ function runBody(threadId: string, messages: unknown[], extra?: { tools?: typeof
     messages,
     tools: extra?.tools ?? [],
     context: extra?.context ?? [],
+    ...(extra?.forwardedProps ? { forwardedProps: extra.forwardedProps } : {}),
   };
 }
 
@@ -242,8 +251,30 @@ describe("CopilotKit route with a fake Codex harness", () => {
     expect(harness.prompts[0]).toContain("看一下当前流程");
     expect(harness.prompts[0]).toContain("当前流程");
     expect(harness.prompts[0]).toContain("Nextflow Studio");
+    expect(harness.prompts[0]).toContain("search_modules");
+    expect(harness.prompts[0]).toContain("get_task_log");
     expect(harness.closes).toBe(1);
     expect(harness.interrupts).toBe(0);
+  });
+
+  it("sends only the named module's prompt", async () => {
+    const harness = use(new FakeCodexHarness({
+      turns: [[{ type: "text", text: "好" }]],
+    }));
+    const route = routeFor(harness, { COPILOT_BACKEND: "codex" });
+    const response = await route.POST(post("/api/copilotkit/agent/default/run", runBody(
+      crypto.randomUUID(),
+      [user("这本笔记本怎么标端口")],
+      { forwardedProps: { assistantModules: ["notebook", "not-a-module", "notebook"] } },
+    )));
+    expect(response.status).toBe(200);
+    await readEvents(response);
+    const prompt = harness.prompts[0] ?? "";
+    expect(prompt).toContain("脚本笔记本");
+    expect(prompt).toContain("Nextflow Studio");
+    expect(prompt).not.toContain("search_modules");
+    expect(prompt).not.toContain("get_task_log");
+    expect(prompt).not.toContain("发布为模块");
   });
 
   it("round-trips a browser tool call through the next turn", async () => {

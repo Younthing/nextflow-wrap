@@ -8,9 +8,10 @@ import { api } from "@/lib/api";
 import { isActive } from "@/features/runs/queries";
 import type { RunDetail, TaskRecord } from "@/features/runs/types";
 import { useAssistantStatus } from "./assistant-provider";
+import { useAssistantModule } from "./modules/activation";
+import { moduleTool } from "./modules/contract";
+import { RUN_LOG_TAIL, runDiagnosticsModule } from "./modules/run-diagnostics";
 import { RunControlTools } from "./run-control-tools";
-
-const LOG_TAIL = 120;
 
 /** What the assistant needs to explain a run, without the generated files. */
 export function runSummary(run: RunDetail, tasks: TaskRecord[]) {
@@ -57,8 +58,8 @@ function RunTools({ run, tasks }: { run: RunDetail; tasks: TaskRecord[] }) {
 
   useFrontendTool(
     {
-      name: "get_task_log",
-      description: "读取这次运行中某个任务的 .command.log（任务名或哈希）。",
+      name: moduleTool(runDiagnosticsModule, "get_task_log").name,
+      description: moduleTool(runDiagnosticsModule, "get_task_log").description,
       parameters: z.object({ task: z.string().describe("任务哈希（如 3f/a1b2c3）或任务名（如 FASTQC (S1)）") }),
       handler: async ({ task }) => {
         const match = tasks.find((t) => t.id === task || t.hash === task || t.name === task);
@@ -72,12 +73,12 @@ function RunTools({ run, tasks }: { run: RunDetail; tasks: TaskRecord[] }) {
 
   useFrontendTool(
     {
-      name: "get_run_log",
-      description: `读取 Nextflow 主日志（.nextflow.log 的控制台输出）最后 ${LOG_TAIL} 行。`,
+      name: moduleTool(runDiagnosticsModule, "get_run_log").name,
+      description: moduleTool(runDiagnosticsModule, "get_run_log").description,
       parameters: z.object({}),
       handler: async () => {
         const { lines } = await api<{ lines: string[] }>(`/runs/${run.id}/log`);
-        return { lines: lines.slice(-LOG_TAIL) };
+        return { lines: lines.slice(-RUN_LOG_TAIL) };
       },
     },
     [run.id],
@@ -86,8 +87,9 @@ function RunTools({ run, tasks }: { run: RunDetail; tasks: TaskRecord[] }) {
   return null;
 }
 
-/** Lets the assistant read the run on screen, and stop or resume it after a confirmation. */
+/** Run-diagnostics module: read the run on screen, then stop or resume after confirmation. */
 export function RunAssistant({ run, tasks }: { run: RunDetail; tasks: TaskRecord[] | undefined }) {
+  useAssistantModule(runDiagnosticsModule.id);
   if (!useAssistantStatus().enabled) return null;
   return (
     <>

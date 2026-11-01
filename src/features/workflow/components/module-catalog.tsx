@@ -12,6 +12,7 @@ import { SearchField } from "@/components/ui/search-field";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AsyncPlaceholder } from "@/components/ui/async-placeholder";
+import { EnvConfigAssistant } from "@/features/assistant/modules/surfaces";
 import { ModuleEnvEditor } from "@/features/notebook/components/module-env-form";
 import { SourceDriftBanner } from "@/features/notebook/components/source-drift-banner";
 import { useReopenLibraryNotebook, useScriptModules } from "@/features/notebook/queries";
@@ -84,6 +85,7 @@ export function ModuleCatalog() {
 
   return (
     <section className="glass flex size-full flex-col gap-4 overflow-hidden rounded-xl p-5">
+      <EnvConfigAssistant />
       <header className="flex flex-wrap items-start gap-3">
         <div className="min-w-0 flex-1">
           <div className="text-xs text-muted-foreground">

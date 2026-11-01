@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { EnvConfigAssistant, PublishAssistant } from "@/features/assistant/modules/surfaces";
 import { convertNotebook, ConvertError, inputPorts, outputPorts } from "@/features/notebook/convert";
 import { latestModuleForNotebook } from "@/features/notebook/library";
 import { nextModuleVersion } from "@/features/notebook/publish";
@@ -34,6 +35,16 @@ function StepPill({ index, current }: { index: number; current: number }) {
 }
 
 export function PublishWizard({ notebookId }: { notebookId: string }) {
+  return (
+    <>
+      <PublishAssistant />
+      <EnvConfigAssistant />
+      <PublishWizardScreen notebookId={notebookId} />
+    </>
+  );
+}
+
+function PublishWizardScreen({ notebookId }: { notebookId: string }) {
   const router = useRouter();
   const params = useSearchParams();
   const step = Math.min(3, Math.max(1, Number(params.get("step") ?? "1") || 1));
