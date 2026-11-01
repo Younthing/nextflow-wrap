@@ -73,6 +73,9 @@ export function WorkflowLibrary() {
             autoComplete="off"
           />
         </div>
+        <Button asChild variant="outline">
+          <Link href="/workflows/modules">模块库</Link>
+        </Button>
         <Button type="button" onClick={onCreate} disabled={create.isPending}>
           {create.isPending ? <Loader2 className="animate-spin" /> : <Plus />}
           新建

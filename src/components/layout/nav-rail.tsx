@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { History, Workflow } from "lucide-react";
+import { History, NotebookText, Workflow } from "lucide-react";
 
 import {
   Tooltip,
@@ -14,6 +14,7 @@ import { isShellNavActive, SHELL_NAV, type ShellNavHref } from "./nav";
 
 const ICONS = {
   "/workflows": Workflow,
+  "/notebooks": NotebookText,
   "/runs": History,
 } satisfies Record<ShellNavHref, typeof Workflow>;
 

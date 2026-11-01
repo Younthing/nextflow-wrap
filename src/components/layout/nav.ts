@@ -1,6 +1,7 @@
-/** Phase-1 shell. The editor stays under 流程; there is no third rail item. */
+/** Shell rail: 流程, 笔记本, 运行. Module catalog stays under 流程. */
 export const SHELL_NAV = [
   { href: "/workflows", label: "流程" },
+  { href: "/notebooks", label: "笔记本" },
   { href: "/runs", label: "运行" },
 ] as const;
 

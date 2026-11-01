@@ -1,3 +1,4 @@
+import { CATALOG_BUILTINS } from "./catalog-builtins";
 import { OPERATOR_MODULES } from "./operators";
 import { TEST_MODULES } from "./test-modules";
 import type { ModuleDef } from "./types";
@@ -19,6 +20,7 @@ export const BUILTIN_MODULES: ModuleDef[] = [
       "读取 --input 指定的样本表（CSV），按 assets/schema_input.json 校验后，每个样本输出一组 [meta, reads]。",
     keywords: ["input", "samplesheet", "fastq"],
     tools: [],
+    origin: "builtin",
     builtin: true,
     inputs: [],
     outputs: [
@@ -42,6 +44,7 @@ export const BUILTIN_MODULES: ModuleDef[] = [
       "把一个流程参数（如 --fasta）变成通道。同时提供带 meta 的 [meta, file] 和不带 meta 的 file 两种输出。",
     keywords: ["reference", "genome", "fasta", "gtf", "param"],
     tools: [],
+    origin: "builtin",
     builtin: true,
     inputs: [],
     outputs: [
@@ -60,6 +63,7 @@ export const BUILTIN_MODULES: ModuleDef[] = [
       },
     ],
   },
+  ...CATALOG_BUILTINS,
   ...OPERATOR_MODULES,
   ...TEST_MODULES,
 ];

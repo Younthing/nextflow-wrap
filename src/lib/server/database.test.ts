@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { demoNotebooks } from "@/features/notebook/seed";
 import { qcDemoWorkflow } from "@/features/workflow/qc-demo";
 import { StudioStore } from "./database";
 
@@ -34,6 +35,22 @@ describe("StudioStore", () => {
       const again = db.putWorkflow({ ...renamed.doc, name: "再次改名" });
       expect(again.status).toBe("ok");
       expect(db.workflow(original.id)?.name).toBe("再次改名");
+      db.close();
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("bumps a notebook revision only when cells change", () => {
+    const directory = mkdtempSync(join(tmpdir(), "studio-db-"));
+    try {
+      const db = new StudioStore(join(directory, "studio.sqlite"));
+      const notebook = demoNotebooks().find((doc) => doc.id === "sample_clean")!;
+      const saved = db.saveNotebook({ ...notebook, rev: 1 });
+      expect(saved.rev).toBe(1);
+      const renamed = db.saveNotebook({ ...saved, name: "样本表清洗 2" });
+      expect(renamed.rev).toBe(1);
+      const edited = db.saveNotebook({ ...renamed, cells: [...renamed.cells, { id: "extra", role: "code", source: "print(1)\n" }] });
+      expect(edited.rev).toBe(2);
+      expect(db.revision(notebook.id, 2)?.cells).toHaveLength(edited.cells.length);
       db.close();
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
