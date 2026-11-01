@@ -1,11 +1,18 @@
 import { cellsForRun } from "./cells";
 import { convertNotebook, tryRunArgv, tryRunCommand } from "./convert";
+import { readModuleEnv, type ModuleEnvPatch } from "./env";
 import { finalizeCellResult } from "./outputs";
+import { buildTryRunHeader, demoTryRunLines } from "./try-run-env";
 import type { CellRunResult, NotebookDoc, TryRunRecord } from "./types";
 
 /** Demo-mode try-run. Checks the marker contract and does not execute a kernel. */
-export function simulateTryRun(notebook: NotebookDoc, values: Record<string, string>): TryRunRecord {
+export function simulateTryRun(
+  notebook: NotebookDoc,
+  values: Record<string, string>,
+  envInput?: ModuleEnvPatch,
+): TryRunRecord {
   const converted = convertNotebook(notebook);
+  const env = readModuleEnv(envInput ?? {});
   let argv: string[] = [];
   let argError = "";
   try {
@@ -14,9 +21,13 @@ export function simulateTryRun(notebook: NotebookDoc, values: Record<string, str
     argError = error instanceof Error ? error.message : "参数不完整";
   }
   const passed = notebook.language === "python" && converted.outputs.length > 0 && !argError;
+  const header = buildTryRunHeader(
+    demoTryRunLines(env, notebook.language),
+    [tryRunCommand(converted.language, converted.entry, argv)],
+  );
   const log = passed
-    ? `$ ${tryRunCommand(converted.language, converted.entry, argv)}\n演示模式：端口契约通过。真正执行 CLI 请用 pnpm dev:real。\n完成`
-    : `试跑失败${argError ? `：${argError}` : notebook.language === "r" ? "：R 脚本未在演示模式执行" : ""}`;
+    ? `${header}\n演示模式：端口契约通过。真正执行 CLI 请用 pnpm dev:real。\n完成`
+    : `${header}\n试跑失败${argError ? `：${argError}` : notebook.language === "r" ? "：R 脚本未在演示模式执行" : ""}`;
   return {
     notebookId: notebook.id,
     rev: notebook.rev,
@@ -32,6 +43,9 @@ export function simulateTryRun(notebook: NotebookDoc, values: Record<string, str
       message: passed ? undefined : "未生成",
     })),
     ranAt: new Date().toISOString(),
+    ...(env.condaYaml ? { condaYaml: env.condaYaml } : {}),
+    ...(env.containerImage ? { containerImage: env.containerImage } : {}),
+    ...(!env.condaYaml && !env.containerImage ? { envVia: "host" as const } : {}),
   };
 }
 

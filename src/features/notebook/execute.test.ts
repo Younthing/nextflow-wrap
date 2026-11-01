@@ -1,3 +1,8 @@
+import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { describe, expect, it } from "vitest";
 
 import { convertNotebook, scriptFileName } from "./convert";
@@ -26,14 +31,130 @@ describe("executeTryRun", () => {
       ["stats", true],
     ]);
     expect(record.log).not.toContain("explore");
-    expect(record.log.startsWith(`$ python3 ${scriptName} `)).toBe(true);
+    expect(record.envVia).toBe("host");
+    expect(record.condaYaml).toBeUndefined();
+    expect(record.containerImage).toBeUndefined();
+    expect(record.log).toContain("未设置 conda / container");
+    expect(record.log).toContain("选用本机 python3");
+    expect(record.log).toContain(`$ python3 ${scriptName} `);
     expect(record.log).not.toContain("main.py");
     const demo = simulateTryRun(notebook, {
       fastq_zip: "S1_fastq.zip,S2_fastq.zip",
       min_q: "30",
       title: "QC 汇总",
     });
+    const commandLine = (log: string) => log.split("\n").find((line) => line.startsWith("$"));
     expect(demo.log.split("\n")[0]).toBe(record.log.split("\n")[0]);
+    expect(commandLine(demo.log)).toBe(commandLine(record.log));
+    expect(demo.envVia).toBe("host");
+  });
+});
+
+const shimPath = fileURLToPath(new URL("../../../scripts/e2e-docker-shim.sh", import.meta.url));
+const qcValues = { fastq_zip: "S1_fastq.zip,S2_fastq.zip", min_q: "30", title: "QC 汇总" };
+
+async function fakeConda(dir: string): Promise<{ bin: string; log: string }> {
+  const log = join(dir, "conda.log");
+  const bin = join(dir, "conda");
+  const quoted = log.replaceAll("'", "'\\''");
+  await writeFile(bin, `#!/bin/sh
+printf '%s\\n' "$*" >> '${quoted}'
+if [ "$1" = "env" ] || [ "$1" = "create" ]; then
+  exit 0
+fi
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "python3" ] || [ "$1" = "Rscript" ]; then
+    exec "$@"
+  fi
+  shift
+done
+echo "conda shim: no interpreter" >&2
+exit 1
+`);
+  await chmod(bin, 0o755);
+  return { bin, log };
+}
+
+describe("executeTryRun module environment", () => {
+  it("runs through the container named on the module and keeps the conda path in the log", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "nb-env-"));
+    try {
+      const yaml = join(dir, "py311-pandas.yml");
+      await writeFile(yaml, "name: py311-pandas\ndependencies:\n  - python\n");
+      const conda = await fakeConda(dir);
+      await chmod(shimPath, 0o755);
+      const record = await executeTryRun(qc(), qcValues, "fastqc-pair", {
+        condaYaml: yaml,
+        containerImage: "python:3.11-slim",
+      }, {
+        cacheDir: join(dir, "cache"),
+        tools: {
+          conda: { bin: conda.bin, kind: "conda" },
+          container: { bin: shimPath, kind: "docker" },
+        },
+      });
+      expect(record.passed).toBe(true);
+      expect(record.envVia).toBe("container");
+      expect(record.condaYaml).toBe(yaml);
+      expect(record.containerImage).toBe("python:3.11-slim");
+      expect(record.log).toContain(`conda '${yaml}'`);
+      expect(record.log).toContain("选用 container 'python:3.11-slim'");
+      expect(record.log).toContain("e2e docker shim: image python:3.11-slim");
+      expect(record.log).toContain("试跑选用容器");
+      expect(record.log).not.toContain("选用本机");
+      await expect(readFile(conda.log, "utf8")).rejects.toThrow();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("uses the conda yaml when no container runtime is available", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "nb-conda-"));
+    try {
+      const yaml = join(dir, "py.yml");
+      await writeFile(yaml, "name: py\n");
+      const conda = await fakeConda(dir);
+      const record = await executeTryRun(qc(), qcValues, "fastqc-pair", {
+        condaYaml: `  ${yaml}  `,
+        containerImage: "python:3.11-slim",
+      }, {
+        cacheDir: join(dir, "cache"),
+        tools: { conda: { bin: conda.bin, kind: "conda" } },
+      });
+      expect(record.passed).toBe(true);
+      expect(record.envVia).toBe("conda");
+      expect(record.condaYaml).toBe(yaml);
+      expect(record.log).toContain(`选用 conda '${yaml}'`);
+      expect(record.log).toContain("未找到容器运行时");
+      expect(record.log).not.toContain("选用本机");
+      const trace = await readFile(conda.log, "utf8");
+      expect(trace).toContain(yaml);
+      expect(trace).toContain("--no-capture-output");
+      expect(trace).toContain("python3");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not fall back to the host interpreter when the requested runtime is missing", async () => {
+    const notebook = qc();
+    const missing = await executeTryRun(notebook, qcValues, "fastqc-pair", {
+      containerImage: "python:3.11-slim",
+    }, { tools: {} });
+    expect(missing.passed).toBe(false);
+    expect(missing.envVia).toBeUndefined();
+    expect(missing.log).toContain("未找到容器运行时");
+    expect(missing.log).toContain("container 'python:3.11-slim'");
+    expect(missing.log).not.toContain("选用本机");
+    expect(missing.log).not.toContain("$ python3");
+
+    const absent = await executeTryRun(notebook, qcValues, "fastqc-pair", {
+      condaYaml: "/tmp/nextflow-wrap-missing-env.yml",
+      containerImage: "python:3.11-slim",
+    }, { tools: { container: { bin: shimPath, kind: "docker" } } });
+    expect(absent.passed).toBe(false);
+    expect(absent.log).toContain("找不到 conda 文件");
+    expect(absent.log).not.toContain("e2e docker shim");
   });
 });
 

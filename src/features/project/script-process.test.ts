@@ -85,7 +85,11 @@ describe("script module project files", () => {
       condaYaml: "  /envs/py311-pandas.yml  ",
       containerImage: "ghcr.io/org/py311-pandas:1.2",
       existing: [],
-      receipt,
+      receipt: {
+        ...receipt,
+        condaYaml: "/envs/py311-pandas.yml",
+        containerImage: "ghcr.io/org/py311-pandas:1.2",
+      },
     });
     expect(def.kernel).toBe("python3.11");
     expect(def.condaYaml).toBe("/envs/py311-pandas.yml");

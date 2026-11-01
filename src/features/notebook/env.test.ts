@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { ModuleDef } from "@/features/workflow/types";
 import { languageForKernel, normalizeKernelName } from "./types";
-import { cleanEnvField, missingEnvLabels, patchModuleEnv } from "./env";
+import { cleanEnvField, missingEnvLabels, patchModuleEnv, sameModuleEnv, stageModuleEnv, tryRunEnvSummary } from "./env";
 
 const base = {
   id: "script/qc_summary/v1",
@@ -43,6 +43,18 @@ describe("module env fields", () => {
     expect(missingEnvLabels({ condaYaml: "/envs/a.yml" })).toEqual(["容器地址"]);
     expect(missingEnvLabels({})).toEqual(["Conda yaml", "容器地址"]);
     expect(missingEnvLabels({ condaYaml: "/envs/a.yml", containerImage: "img:1" })).toEqual([]);
+  });
+
+  it("treats a blank try-run env as the same pair publish will store", () => {
+    expect(sameModuleEnv({}, { condaYaml: "  ", containerImage: "" })).toBe(true);
+    expect(sameModuleEnv(
+      { condaYaml: "/envs/py311-pandas.yml", containerImage: "img:1" },
+      { condaYaml: "  /envs/py311-pandas.yml  ", containerImage: "img:1" },
+    )).toBe(true);
+    expect(sameModuleEnv({ condaYaml: "/envs/a.yml" }, { containerImage: "img:1" })).toBe(false);
+    expect(stageModuleEnv({ condaYaml: "/envs/a\n.yml" }).ok).toBe(false);
+    expect(tryRunEnvSummary({})).toContain("未填写Conda yaml和容器地址");
+    expect(tryRunEnvSummary({ condaYaml: "/envs/a.yml", containerImage: "img:1" })).toContain("试跑与 process 使用同一份");
   });
 });
 

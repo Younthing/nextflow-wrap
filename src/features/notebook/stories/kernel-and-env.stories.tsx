@@ -67,6 +67,8 @@ export const EnvFields: Story = {
     await userEvent.type(canvas.getByLabelText("容器地址"), "ghcr.io/org/py311-pandas:1.2");
     await expect(canvas.getByText("conda '/envs/py311-pandas.yml'")).toBeInTheDocument();
     await expect(canvas.getByText(/container 'ghcr.io\/org\/py311-pandas:1\.2'/)).toBeInTheDocument();
+    await expect(canvas.getByText(/试跑与 process 使用同一份/)).toHaveTextContent("/envs/py311-pandas.yml");
+    await expect(canvas.getByText(/试跑与 process 使用同一份/)).toHaveTextContent("ghcr.io/org/py311-pandas:1.2");
     await expect(canvas.queryByRole("status")).toBeNull();
   },
 };

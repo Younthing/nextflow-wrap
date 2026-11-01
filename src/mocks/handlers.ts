@@ -2,7 +2,7 @@ import { delay, http, HttpResponse } from "msw";
 
 import catalog from "@/data/nf-core-modules.json";
 import samplesheetSchema from "@/data/samplesheet-schema.json";
-import { patchModuleEnv } from "@/features/notebook/env";
+import { patchModuleEnv, readModuleEnv } from "@/features/notebook/env";
 import { PercentError } from "@/features/notebook/jupytext";
 import { referenceCounts, scriptModuleViews, summarizeNotebook } from "@/features/notebook/library";
 import { notebookFromLibrary, storedLibraryCopy } from "@/features/notebook/library-copy";
@@ -163,8 +163,19 @@ export const handlers = [
     await delay(300);
     const doc = readDb().notebooks[params.id as string];
     if (!doc) return HttpResponse.json({ message: "笔记本不存在" }, { status: 404 });
-    const body = (await request.json().catch(() => ({}))) as { args?: Record<string, string>; sampleId?: "fastqc-pair" | "samplesheet" };
-    const record = simulateTryRun(doc, withSampleValues(body.args ?? {}, body.sampleId));
+    const body = (await request.json().catch(() => ({}))) as {
+      args?: Record<string, string>;
+      sampleId?: "fastqc-pair" | "samplesheet";
+      condaYaml?: string;
+      containerImage?: string;
+    };
+    let env;
+    try {
+      env = readModuleEnv({ condaYaml: body.condaYaml, containerImage: body.containerImage });
+    } catch (error) {
+      return HttpResponse.json({ message: error instanceof Error ? error.message : "环境无效" }, { status: 400 });
+    }
+    const record = simulateTryRun(doc, withSampleValues(body.args ?? {}, body.sampleId), env);
     writeDb((db) => {
       db.tryRuns[`${doc.id}:${doc.rev}`] = record;
     });

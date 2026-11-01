@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 
 import { ConvertError } from "@/features/notebook/convert";
-import { patchModuleEnv } from "@/features/notebook/env";
+import { EnvFieldError, patchModuleEnv } from "@/features/notebook/env";
 import { PercentError } from "@/features/notebook/jupytext";
 import { notebookFromLibrary, storedLibraryCopy } from "@/features/notebook/library-copy";
 import { publishScriptModule } from "@/features/notebook/publish";
@@ -34,12 +34,14 @@ const runSchema = z.object({
   cellId: z.string().min(1).max(80).optional(),
 });
 
+const envField = z.string().max(500);
+
 const trySchema = z.object({
   args: z.record(z.string().regex(/^[A-Za-z_][\w]*$/), z.string().max(4000)).optional(),
   sampleId: z.enum(["fastqc-pair", "samplesheet"]).optional(),
+  condaYaml: envField.optional(),
+  containerImage: envField.optional(),
 });
-
-const envField = z.string().max(500);
 
 const publishSchema = z.object({
   name: z.string().trim().min(1).max(80),
@@ -210,11 +212,14 @@ export async function handleNotebookApi(method: string, path: string[], request:
     const body = trySchema.parse(await request.json().catch(() => ({})));
     const values = withSampleValues(body.args ?? {}, body.sampleId);
     try {
-      const record = await executeTryRun(notebook, values, body.sampleId);
+      const record = await executeTryRun(notebook, values, body.sampleId, {
+        condaYaml: body.condaYaml,
+        containerImage: body.containerImage,
+      });
       db.saveTryRun(record);
       return json(record);
     } catch (error) {
-      if (error instanceof ConvertError) throw new HttpError(400, error.message);
+      if (error instanceof ConvertError || error instanceof EnvFieldError) throw new HttpError(400, error.message);
       throw error;
     }
   }

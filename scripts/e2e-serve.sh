@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 # Starts the real runner and the Next.js app for the Playwright user-path tests.
-# Shell execution is enough: the published container/conda lines are still written
-# into the process, and Nextflow runs python3 or Rscript on this machine.
+# Try-run calls TRY_RUN_CONTAINER_BIN with the module image. That shim is not named
+# docker on PATH, so the runner still finds no daemon and Nextflow uses the Shell
+# engine: the process keeps the conda and container lines and runs on this machine.
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
 
 export PATH="${HOME}/.local/bin:${PATH}"
+export TRY_RUN_CONTAINER_BIN="${root}/scripts/e2e-docker-shim.sh"
 export NEXTFLOW_STUDIO_DATA_DIR="${NEXTFLOW_STUDIO_DATA_DIR:-/tmp/nextflow-studio-e2e}"
 export NEXT_PUBLIC_API_MOCKING=disabled
 export NXF_DISABLE_CHECK_LATEST="${NXF_DISABLE_CHECK_LATEST:-true}"

@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EnvConfigAssistant, PublishAssistant } from "@/features/assistant/modules/surfaces";
 import { convertNotebook, ConvertError, inputPorts, outputPorts } from "@/features/notebook/convert";
+import { missingEnvLabels, sameModuleEnv, stageModuleEnv, tryRunEnvSummary } from "@/features/notebook/env";
 import { latestModuleForNotebook } from "@/features/notebook/library";
 import { nextModuleVersion } from "@/features/notebook/publish";
 import { useNotebook, usePublishNotebook, useScriptModules, useTryRunNotebook } from "@/features/notebook/queries";
@@ -103,7 +104,11 @@ function PublishWizardScreen({ notebookId }: { notebookId: string }) {
   const go = (next: number) => router.replace(`/notebooks/${notebookId}/publish?step=${next}`);
   const version = doc ? nextModuleVersion(scripts.data?.modules ?? [], doc.id) : "v1";
   const receipt = tryRun.data;
-  const passed = !!receipt?.passed && receipt.rev === doc?.rev;
+  const staged = stageModuleEnv({ condaYaml, containerImage });
+  const envAligned = staged.ok && !!receipt && sameModuleEnv(receipt, staged);
+  const passed = staged.ok && !!receipt?.passed && receipt.rev === doc?.rev && envAligned;
+  const envChanged = staged.ok && !!receipt?.passed && receipt.rev === doc?.rev && !envAligned;
+  const logMark = !receipt ? "" : passed ? "· 通过" : envChanged ? "· 需重跑" : "· 失败";
 
   if (notebook.isPending) return <AsyncPlaceholder status="pending" className="h-full" />;
   if (notebook.error || !doc) return <AsyncPlaceholder status="error" className="h-auto" message={notebook.error?.message ?? "笔记本不存在"} />;
@@ -167,7 +172,21 @@ function PublishWizardScreen({ notebookId }: { notebookId: string }) {
         <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[20rem_minmax(0,1fr)]">
           <section className="glass space-y-3 overflow-auto rounded-xl p-4">
             <h2 className="text-sm font-semibold">试跑参数</h2>
-            <p className="text-xs text-muted-foreground">内核 {kernelLabel(doc.kernel)}。试跑用本机解释器；conda／容器在下一步手填，不改这次试跑。</p>
+            <p className="text-xs text-muted-foreground">笔记本内核 {kernelLabel(doc.kernel)} 不参与试跑。下面的 conda／容器与第③步写入模块的是同一份。</p>
+            <ModuleEnvFields
+              idPrefix="publish-env"
+              condaYaml={condaYaml}
+              containerImage={containerImage}
+              onCondaYaml={setCondaYaml}
+              onContainerImage={setContainerImage}
+            />
+            {staged.ok ? (
+              <p className="text-xs text-muted-foreground" role={missingEnvLabels(staged).length ? "status" : undefined}>
+                {tryRunEnvSummary(staged)}
+              </p>
+            ) : (
+              <p role="alert" className="text-xs text-destructive">{staged.message}</p>
+            )}
             {converted.value.inputs.some((input) => /zip|fastq/i.test(input.name)) && (
               <FormField label="样例数据">
                 <Select value={sampleId} onValueChange={setSampleId}>
@@ -187,16 +206,26 @@ function PublishWizardScreen({ notebookId }: { notebookId: string }) {
             <Button
               type="button"
               variant="outline"
-              disabled={tryRun.isPending}
-              onClick={() => tryRun.mutate({ id: doc.id, args, sampleId: sampleId === "none" ? undefined : sampleId })}
+              disabled={tryRun.isPending || !staged.ok}
+              onClick={() => {
+                if (!staged.ok) return;
+                tryRun.mutate({
+                  id: doc.id,
+                  args,
+                  sampleId: sampleId === "none" ? undefined : sampleId,
+                  condaYaml: staged.condaYaml,
+                  containerImage: staged.containerImage,
+                });
+              }}
             >
               {tryRun.isPending ? <Loader2 className="animate-spin" /> : null}
               {receipt ? "重新试跑" : "开始试跑"}
             </Button>
+            {envChanged && <p className="text-xs text-destructive">环境已改，按当前 conda／容器重新试跑后才能保存。</p>}
             {tryRun.error && <p role="alert" className="text-sm text-destructive">{tryRun.error.message}</p>}
           </section>
           <section className="glass flex min-h-0 flex-col overflow-hidden rounded-xl p-4">
-            <h2 className="text-sm font-semibold">日志 {receipt ? (receipt.passed ? "· 通过" : "· 失败") : ""}</h2>
+            <h2 className="text-sm font-semibold">日志 {logMark}</h2>
             <pre className="mt-3 min-h-32 flex-1 overflow-auto rounded-lg bg-secondary/60 p-3 font-mono text-xs">{receipt?.log || "试跑通过后才能保存。"}</pre>
             {receipt && (
               <table className="mt-3 w-full text-left text-xs">
@@ -249,9 +278,17 @@ function PublishWizardScreen({ notebookId }: { notebookId: string }) {
             <p>源笔记本 <span className="font-mono">{doc.name}</span> · 钉住 rev r{doc.rev}</p>
             <p>命令行 <span className="font-mono">{converted?.ok ? converted.value.entry : "—"}</span></p>
             <p>端口 {converted?.ok ? `${converted.value.inputs.length} 输入 · ${converted.value.outputs.length} 输出` : "—"}</p>
-            <p>笔记本内核 <span className="font-mono">{kernelLabel(doc.kernel)}</span>，不写入 conda／容器。</p>
+            <p>笔记本内核 <span className="font-mono">{kernelLabel(doc.kernel)}</span>，不写入 conda／容器。试跑日志里的环境与下面这份相同。</p>
             <ModuleEnvPreview condaYaml={condaYaml} containerImage={containerImage} />
-            <p className={passed ? "text-success" : "text-destructive"}>{passed ? `试跑通过 · ${receipt?.durationMs ?? 0}ms` : "还没有通过当前修订的试跑"}</p>
+            <p className={passed ? "text-success" : "text-destructive"}>
+              {passed
+                ? `试跑通过 · ${receipt?.durationMs ?? 0}ms`
+                : !staged.ok
+                  ? staged.message
+                  : envChanged
+                    ? "环境已改，按当前 conda／容器重新试跑后才能保存。"
+                    : "还没有通过当前修订的试跑"}
+            </p>
             <p className="text-xs text-muted-foreground">
               保存这一版的 jupytext 库副本（完整笔记本和命令行脚本）。源笔记本保持不动。之后可在模块库里把这一版重建成一本新的可编辑笔记本。
             </p>

@@ -308,7 +308,7 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
             </div>
           </div>
           <p className="border-b border-border px-3 py-2 text-xs text-muted-foreground">
-            内核只决定笔记本里怎么跑；发布成模块时的 conda／容器在发布页单独手填，互不覆盖。
+            内核只决定笔记本里怎么跑；发布页的试跑和模块 conda／容器单独手填，互不覆盖。
           </p>
           <div className="min-h-0 flex-1 space-y-3 overflow-auto p-3">
             <Input
