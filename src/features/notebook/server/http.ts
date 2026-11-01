@@ -27,6 +27,10 @@ const writeSchema = z.object({
   cells: z.array(cellSchema).max(80),
 });
 
+const runSchema = z.object({
+  cellId: z.string().min(1).max(80).optional(),
+});
+
 const trySchema = z.object({
   args: z.record(z.string().regex(/^[A-Za-z_][\w]*$/), z.string().max(4000)).optional(),
   sampleId: z.enum(["fastqc-pair", "samplesheet"]).optional(),
@@ -126,7 +130,13 @@ export async function handleNotebookApi(method: string, path: string[], request:
   }
 
   if (action === "run" && method === "POST") {
-    return json({ cells: await executeCells(requireNotebook(id)) });
+    const body = runSchema.parse(await request.json().catch(() => ({})));
+    try {
+      return json({ cells: await executeCells(requireNotebook(id), body.cellId) });
+    } catch (error) {
+      if (error instanceof ConvertError) throw new HttpError(400, error.message);
+      throw error;
+    }
   }
 
   if (action === "try-run" && method === "POST") {

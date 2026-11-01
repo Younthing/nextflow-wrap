@@ -177,6 +177,22 @@ export function moduleSlug(name: string): string {
   return slug(name);
 }
 
+/** Basename of the generated CLI. The try-run log and the preview both use this name. */
+export function scriptFileName(entry: string): string {
+  const base = entry.split("/").filter(Boolean).pop() ?? "";
+  if (!/^[\w][\w.-]*$/.test(base)) throw new ConvertError(`脚本文件名无效：${entry}`);
+  return base;
+}
+
+export function scriptInterpreter(language: NotebookLanguage): "python3" | "Rscript" {
+  return language === "r" ? "Rscript" : "python3";
+}
+
+/** Interpreter plus the converted script name, the same text the try-run log prints. */
+export function tryRunCommand(language: NotebookLanguage, entry: string, argv: readonly string[] = []): string {
+  return [scriptInterpreter(language), scriptFileName(entry), ...argv].join(" ");
+}
+
 export function commandPreview(entry: string, inputs: MarkerInput[]): string {
   const parts = [entry];
   for (const input of inputs) {
@@ -277,12 +293,13 @@ export function convertNotebook(notebook: NotebookDoc, entryName?: string): Conv
   const language: NotebookLanguage = notebook.language;
   const ext = language === "r" ? "R" : "py";
   const entry = entryName ?? `bin/${slug(notebook.name)}.${ext}`;
+  const fileName = scriptFileName(entry);
   const script = language === "r" ? rScript(notebook, inputs, chunks.join("\n\n"), note) : pythonScript(notebook, inputs, chunks.join("\n\n"), note);
   return {
     language,
     entry,
     script,
-    commandPreview: commandPreview(entry.split("/").pop() ?? entry, inputs),
+    commandPreview: commandPreview(fileName, inputs),
     inputs,
     outputs,
     included,

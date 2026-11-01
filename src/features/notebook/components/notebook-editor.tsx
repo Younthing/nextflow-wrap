@@ -9,21 +9,14 @@ import { AsyncPlaceholder } from "@/components/ui/async-placeholder";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { nextCellId } from "@/features/notebook/cells";
 import { convertNotebook, ConvertError } from "@/features/notebook/convert";
 import { latestModuleForNotebook } from "@/features/notebook/library";
 import { useNotebook, useNotebookRevision, useRunNotebook, useSaveNotebook, useScriptModules } from "@/features/notebook/queries";
 import { KERNELS, kernelLabel, type NotebookCell, type NotebookCellRole, type NotebookDoc } from "@/features/notebook/types";
 import { cn } from "@/lib/utils";
-
-const ROLE_LABEL: Record<NotebookCellRole, string> = {
-  code: "代码",
-  markdown: "说明",
-  input: "输入",
-  output: "输出",
-  explore: "自由探索",
-};
+import { NotebookCellCard } from "./notebook-cell";
 
 function newCell(role: NotebookCellRole): NotebookCell {
   return { id: `c_${Math.random().toString(36).slice(2, 8)}`, role, source: "" };
@@ -100,9 +93,17 @@ export function NotebookEditor({ notebookId }: { notebookId: string }) {
   const [override, setOverride] = React.useState<NotebookDoc | null>(null);
   const [dirty, setDirty] = React.useState(false);
   const [selected, setSelected] = React.useState<string | null>(null);
+  const [selectionFor, setSelectionFor] = React.useState<string | null>(null);
   const [prepOverride, setPrepOverride] = React.useState<boolean | null>(null);
   const [outputs, setOutputs] = React.useState<Record<string, { stdout: string; error?: string }>>({});
+  const [runningTarget, setRunningTarget] = React.useState<string | "all" | null>(null);
   const saveNotebook = save.mutate;
+  const selectionKey = `${notebookId}:${revParam ?? "latest"}`;
+  const selectionCells = revParam ? revision.data?.cells : notebook.data?.cells;
+  if (selectionCells && selectionFor !== selectionKey) {
+    setSelectionFor(selectionKey);
+    setSelected(selectionCells[0]?.id ?? null);
+  }
 
   const draft = dirty ? override : notebook.data ?? null;
   const marked = React.useMemo(() => {
@@ -174,6 +175,30 @@ export function NotebookEditor({ notebookId }: { notebookId: string }) {
   if (!live) return <AsyncPlaceholder status="pending" className="h-full" />;
 
   const savedAt = notebook.data.updatedAt;
+  const runDisabled = readOnly || dirty || save.isPending || run.isPending || runningTarget !== null;
+
+  const startRun = (cellId?: string) => {
+    if (runDisabled) return;
+    setRunningTarget(cellId ?? "all");
+    run.mutate(
+      { id: notebookId, cellId },
+      {
+        onSuccess: (result) => {
+          setOutputs((current) => {
+            const next = cellId ? { ...current } : {};
+            for (const cell of result.cells) next[cell.id] = { stdout: cell.stdout, error: cell.error };
+            return next;
+          });
+        },
+        onSettled: () => setRunningTarget(null),
+      },
+    );
+  };
+
+  const runCell = (id: string, advance: boolean) => {
+    setSelected(advance ? nextCellId(live.cells, id) ?? id : id);
+    startRun(id);
+  };
 
   return (
     <div className="flex size-full min-h-0 flex-col gap-3">
@@ -229,13 +254,7 @@ export function NotebookEditor({ notebookId }: { notebookId: string }) {
       <div className="flex min-h-0 flex-1 gap-3">
         <section className="glass flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl">
           <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
-            <Button type="button" size="sm" variant="outline" disabled={readOnly || run.isPending || dirty || save.isPending} onClick={() => {
-              run.mutate(notebookId, {
-                onSuccess: (result) => {
-                  setOutputs(Object.fromEntries(result.cells.map((cell) => [cell.id, { stdout: cell.stdout, error: cell.error }])));
-                },
-              });
-            }}>
+            <Button type="button" size="sm" variant="outline" disabled={runDisabled} onClick={() => startRun()}>
               {run.isPending ? <Loader2 className="animate-spin" /> : <Play />}
               运行全部
             </Button>
@@ -279,47 +298,33 @@ export function NotebookEditor({ notebookId }: { notebookId: string }) {
               onChange={(event) => update({ description: event.target.value })}
               className="h-8 text-sm"
             />
-            {live.cells.map((cell, index) => {
-              const result = outputs[cell.id];
-              const active = selected === cell.id;
-              return (
-                <div key={cell.id} className={cn("rounded-lg border border-border", active && "border-primary/60")}>
-                  <div className="flex items-center gap-2 px-3 py-1.5 text-xs text-muted-foreground">
-                    <span className="font-mono">[{index + 1}]</span>
-                    <Badge variant="outline">{ROLE_LABEL[cell.role]}</Badge>
-                    <Select value={cell.role} disabled={readOnly} onValueChange={(role) => updateCell(cell.id, { role: role as NotebookCellRole })}>
-                      <SelectTrigger size="sm" className="h-7 w-28 text-xs" onFocus={() => setSelected(cell.id)}><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {(Object.keys(ROLE_LABEL) as NotebookCellRole[]).map((role) => (
-                          <SelectItem key={role} value={role}>{ROLE_LABEL[role]}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Button type="button" variant="ghost" size="sm" className="ml-auto" disabled={readOnly || live.cells.length === 1} onClick={() => update({ cells: live.cells.filter((item) => item.id !== cell.id) })}>
-                      删除
-                    </Button>
-                  </div>
-                  <Textarea
-                    value={cell.source}
-                    disabled={readOnly}
-                    spellCheck={false}
-                    onFocus={() => setSelected(cell.id)}
-                    onChange={(event) => updateCell(cell.id, { source: event.target.value })}
-                    className="min-h-28 rounded-none border-0 bg-transparent font-mono text-xs shadow-none"
-                  />
-                  {result && (
-                    <pre className={cn("overflow-auto border-t border-border px-3 py-2 font-mono text-xs", result.error ? "text-destructive" : "text-muted-foreground")}>
-                      {result.error || result.stdout || "（无输出）"}
-                    </pre>
-                  )}
-                </div>
-              );
-            })}
+            {live.cells.map((cell, index) => (
+              <NotebookCellCard
+                key={cell.id}
+                cell={cell}
+                index={index}
+                selected={selected === cell.id}
+                running={runningTarget === "all" || runningTarget === cell.id}
+                readOnly={readOnly}
+                runDisabled={runDisabled}
+                canDelete={live.cells.length > 1}
+                output={outputs[cell.id]}
+                onSelect={() => setSelected(cell.id)}
+                onRun={({ advance }) => runCell(cell.id, advance)}
+                onChange={(source) => updateCell(cell.id, { source })}
+                onRole={(role) => updateCell(cell.id, { role })}
+                onDelete={() => {
+                  const remaining = live.cells.filter((item) => item.id !== cell.id);
+                  update({ cells: remaining });
+                  if (selected === cell.id) setSelected(remaining[Math.min(index, remaining.length - 1)]?.id ?? null);
+                }}
+              />
+            ))}
           </div>
         </section>
         <PrepPanel doc={live} open={prepOpen} onToggle={() => setPrepOverride(!prepOpen)} />
       </div>
-      {save.error && <p role="alert" className="text-sm text-destructive">{save.error.message}</p>}
+      {(save.error || run.error) && <p role="alert" className="text-sm text-destructive">{save.error?.message ?? run.error?.message}</p>}
     </div>
   );
 }

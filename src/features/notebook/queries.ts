@@ -76,7 +76,11 @@ export function useSaveNotebook() {
 
 export function useRunNotebook() {
   return useMutation({
-    mutationFn: (id: string) => api<{ cells: CellRunResult[] }>(`/notebooks/${id}/run`, { method: "POST", body: "{}" }),
+    mutationFn: ({ id, cellId }: { id: string; cellId?: string }) =>
+      api<{ cells: CellRunResult[] }>(`/notebooks/${id}/run`, {
+        method: "POST",
+        body: JSON.stringify(cellId ? { cellId } : {}),
+      }),
   });
 }
 
