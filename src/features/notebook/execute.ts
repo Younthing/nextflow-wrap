@@ -1,10 +1,12 @@
-import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { CommandError, runCommand } from "@/features/project/server/command";
+import { CELL_DRIVER } from "./cell-driver";
 import { cellsForRun } from "./cells";
 import { ConvertError, convertNotebook, scriptFileName, scriptInterpreter, tryRunArgv, tryRunCommand } from "./convert";
+import { finalizeCellResult } from "./outputs";
 import type { CellRunResult, NotebookDoc, TryRunOutput, TryRunRecord } from "./types";
 
 const inDir = (dir: string, name: string) => join(/* turbopackIgnore: true */ dir, name);
@@ -85,53 +87,48 @@ export async function executeTryRun(
   }
 }
 
-const CELL_DRIVER = `
-import contextlib, io, json, traceback
-cells = json.load(open("cells.json", encoding="utf-8"))
-ns = {"__name__": "__main__"}
-for cell in cells:
-    buf = io.StringIO()
-    try:
-        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
-            exec(compile(cell["source"], cell["id"], "exec"), ns, ns)
-        print(json.dumps({"id": cell["id"], "stdout": buf.getvalue()}, ensure_ascii=False))
-    except Exception:
-        print(json.dumps({"id": cell["id"], "stdout": buf.getvalue(), "error": traceback.format_exc()}, ensure_ascii=False))
-`;
+function failureText(error: unknown): string {
+  const message = error instanceof CommandError ? error.output || error.message : error instanceof Error ? error.message : "运行失败";
+  return message.trim().slice(-2000) || "运行失败";
+}
+
+async function readCellResults(dir: string, cells: { id: string }[], fallback: string): Promise<CellRunResult[]> {
+  try {
+    const raw = await readFile(inDir(dir, "results.json"), "utf8");
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) throw new Error("bad results");
+    const byId = new Map<string, CellRunResult>();
+    for (const item of parsed) {
+      if (!item || typeof item !== "object") continue;
+      const record = item as { id?: unknown; outputs?: unknown; error?: unknown };
+      if (typeof record.id !== "string" || !record.id) continue;
+      byId.set(record.id, finalizeCellResult(record.id, record));
+    }
+    return cells.map((cell) => byId.get(cell.id) ?? finalizeCellResult(cell.id, { error: "单元格没有返回结果" }));
+  } catch {
+    return cells.map((cell) => finalizeCellResult(cell.id, { error: fallback }));
+  }
+}
 
 /** Runs notebook cells in one Python process. A cell id runs from the top through that cell. Markdown is skipped. */
 export async function executeCells(notebook: NotebookDoc, cellId?: string): Promise<CellRunResult[]> {
   const cells = cellsForRun(notebook, cellId);
   if (cells.length === 0) return [];
   if (notebook.language !== "python") {
-    return cells.map((cell) => ({
-      id: cell.id,
-      stdout: "",
-      error: "R 单元格在笔记本里只作编辑；发布后的试跑会调用 Rscript。",
-    }));
+    const message = "R 单元格在笔记本里只作编辑；发布后的试跑会调用 Rscript。";
+    return cells.map((cell) => finalizeCellResult(cell.id, { error: message }));
   }
   const dir = await mkdtemp(join(/* turbopackIgnore: true */ tmpdir(), "nb-run-"));
   try {
     await writeFile(inDir(dir, "cells.json"), JSON.stringify(cells.map((cell) => ({ id: cell.id, source: cell.source }))));
     await writeFile(inDir(dir, "driver.py"), CELL_DRIVER);
-    let log = "";
+    let failure = "";
     try {
-      log = await runCommand("python3", ["driver.py"], { cwd: dir, timeoutMs: 20_000, quiet: true });
+      await runCommand("python3", ["driver.py"], { cwd: dir, timeoutMs: 20_000, quiet: true });
     } catch (error) {
-      const message = error instanceof CommandError ? error.output || error.message : error instanceof Error ? error.message : "运行失败";
-      return cells.map((cell) => ({ id: cell.id, stdout: "", error: message.trim().slice(-2000) }));
+      failure = failureText(error);
     }
-    const byId = new Map<string, CellRunResult>();
-    for (const line of log.split("\n")) {
-      if (!line.startsWith("{")) continue;
-      try {
-        const parsed = JSON.parse(line) as CellRunResult;
-        if (parsed.id) byId.set(parsed.id, { id: parsed.id, stdout: parsed.stdout ?? "", error: parsed.error });
-      } catch {
-        // User code cannot reach this stream; ignore a torn line.
-      }
-    }
-    return cells.map((cell) => byId.get(cell.id) ?? { id: cell.id, stdout: "", error: "单元格没有返回结果" });
+    return readCellResults(dir, cells, failure || "单元格没有返回结果");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

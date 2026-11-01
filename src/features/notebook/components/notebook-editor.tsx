@@ -14,7 +14,7 @@ import { nextCellId } from "@/features/notebook/cells";
 import { convertNotebook, ConvertError } from "@/features/notebook/convert";
 import { latestModuleForNotebook } from "@/features/notebook/library";
 import { useNotebook, useNotebookRevision, useRunNotebook, useSaveNotebook, useScriptModules } from "@/features/notebook/queries";
-import { KERNELS, kernelLabel, type NotebookCell, type NotebookCellRole, type NotebookDoc } from "@/features/notebook/types";
+import { KERNELS, kernelLabel, type CellRunResult, type NotebookCell, type NotebookCellRole, type NotebookDoc } from "@/features/notebook/types";
 import { cn } from "@/lib/utils";
 import { NotebookCellCard } from "./notebook-cell";
 
@@ -95,7 +95,7 @@ export function NotebookEditor({ notebookId }: { notebookId: string }) {
   const [selected, setSelected] = React.useState<string | null>(null);
   const [selectionFor, setSelectionFor] = React.useState<string | null>(null);
   const [prepOverride, setPrepOverride] = React.useState<boolean | null>(null);
-  const [outputs, setOutputs] = React.useState<Record<string, { stdout: string; error?: string }>>({});
+  const [outputs, setOutputs] = React.useState<Record<string, CellRunResult>>({});
   const [runningTarget, setRunningTarget] = React.useState<string | "all" | null>(null);
   const saveNotebook = save.mutate;
   const selectionKey = `${notebookId}:${revParam ?? "latest"}`;
@@ -186,7 +186,7 @@ export function NotebookEditor({ notebookId }: { notebookId: string }) {
         onSuccess: (result) => {
           setOutputs((current) => {
             const next = cellId ? { ...current } : {};
-            for (const cell of result.cells) next[cell.id] = { stdout: cell.stdout, error: cell.error };
+            for (const cell of result.cells) next[cell.id] = cell;
             return next;
           });
         },

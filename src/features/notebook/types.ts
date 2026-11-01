@@ -84,10 +84,39 @@ export interface TryRunOutput {
   message?: string;
 }
 
+/**
+ * MIME types a cell output can carry, best first.
+ * Same order as the notebook UI reference: HTML, then SVG, then raster images,
+ * then markdown, then plain text.
+ */
+export const OUTPUT_MIME_ORDER = [
+  "text/html",
+  "image/svg+xml",
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
+  "text/markdown",
+  "text/plain",
+] as const;
+
+export type OutputMimeType = (typeof OUTPUT_MIME_ORDER)[number];
+
+/** One Jupyter-style mime bundle. Image payloads are base64 except SVG, which is markup. */
+export type CellMimeBundle = Partial<Record<OutputMimeType, string>>;
+
+export type CellOutput =
+  | { outputType: "stream"; name: "stdout" | "stderr"; text: string }
+  | { outputType: "display_data" | "execute_result"; data: CellMimeBundle }
+  | { outputType: "error"; traceback: string };
+
 export interface CellRunResult {
   id: string;
+  /** Captured stdout, kept for callers that only read text. */
   stdout: string;
   error?: string;
+  /** Ordered stream, display, and error segments. */
+  outputs?: CellOutput[];
 }
 
 export interface TryRunRecord {
