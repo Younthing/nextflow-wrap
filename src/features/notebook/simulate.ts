@@ -1,5 +1,6 @@
 import { cellsForRun } from "./cells";
 import { convertNotebook, tryRunArgv, tryRunCommand } from "./convert";
+import { finalizeCellResult } from "./outputs";
 import type { CellRunResult, NotebookDoc, TryRunRecord } from "./types";
 
 /** Demo-mode try-run. Checks the marker contract and does not execute a kernel. */
@@ -35,10 +36,12 @@ export function simulateTryRun(notebook: NotebookDoc, values: Record<string, str
 }
 
 export function simulateCells(notebook: NotebookDoc, cellId?: string): CellRunResult[] {
-  return cellsForRun(notebook, cellId).map((cell) => ({
-    id: cell.id,
-    stdout: cell.role === "explore" ? "（自由探索，仅留在笔记本）\n" : "（演示模式未执行内核）\n",
-  }));
+  return cellsForRun(notebook, cellId).map((cell) => {
+    const stdout = cell.role === "explore" ? "（自由探索，仅留在笔记本）\n" : "（演示模式未执行内核）\n";
+    return finalizeCellResult(cell.id, {
+      outputs: [{ outputType: "stream", name: "stdout", text: stdout }],
+    });
+  });
 }
 
 export function withSampleValues(values: Record<string, string>, sampleId: string | undefined): Record<string, string> {
