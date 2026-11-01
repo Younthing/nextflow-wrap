@@ -2,7 +2,7 @@ import { Loader2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { RUN_STATUS } from "../format";
+import { RUN_STATUS, taskProgressLabel } from "../format";
 import type { RunProgress, RunSummary } from "../types";
 
 export function StatusBadge({ status }: { status: RunSummary["status"] }) {
@@ -35,11 +35,7 @@ export function ProgressBar({
       aria-valuenow={
         progress.total ? progress.completed + progress.cached : undefined
       }
-      aria-valuetext={
-        progress.total
-          ? `完成 ${progress.completed + progress.cached} / ${progress.total}`
-          : "正在发现任务"
-      }
+      aria-valuetext={taskProgressLabel(progress)}
       className={cn(
         "flex h-1.5 overflow-hidden rounded-full bg-secondary",
         className,
@@ -99,7 +95,7 @@ export function ProgressSummary({
 }) {
   return (
     <>
-      {`已发现 ${progress.total} · 完成 ${progress.completed + progress.cached}`}
+      {taskProgressLabel(progress)}
       {showRunning && (
         <ProgressCount
           count={progress.running}

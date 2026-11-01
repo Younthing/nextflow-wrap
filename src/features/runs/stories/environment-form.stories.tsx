@@ -15,8 +15,24 @@ const meta = {
 } satisfies Meta<typeof EnvironmentForm>;
 export default meta;
 type Story = StoryObj<typeof meta>;
-export const Local: Story = {};
-export const RealRunner: Story = { args: { real: true } };
+export const Local: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText(/预览环境不会连接真实的集群或云执行器/)).toBeInTheDocument();
+    expect(canvas.getAllByText("预览").length).toBeGreaterThan(1);
+  },
+};
+export const RealRunner: Story = {
+  args: { real: true },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    expect(canvas.queryByText(/预览环境不会连接/)).toBeNull();
+    expect(canvas.getByRole("radio", { name: /本机/ })).not.toHaveTextContent("预览");
+    const slurm = canvas.getByRole("radio", { name: /SLURM/i });
+    expect(slurm).toHaveTextContent("预览");
+    expect(slurm).toBeDisabled();
+  },
+};
 export const ChangeExecutor: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);

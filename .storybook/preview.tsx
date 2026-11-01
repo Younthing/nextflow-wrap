@@ -6,6 +6,7 @@ import { storyHandlers } from "../src/mocks/story-handlers";
 import type { Decorator, Preview } from "@storybook/nextjs-vite";
 
 import { jetbrainsMono, notoSansSC, notoSerifSC } from "../src/app/fonts";
+import { Toaster } from "../src/components/ui/toaster";
 import { TooltipProvider } from "../src/components/ui/tooltip";
 import "../src/app/globals.css";
 
@@ -41,6 +42,7 @@ function ThemeFrame({
       <TooltipProvider>
         <div className="ambient-backdrop min-h-screen p-6 font-sans text-foreground">
           {children}
+          <Toaster />
         </div>
       </TooltipProvider>
     </QueryClientProvider>

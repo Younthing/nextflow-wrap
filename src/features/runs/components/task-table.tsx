@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/table";
 import { CodeViewer } from "@/features/project/components/code-viewer";
 import { cn } from "@/lib/utils";
-import { formatBytes, formatDuration, TASK_STATUS } from "../format";
+import { formatBytes, formatDuration, formatTime, TASK_STATUS } from "../format";
 import { useTaskLog } from "../queries";
 import type { TaskRecord } from "../types";
 
@@ -71,7 +71,7 @@ const columns = helper.columns([
     header: "提交",
     cell: (info) => (
       <span className="font-mono text-xs text-muted-foreground">
-        {info.row.original.submittedAt ? new Date(info.row.original.submittedAt).toLocaleTimeString("zh-CN", { hour12: false }) : "—"}
+        {formatTime(info.row.original.submittedAt)}
       </span>
     ),
   }),

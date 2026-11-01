@@ -35,7 +35,7 @@ import {
   useEditorStore,
   useEditorStoreApi,
 } from "@/features/editor/editor-provider";
-import { toast } from "../toast";
+import { toast } from "@/lib/toast";
 import { CanvasContextMenu } from "./canvas-context-menu";
 import { MODULE_DRAG_TYPE } from "./module-library";
 import { ModuleNode } from "./module-node";

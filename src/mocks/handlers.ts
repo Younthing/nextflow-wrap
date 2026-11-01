@@ -12,6 +12,7 @@ import { languageForKernel, type NotebookDoc } from "@/features/notebook/types";
 import { newId } from "@/features/workflow/nodes";
 import { commitWorkflowPut } from "@/features/workflow/revision";
 import type { ModuleCatalog, WorkflowDoc, WorkflowSummary } from "@/features/workflow/types";
+import { NEXTFLOW_VERSION } from "@/features/project/templates";
 import type { HealthStatus } from "@/lib/api-types";
 import { readDb, writeDb } from "./db";
 import { runHandlers } from "./runs";
@@ -31,7 +32,7 @@ export const handlers = [
     await delay(150);
     return HttpResponse.json<HealthStatus>({
       status: "ok",
-      nextflowVersion: "25.10.0",
+      nextflowVersion: NEXTFLOW_VERSION,
       mocked: true,
     });
   }),
