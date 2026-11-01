@@ -6,7 +6,7 @@ import { getEditorSaveSession, type EditorSaveRead } from "./editor-save";
 import { selectIsDirty } from "./store";
 import { useEditorStore, useEditorStoreApi } from "./editor-provider";
 import { editorIssues } from "./issues";
-import { toast } from "./toast";
+import { toast } from "@/lib/toast";
 
 const AUTOSAVE_MS = 1500;
 

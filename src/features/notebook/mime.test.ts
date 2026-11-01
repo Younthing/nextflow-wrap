@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { SAMPLE_PDF } from "@/features/output/samples";
 import { planMime } from "./mime";
 
 const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
@@ -46,5 +47,25 @@ describe("planMime", () => {
       "image/svg+xml": `<svg><script>alert(1)</script></svg>`,
       "text/plain": "svg text",
     })).toMatchObject({ kind: "text", text: "svg text" });
+  });
+
+  it("renders pdf and delimited tables, and still lets HTML win", () => {
+    expect(planMime({ "application/pdf": SAMPLE_PDF, "text/plain": "报告" })).toMatchObject({
+      kind: "pdf",
+      title: "报告",
+    });
+    const csv = planMime({ "text/csv": "sample,reads\nS1,10\n", "text/plain": "sheet" });
+    expect(csv).toMatchObject({ kind: "table", columns: ["sample", "reads"], rows: [["S1", "10"]] });
+    const tsv = planMime({ "text/tab-separated-values": "sample\treads\nS1\t10\n" });
+    expect(tsv).toMatchObject({ kind: "table", columns: ["sample", "reads"] });
+    expect(planMime({
+      "text/html": "<table><tr><td>S1</td></tr></table>",
+      "text/csv": "sample,reads\nS1,10\n",
+      "application/pdf": SAMPLE_PDF,
+    }).kind).toBe("html");
+    expect(planMime({ "application/pdf": "not-a-pdf", "text/plain": "plain" })).toMatchObject({
+      kind: "text",
+      text: "plain",
+    });
   });
 });

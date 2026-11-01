@@ -10,6 +10,7 @@ import {
 
 import { api } from "@/lib/api";
 import type { HealthStatus } from "@/lib/api-types";
+import { toast } from "@/lib/toast";
 import type { ResultFile } from "./outputs";
 import type {
   LaunchRequest,
@@ -90,6 +91,7 @@ export function useLaunchRun() {
         body: JSON.stringify(req),
       }),
     onSuccess: (run) => {
+      toast.success(`已提交运行 ${run.runName}`);
       qc.setQueryData(runKeys.detail(run.id), run);
       void qc.invalidateQueries({ queryKey: ["runs", "list"] });
     },
@@ -175,6 +177,19 @@ export function useRunResults(id: string, active: boolean) {
     queryKey: [...runKeys.detail(id), "results"],
     queryFn: () => api<ResultFile[]>(`/runs/${id}/results`),
     refetchInterval: pollWhile(active),
+  });
+}
+
+export function useResultBlob(id: string, path: string | null) {
+  return useQuery({
+    queryKey: [...runKeys.detail(id), "blob", path],
+    queryFn: async () => {
+      const res = await fetch(`/api/runs/${id}/results/content?path=${encodeURIComponent(path ?? "")}`);
+      if (!res.ok) throw new Error((await res.json().catch(() => null))?.message ?? res.statusText);
+      return res.blob();
+    },
+    enabled: !!path,
+    staleTime: Infinity,
   });
 }
 

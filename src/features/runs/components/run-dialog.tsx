@@ -146,6 +146,13 @@ export function RunDialog({
           </DialogDescription>
         </DialogHeader>
 
+        <LabeledCode
+          title="启动命令（在项目目录中执行）"
+          code={command}
+          language="text"
+          lineNumbers={false}
+        />
+
         <Tabs value={tab} onValueChange={setTab} className="min-h-0 flex-1">
           <TabsList>
             <TabsTrigger value="environment">运行环境</TabsTrigger>

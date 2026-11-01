@@ -12,9 +12,10 @@ import {
   tableFeatures,
   useTable,
 } from "@tanstack/react-table";
-import { History, Square, Trash2 } from "lucide-react";
+import { History, Trash2 } from "lucide-react";
 
 import { AsyncPlaceholder } from "@/components/ui/async-placeholder";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   SortHeader,
@@ -27,10 +28,11 @@ import {
 } from "@/components/ui/table";
 import { executorDef } from "@/features/project/launch";
 import { formatDuration, formatTime, runDuration } from "../format";
-import { isActive, useCancelRun, useDeleteRun, useRuns } from "../queries";
+import { isActive, useCancelRun, useDeleteRun, useHealthStatus, useRuns } from "../queries";
 import type { RunSummary } from "../types";
 
 import { ProgressBar, ProgressSummary, StatusBadge } from "./run-status";
+import { StopRunButton } from "./stop-run-button";
 
 const features = tableFeatures({
   rowSortingFeature,
@@ -49,15 +51,11 @@ function RowActions({ run }: { run: RunSummary }) {
   return (
     <div className="flex justify-end gap-1">
       {isActive(run.status) ? (
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label={`停止 ${run.runName}`}
-          disabled={cancel.isPending}
-          onClick={() => cancel.mutate(run.id)}
-        >
-          <Square className="text-destructive" />
-        </Button>
+        <StopRunButton
+          runName={run.runName}
+          pending={cancel.isPending}
+          onStop={() => cancel.mutate(run.id)}
+        />
       ) : (
         <Button
           variant="ghost"
@@ -95,14 +93,7 @@ const columns = helper.columns([
   helper.accessor("executor", {
     header: "运行环境",
     sortFn: "text",
-    cell: (info) => (
-      <div className="grid">
-        <span>{executorDef(info.getValue()).name}</span>
-        <span className="font-mono text-[11px] text-muted-foreground">
-          -profile {info.row.original.profile}
-        </span>
-      </div>
-    ),
+    cell: (info) => <ExecutorCell executor={info.getValue()} profile={info.row.original.profile} />,
   }),
   helper.accessor(
     (r) =>
@@ -150,6 +141,21 @@ const columns = helper.columns([
     cell: (info) => <RowActions run={info.row.original} />,
   }),
 ]);
+
+function ExecutorCell({ executor, profile }: { executor: RunSummary["executor"]; profile: string }) {
+  const health = useHealthStatus();
+  return (
+    <div className="grid">
+      <span className="flex items-center gap-1.5">
+        {executorDef(executor).name}
+        {health.data?.mocked && <Badge variant="warning">预览</Badge>}
+      </span>
+      <span className="font-mono text-[11px] text-muted-foreground">
+        -profile {profile}
+      </span>
+    </div>
+  );
+}
 
 const EMPTY: RunSummary[] = [];
 

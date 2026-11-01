@@ -9,7 +9,9 @@ import { resolveNodeDef } from "@/features/workflow/catalog";
 import { NEXTFLOW_VERSION } from "@/features/project/templates";
 import { projectMeta } from "@/features/project/generate";
 import type { ModuleDef } from "@/features/workflow/types";
+import { SAMPLE_GIF, SAMPLE_JPEG, SAMPLE_PDF, SAMPLE_PNG, SAMPLE_SVG, SAMPLE_WEBP } from "@/features/output/samples";
 import { formatBytes, formatDuration } from "./format";
+import { contentTypeOf, previewKind } from "./preview";
 import type { ResultFile, RunDetail, TaskRecord } from "./types";
 export type { ResultFile } from "./types";
 
@@ -17,8 +19,6 @@ type RunLike = Pick<RunDetail, "id" | "runName" | "workflow" | "params" | "submi
 
 /** Alternative or rarely produced outputs that would clutter the results. */
 const SKIPPED_OUTPUTS = new Set(["sam", "cram", "crai", "csi", "reads_fail", "reads_merged", "unpaired", "bam_sorted_aligned", "bedgraph", "fastq"]);
-
-const TEXT_EXT = /\.(txt|log|tsv|csv|json|ya?ml|out|summary|flagstat|stats|metrics|gtf)$/i;
 
 function hashNumber(s: string) {
   let h = 2166136261;
@@ -45,12 +45,6 @@ function approxSize(path: string): number {
   if (/\.html$/.test(path)) return Math.round((0.4 + r * 1.2) * 1024 ** 2);
   if (path.endsWith("/")) return Math.round((2 + r * 30) * 1024 ** 3);
   return Math.round((2 + r * 60) * 1024);
-}
-
-function previewOf(path: string): ResultFile["preview"] {
-  if (path.endsWith(".html")) return "html";
-  if (TEXT_EXT.test(path)) return "text";
-  return null;
 }
 
 const timestamp = (iso: string) => iso.slice(0, 19).replace("T", "_").replaceAll(":", "-");
@@ -86,7 +80,7 @@ export function resultFiles(run: RunLike, tasks: TaskRecord[], index: ModuleInde
         if (!name) continue;
         const path = `${dir}/${name}`;
         if (files.some((f) => f.path === path)) continue;
-        files.push({ path, size: approxSize(path), preview: path.endsWith("/") ? null : previewOf(path), nodeId: node.id });
+        files.push({ path, size: approxSize(path), preview: previewKind(path), nodeId: node.id });
       }
     }
   }
@@ -99,7 +93,7 @@ export function resultFiles(run: RunLike, tasks: TaskRecord[], index: ModuleInde
       `pipeline_info/params_${ts}.json`,
       `pipeline_info/${shortName(run)}_software_mqc_versions.yml`,
     ];
-    for (const path of info) files.push({ path, size: approxSize(path), preview: previewOf(path) });
+    for (const path of info) files.push({ path, size: approxSize(path), preview: previewKind(path) });
   }
   return files.sort((a, b) => a.path.localeCompare(b.path));
 }
@@ -214,17 +208,36 @@ function genericText(path: string, task?: TaskRecord): string {
   return `# ${path}\n# Written by ${who}.\n# This run was simulated by Nextflow Studio's mock backend, so the content is a placeholder.\n`;
 }
 
+export interface ResultBody {
+  contentType: string;
+  body: string;
+  /** Set when `body` is base64 so the mock response can send real bytes. */
+  encoding?: "base64";
+}
+
+const RASTER_SAMPLES = {
+  png: SAMPLE_PNG,
+  jpeg: SAMPLE_JPEG,
+  gif: SAMPLE_GIF,
+  webp: SAMPLE_WEBP,
+} as const;
+
+function delimitedPreview(path: string, delimiter: "," | "\t"): string {
+  const cell = (value: string) => (delimiter === "," && /[",\n]/.test(value) ? `"${value.replaceAll("\"", "\"\"")}"` : value);
+  return [`file${delimiter}value`, `${cell(path)}${delimiter}1`, ""].join("\n");
+}
+
 /** Content of a previewable result file, or null when it doesn't exist. */
 export function resultContent(
   run: RunLike,
   tasks: TaskRecord[],
   index: ModuleIndex,
   path: string,
-): { contentType: string; body: string } | null {
+): ResultBody | null {
   const file = resultFiles(run, tasks, index).find((f) => f.path === path);
   if (!file || !file.preview) return null;
-  const html = (body: string) => ({ contentType: "text/html; charset=utf-8", body });
-  const text = (body: string) => ({ contentType: "text/plain; charset=utf-8", body });
+  const html = (body: string): ResultBody => ({ contentType: "text/html; charset=utf-8", body });
+  const text = (body: string, contentType = "text/plain; charset=utf-8"): ResultBody => ({ contentType, body });
 
   if (path.endsWith("multiqc_report.html")) return html(multiqcReport(run, tasks, index));
   if (path.includes("execution_timeline")) return html(timelineReport(run, tasks));
@@ -234,6 +247,18 @@ export function resultContent(
   const task = tasks.find((t) => t.nodeId === file.nodeId && (!t.tag || path.includes(t.tag)));
   if (file.preview === "html") {
     return html(`<!doctype html><html><head><meta charset="utf-8"><style>${REPORT_CSS}</style></head><body><main><h2>${escapeHtml(path)}</h2><p>Report from ${escapeHtml(task?.name ?? "the pipeline")}.</p><p class="muted">Simulated output.</p></main></body></html>`);
+  }
+  if (file.preview === "markdown") {
+    return text(`# ${path}\n\nSimulated output from ${task?.name ?? "the pipeline"}.\n`, "text/markdown; charset=utf-8");
+  }
+  if (file.preview === "csv" || file.preview === "tsv") {
+    const delimiter = file.preview === "tsv" ? "\t" : ",";
+    return text(delimitedPreview(path, delimiter), `${contentTypeOf(path)}; charset=utf-8`);
+  }
+  if (file.preview === "svg") return { contentType: "image/svg+xml", body: SAMPLE_SVG };
+  if (file.preview === "pdf") return { contentType: "application/pdf", body: SAMPLE_PDF, encoding: "base64" };
+  if (file.preview === "png" || file.preview === "jpeg" || file.preview === "gif" || file.preview === "webp") {
+    return { contentType: contentTypeOf(path), body: RASTER_SAMPLES[file.preview], encoding: "base64" };
   }
   return text(genericText(path, task));
 }

@@ -27,7 +27,7 @@ import {
   useEditorStore,
   useEditorStoreApi,
 } from "@/features/editor/editor-provider";
-import { toast } from "../toast";
+import { toast } from "@/lib/toast";
 import { useEditorAutosave } from "../use-editor-autosave";
 import { useEditorCommands } from "../use-editor-commands";
 import { EditorToolbar } from "./editor-toolbar";
@@ -38,7 +38,6 @@ import {
   type SearchPick,
   type SearchRequest,
 } from "./node-search-dialog";
-import { Toaster } from "./toaster";
 import { WorkflowCanvas } from "./workflow-canvas";
 
 function BackToLibrary() {
@@ -286,7 +285,6 @@ function Editor({ workflowId }: { workflowId: string }) {
         modulesSha={catalog.data?.gitSha ?? ""}
       />
       <EditorAssistant onCanvasChange={onAssistantChange} />
-      <Toaster />
     </div>
   );
 }

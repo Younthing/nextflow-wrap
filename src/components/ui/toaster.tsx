@@ -3,7 +3,7 @@
 import { AlertTriangle, CheckCircle2, Info, XCircle } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { useToasts, type Toast } from "../toast";
+import { useToasts, type Toast } from "@/lib/toast";
 
 const ICONS: Record<Toast["tone"], typeof Info> = {
   info: Info,
@@ -24,7 +24,7 @@ export function Toaster() {
   const dismiss = useToasts((s) => s.dismiss);
 
   return (
-    <div className="pointer-events-none fixed right-4 bottom-4 z-50 flex w-80 flex-col gap-2" aria-live="polite">
+    <div className="pointer-events-none fixed right-4 bottom-4 z-[1300] flex w-80 flex-col gap-2" aria-live="polite">
       {toasts.map((t) => {
         const Icon = ICONS[t.tone];
         return (
