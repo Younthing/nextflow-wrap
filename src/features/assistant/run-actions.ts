@@ -5,7 +5,6 @@ import {
   type EditorSaveRead,
 } from "@/features/editor/editor-save";
 import {
-  useEditorStore,
   selectIsDirty,
   type EditorStore,
 } from "@/features/editor/store";
@@ -444,10 +443,9 @@ function infoConfirm(
 /** Saves a dirty, already-saved workflow through the editor queue. A new unsaved canvas is refused. */
 export async function ensureWorkflowSaved(
   save: (doc: WorkflowDoc) => Promise<WorkflowDoc>,
-  owner?: EditorStore,
+  store: EditorStore,
 ): Promise<{ doc: WorkflowDoc } | { error: string }> {
-  const store = owner ?? useEditorStore;
-  const session = getEditorSaveSession(owner);
+  const session = getEditorSaveSession(store);
   if (!store.getState().docId) return { error: "请先保存流程（Ctrl+S）" };
   let failure: string | undefined;
   try {

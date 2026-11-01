@@ -84,12 +84,6 @@ export function createEditorSaveSession() {
     return tail;
   }
 
-  function resetEditorSaveQueueForTests() {
-    tail = Promise.resolve();
-    announce = false;
-    saveAck.clear();
-  }
-
   /**
    * One save at a time. The snapshot is the document captured when the save was
    * enqueued. A follow-up for the same workflow replaces only `updatedAt` with
@@ -147,19 +141,17 @@ export function createEditorSaveSession() {
     withAcknowledgedRevision,
     enqueueEditorSave,
     editorSaveSettled,
-    resetEditorSaveQueueForTests,
     runEditorSave,
   };
 }
 
-const defaultSession = createEditorSaveSession();
 const sessions = new WeakMap<
   object,
   ReturnType<typeof createEditorSaveSession>
 >();
 
-export function getEditorSaveSession(owner?: object) {
-  if (!owner) return defaultSession;
+/** The save queue that belongs to one editor store. */
+export function getEditorSaveSession(owner: object) {
   let session = sessions.get(owner);
   if (!session) {
     session = createEditorSaveSession();
@@ -167,15 +159,3 @@ export function getEditorSaveSession(owner?: object) {
   }
   return session;
 }
-
-export const {
-  noteEditorRevision,
-  editorConflictIsOwnWrite,
-  editorKnownRevision,
-  editorEchoKeepsLocalEdits,
-  withAcknowledgedRevision,
-  enqueueEditorSave,
-  editorSaveSettled,
-  resetEditorSaveQueueForTests,
-  runEditorSave,
-} = defaultSession;
