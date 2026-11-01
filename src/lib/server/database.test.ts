@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { demoNotebooks } from "@/features/notebook/seed";
+import { demoNotebooks, demoScriptModules } from "@/features/notebook/seed";
 import { qcDemoWorkflow } from "@/features/workflow/qc-demo";
 import { StudioStore } from "./database";
 
@@ -52,6 +52,26 @@ describe("StudioStore", () => {
       expect(edited.rev).toBe(2);
       expect(db.revision(notebook.id, 2)?.cells).toHaveLength(edited.cells.length);
       db.close();
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("round-trips conda and container on a script module", () => {
+    const directory = mkdtempSync(join(tmpdir(), "studio-db-"));
+    try {
+      const db = new StudioStore(join(directory, "studio.sqlite"));
+      const mod = {
+        ...demoScriptModules().find((item) => item.id === "script/hello_py/v2")!,
+        condaYaml: "/envs/py311-pandas.yml",
+        containerImage: "ghcr.io/org/py311-pandas:1.2",
+      };
+      db.saveScriptModule(mod);
+      db.close();
+      const reopened = new StudioStore(join(directory, "studio.sqlite"));
+      const loaded = reopened.scriptModule(mod.id);
+      expect(loaded?.condaYaml).toBe("/envs/py311-pandas.yml");
+      expect(loaded?.containerImage).toBe("ghcr.io/org/py311-pandas:1.2");
+      expect(loaded?.kernel).toBe(mod.kernel);
+      reopened.close();
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 });

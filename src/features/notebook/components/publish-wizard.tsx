@@ -11,10 +11,12 @@ import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { convertNotebook, ConvertError, inputPorts, outputPorts } from "@/features/notebook/convert";
+import { latestModuleForNotebook } from "@/features/notebook/library";
 import { nextModuleVersion } from "@/features/notebook/publish";
 import { useNotebook, usePublishNotebook, useScriptModules, useTryRunNotebook } from "@/features/notebook/queries";
 import { kernelLabel } from "@/features/notebook/types";
 import { cn } from "@/lib/utils";
+import { ModuleEnvFields, ModuleEnvPreview } from "./module-env-form";
 
 const STEPS = ["转化预览", "试跑 CLI", "保存为模块"];
 
@@ -45,7 +47,10 @@ export function PublishWizard({ notebookId }: { notebookId: string }) {
   const [name, setName] = React.useState("");
   const [description, setDescription] = React.useState("");
   const [changelog, setChangelog] = React.useState("");
+  const [condaYaml, setCondaYaml] = React.useState("");
+  const [containerImage, setContainerImage] = React.useState("");
   const [namedFor, setNamedFor] = React.useState<string | null>(null);
+  const [envFor, setEnvFor] = React.useState<string | null>(null);
 
   const doc = notebook.data;
   const converted = React.useMemo(() => {
@@ -75,6 +80,13 @@ export function PublishWizard({ notebookId }: { notebookId: string }) {
     setNamedFor(doc.id);
     setName(doc.name.replace(/\s+/g, "_"));
     setDescription(doc.description);
+  }
+
+  if (doc && scripts.isSuccess && envFor !== doc.id) {
+    const previous = latestModuleForNotebook(scripts.data.modules, doc.id);
+    setEnvFor(doc.id);
+    if (!condaYaml && previous?.condaYaml) setCondaYaml(previous.condaYaml);
+    if (!containerImage && previous?.containerImage) setContainerImage(previous.containerImage);
   }
 
   const go = (next: number) => router.replace(`/notebooks/${notebookId}/publish?step=${next}`);
@@ -144,7 +156,7 @@ export function PublishWizard({ notebookId }: { notebookId: string }) {
         <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[20rem_minmax(0,1fr)]">
           <section className="glass space-y-3 overflow-auto rounded-xl p-4">
             <h2 className="text-sm font-semibold">试跑参数</h2>
-            <p className="text-xs text-muted-foreground">内核 {kernelLabel(doc.kernel)}</p>
+            <p className="text-xs text-muted-foreground">内核 {kernelLabel(doc.kernel)}。试跑用本机解释器；conda／容器在下一步手填，不改这次试跑。</p>
             {converted.value.inputs.some((input) => /zip|fastq/i.test(input.name)) && (
               <FormField label="样例数据">
                 <Select value={sampleId} onValueChange={setSampleId}>
@@ -212,14 +224,22 @@ export function PublishWizard({ notebookId }: { notebookId: string }) {
             <FormField label="更新说明" htmlFor="module-changelog">
               <Input id="module-changelog" value={changelog} onChange={(event) => setChangelog(event.target.value)} className="h-8 text-xs" />
             </FormField>
+            <ModuleEnvFields
+              idPrefix="publish-env"
+              condaYaml={condaYaml}
+              containerImage={containerImage}
+              onCondaYaml={setCondaYaml}
+              onContainerImage={setContainerImage}
+            />
             {publish.error && <p role="alert" className="text-sm text-destructive">{publish.error.message}</p>}
           </section>
-          <section className="glass space-y-2 rounded-xl p-4 text-sm">
+          <section className="glass space-y-3 rounded-xl p-4 text-sm">
             <h2 className="font-semibold">将写入模块库</h2>
             <p>源笔记本 <span className="font-mono">{doc.name}</span> · 钉住 rev r{doc.rev}</p>
             <p>命令行 <span className="font-mono">{converted?.ok ? converted.value.entry : "—"}</span></p>
             <p>端口 {converted?.ok ? `${converted.value.inputs.length} 输入 · ${converted.value.outputs.length} 输出` : "—"}</p>
-            <p>环境 {kernelLabel(doc.kernel)}</p>
+            <p>笔记本内核 <span className="font-mono">{kernelLabel(doc.kernel)}</span>，不写入 conda／容器。</p>
+            <ModuleEnvPreview condaYaml={condaYaml} containerImage={containerImage} />
             <p className={passed ? "text-success" : "text-destructive"}>{passed ? `试跑通过 · ${receipt?.durationMs ?? 0}ms` : "还没有通过当前修订的试跑"}</p>
             <p className="text-xs text-muted-foreground">保存后出现在模块抽屉，可拖入。笔记本再改不会改这个版本。</p>
           </section>
@@ -228,7 +248,7 @@ export function PublishWizard({ notebookId }: { notebookId: string }) {
 
       <footer className="glass flex items-center justify-between rounded-xl px-4 py-3">
         <Button type="button" variant="outline" onClick={() => (step === 1 ? router.push(`/notebooks/${notebookId}`) : go(step - 1))}>
-          {step === 1 ? "返回笔记本" : "上一步"}
+          {step === 1 ? "返回笔记本" : step === 3 ? "返回试跑" : "上一步"}
         </Button>
         {step < 3 ? (
           <Button
@@ -244,7 +264,7 @@ export function PublishWizard({ notebookId }: { notebookId: string }) {
             disabled={!passed || publish.isPending || !name.trim()}
             onClick={() => {
               publish.mutate(
-                { id: doc.id, name: name.trim(), description, changelog },
+                { id: doc.id, name: name.trim(), description, changelog, condaYaml, containerImage },
                 { onSuccess: () => router.push("/workflows/modules") },
               );
             }}

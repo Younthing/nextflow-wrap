@@ -102,16 +102,34 @@ export function usePublishNotebook() {
       name,
       description,
       changelog,
+      condaYaml,
+      containerImage,
     }: {
       id: string;
       name: string;
       description: string;
       changelog?: string;
+      condaYaml?: string;
+      containerImage?: string;
     }) =>
       api<ModuleDef>(`/notebooks/${id}/publish`, {
         method: "POST",
-        body: JSON.stringify({ name, description, changelog }),
+        body: JSON.stringify({ name, description, changelog, condaYaml, containerImage }),
       }),
     onSuccess: () => refreshNotebooks(qc),
+  });
+}
+
+export function useUpdateScriptModuleEnv() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { id: string; condaYaml: string; containerImage: string }) =>
+      api<ScriptModuleView>(`/script-modules/${body.id}`, {
+        method: "PUT",
+        body: JSON.stringify({ condaYaml: body.condaYaml, containerImage: body.containerImage }),
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: scriptModuleKey });
+    },
   });
 }

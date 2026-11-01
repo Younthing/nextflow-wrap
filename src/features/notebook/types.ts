@@ -132,8 +132,8 @@ export interface TryRunRecord {
 
 export const KERNELS = {
   "py311-pandas": { label: "Python 3.11 · py311-pandas", language: "python" },
-  "python3.11": { label: "Python 3.11", language: "python" },
-  "r-deseq2": { label: "R · r-deseq2", language: "r" },
+  "r-deseq2": { label: "R 4.3 · r-deseq2", language: "r" },
+  "python3.11": { label: "python:3.11", language: "python" },
 } as const;
 
 export type KernelId = keyof typeof KERNELS;
@@ -143,5 +143,24 @@ export function kernelLabel(kernel: string): string {
 }
 
 export function languageForKernel(kernel: string): NotebookLanguage {
-  return kernel in KERNELS ? KERNELS[kernel as KernelId].language : "python";
+  if (kernel in KERNELS) return KERNELS[kernel as KernelId].language;
+  const name = kernel.trim().toLowerCase();
+  if (
+    name.startsWith("r ")
+    || name.startsWith("r:")
+    || name.startsWith("r-")
+    || name.startsWith("r.")
+    || name.includes("rscript")
+    || name.includes("irkernel")
+  ) return "r";
+  return "python";
+}
+
+/** Kernel names are stored on the notebook. They are not conda paths or image refs. */
+export function normalizeKernelName(value: string): string {
+  const name = value.trim();
+  if (!name) throw new Error("内核名称不能为空");
+  if (name.length > 80) throw new Error("内核名称过长");
+  if (/[\u0000-\u001f]/.test(name)) throw new Error("内核名称不能包含换行");
+  return name;
 }

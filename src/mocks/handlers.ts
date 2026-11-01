@@ -3,6 +3,7 @@ import { delay, http, HttpResponse } from "msw";
 import catalog from "@/data/nf-core-modules.json";
 import samplesheetSchema from "@/data/samplesheet-schema.json";
 import { referenceCounts, scriptModuleViews, summarizeNotebook } from "@/features/notebook/library";
+import { patchModuleEnv } from "@/features/notebook/env";
 import { buildScriptModule } from "@/features/notebook/publish";
 import { simulateCells, simulateTryRun, withSampleValues } from "@/features/notebook/simulate";
 import { languageForKernel, type NotebookDoc } from "@/features/notebook/types";
@@ -142,17 +143,37 @@ export const handlers = [
     return HttpResponse.json(record);
   }),
 
+  http.put("/api/script-modules/:scope/:notebookId/:version", async ({ params, request }) => {
+    const id = `${params.scope}/${params.notebookId}/${params.version}`;
+    const current = readDb().scriptModules[id];
+    if (!current) return HttpResponse.json({ message: "模块不存在" }, { status: 404 });
+    const body = (await request.json()) as { condaYaml?: string; containerImage?: string };
+    try {
+      const next = patchModuleEnv(current, body);
+      writeDb((db) => {
+        db.scriptModules[id] = next;
+      });
+      const saved = readDb();
+      const view = scriptModuleViews([next], Object.values(saved.notebooks), Object.values(saved.revisions), Object.values(saved.workflows))[0];
+      return HttpResponse.json(view);
+    } catch (error) {
+      return HttpResponse.json({ message: error instanceof Error ? error.message : "无法保存环境" }, { status: 400 });
+    }
+  }),
+
   http.post("/api/notebooks/:id/publish", async ({ params, request }) => {
     const id = params.id as string;
     const doc = readDb().notebooks[id];
     if (!doc) return HttpResponse.json({ message: "笔记本不存在" }, { status: 404 });
-    const body = (await request.json()) as { name?: string; description?: string; changelog?: string };
+    const body = (await request.json()) as { name?: string; description?: string; changelog?: string; condaYaml?: string; containerImage?: string };
     try {
       const moduleDef = buildScriptModule({
         notebook: doc,
         name: body.name || doc.name,
         description: body.description || doc.description,
         changelog: body.changelog,
+        condaYaml: body.condaYaml,
+        containerImage: body.containerImage,
         existing: Object.values(readDb().scriptModules),
         receipt: readDb().tryRuns[`${id}:${doc.rev}`],
       });

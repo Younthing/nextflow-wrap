@@ -71,8 +71,12 @@ export interface ModuleDef {
   command?: string;
   /** Generated script. The canvas never shows this; Nextflow calls it. */
   script?: string;
-  /** Kernel label copied from the source notebook, for example `py311-pandas`. */
+  /** Kernel id copied from the source notebook. It does not set process `conda` or `container`. */
   kernel?: string;
+  /** Conda environment yaml path for the process `conda` directive. Hand-filled, not taken from the kernel. */
+  condaYaml?: string;
+  /** Container image for the process `container` directive. Hand-filled, not taken from the kernel. */
+  containerImage?: string;
   /** Free-text note saved with this published version. */
   changelog?: string;
 }

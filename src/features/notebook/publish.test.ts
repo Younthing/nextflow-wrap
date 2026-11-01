@@ -49,6 +49,34 @@ describe("publish", () => {
     expect(mod.inputs.some((port) => port.name === "samplesheet" && !port.widget)).toBe(true);
     expect(mod.outputs[0]?.name).toBe("hello");
     expect(mod.script).toContain("请勿手改");
+    expect(mod.condaYaml).toBeUndefined();
+    expect(mod.containerImage).toBeUndefined();
+    expect(mod.kernel).toBe(notebook.kernel);
+  });
+
+  it("stores hand-filled conda and container without copying them from the kernel", () => {
+    const notebook = demoNotebooks().find((doc) => doc.id === "qc_summary")!;
+    const mod = buildScriptModule({
+      notebook,
+      name: "qc_summary",
+      description: notebook.description,
+      condaYaml: "/envs/py311-pandas.yml",
+      containerImage: "ghcr.io/org/py311-pandas:1.2",
+      existing: [],
+      receipt: passed(notebook.id, notebook.rev),
+    });
+    expect(mod.kernel).toBe("py311-pandas");
+    expect(mod.condaYaml).toBe("/envs/py311-pandas.yml");
+    expect(mod.containerImage).toBe("ghcr.io/org/py311-pandas:1.2");
+    expect(mod.container).toBeUndefined();
+    expect(() => buildScriptModule({
+      notebook,
+      name: "qc_summary",
+      description: notebook.description,
+      condaYaml: "/envs/a\n.yml",
+      existing: [],
+      receipt: passed(notebook.id, notebook.rev),
+    })).toThrow(/换行/);
   });
 });
 
