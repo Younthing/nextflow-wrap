@@ -91,7 +91,6 @@ const DESIGN: PortSample = {
   files: [{ name: "design.csv", text: "sample,condition\nS1,treated\nS2,control\n" }],
 };
 
-const SAMPLE_CATALOG = [FASTQC_PAIR, SAMPLESHEET, COUNTS, DESIGN];
 
 export const SOURCE_LABEL: Record<InputSource, string> = {
   upload: "上传",
@@ -132,10 +131,6 @@ export function samplesForInput(input: MarkerInput): PortSample[] {
   return [];
 }
 
-export function sampleById(id: string): PortSample | undefined {
-  return SAMPLE_CATALOG.find((sample) => sample.id === id);
-}
-
 export function bindingLine(port: string, source: InputSource, label: string): string {
   return `输入 ${port} · ${SOURCE_LABEL[source]} · ${label}`;
 }
@@ -173,7 +168,7 @@ export function draftToBinding(input: MarkerInput, draft: InputDraft): PortBindi
 
 export function previewBinding(input: MarkerInput, draft: InputDraft): { ok: true; line: string } | { ok: false; message: string } {
   try {
-    const plan = planTryRunInputs([input], {}, undefined, [draftToBinding(input, draft)]);
+    const plan = planTryRunInputs([input], [draftToBinding(input, draft)]);
     return { ok: true, line: plan.lines[0] ?? bindingLine(input.name, draft.source, "") };
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : "无法绑定" };
@@ -221,21 +216,6 @@ function needsValue(input: MarkerInput): boolean {
 
 function listTokens(raw: string): string[] {
   return raw.split(/[\s,]+/).filter(Boolean);
-}
-
-function sameList(left: string, right: string): boolean {
-  return listTokens(left).join(",") === listTokens(right).join(",");
-}
-
-function legacyRequests(inputs: MarkerInput[], values: Record<string, string>, sampleId?: string): PortBindingRequest[] {
-  return inputs.map((input) => {
-    const raw = values[input.name]?.trim() ?? "";
-    const sample = samplesForInput(input).find((item) => item.id === sampleId);
-    if (sample && (!raw || sameList(raw, sample.value))) {
-      return { port: input.name, source: "sample", value: sample.id };
-    }
-    return { port: input.name, source: "path", value: raw };
-  });
 }
 
 interface ResolveResult {
@@ -306,7 +286,7 @@ function clearerMissing(inputs: MarkerInput[], requests: Map<string, PortBinding
   throw error;
 }
 
-function planRequests(inputs: MarkerInput[], requests: PortBindingRequest[], legacySampleId?: string): InputPlan {
+function planRequests(inputs: MarkerInput[], requests: PortBindingRequest[]): InputPlan {
   const byPort = new Map<string, PortBindingRequest>();
   for (const request of requests) {
     if (byPort.has(request.port)) throw new ConvertError(`重复绑定 ${request.port}`);
@@ -329,17 +309,6 @@ function planRequests(inputs: MarkerInput[], requests: PortBindingRequest[], leg
     lines.push(bindingLine(input.name, request.source, resolved.label));
   }
 
-  if (legacySampleId) {
-    const sample = sampleById(legacySampleId);
-    if (sample) {
-      for (const file of sample.files) {
-        if (used.has(file.name)) continue;
-        claim(used, file.name);
-        files.push({ name: file.name, bytes: textBytes(file.text) });
-      }
-    }
-  }
-
   const total = files.reduce((sum, file) => sum + file.bytes.byteLength, 0);
   if (total > MAX_UPLOAD_TOTAL_BYTES && requests.some((request) => request.source === "upload")) {
     throw new ConvertError(`上传合计超过 ${bytesLabel(MAX_UPLOAD_TOTAL_BYTES)}`);
@@ -354,16 +323,7 @@ function planRequests(inputs: MarkerInput[], requests: PortBindingRequest[], leg
   return { values, lines, records, files, paths };
 }
 
-/**
- * Turn per-port bindings into CLI values and files to stage.
- * Without bindings, string args stay path bindings, and a legacy sample id selects a matching port.
- */
-export function planTryRunInputs(
-  inputs: MarkerInput[],
-  values: Record<string, string> = {},
-  sampleId?: string,
-  bindings?: PortBindingRequest[],
-): InputPlan {
-  if (bindings?.length) return planRequests(inputs, bindings);
-  return planRequests(inputs, legacyRequests(inputs, values, sampleId), sampleId);
+/** Turn per-port bindings into CLI values and files to stage. An unbound port is an empty path. */
+export function planTryRunInputs(inputs: MarkerInput[], bindings: PortBindingRequest[] = []): InputPlan {
+  return planRequests(inputs, bindings);
 }

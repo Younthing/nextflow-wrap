@@ -89,24 +89,18 @@ export function useTryRunNotebook() {
   return useMutation({
     mutationFn: ({
       id,
-      args,
-      sampleId,
       bindings,
       condaYaml,
       containerImage,
     }: {
       id: string;
-      args?: Record<string, string>;
-      sampleId?: string;
-      bindings?: PortBindingRequest[];
+      bindings: PortBindingRequest[];
       condaYaml?: string;
       containerImage?: string;
     }) =>
       api<TryRunRecord>(`/notebooks/${id}/try-run`, {
         method: "POST",
         body: JSON.stringify({
-          args: bindings?.length ? undefined : args,
-          sampleId: bindings?.length ? undefined : sampleId,
           bindings,
           condaYaml,
           containerImage,

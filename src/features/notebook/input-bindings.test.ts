@@ -53,7 +53,7 @@ describe("planTryRunInputs", () => {
 
   it("keeps upload, path, and sample on the ports that chose them", () => {
     const csv = Buffer.from("sample,fastq_1\nS1,a.fq\n").toString("base64");
-    const plan = planTryRunInputs(ports, {}, undefined, [
+    const plan = planTryRunInputs(ports, [
       { port: "fastq_zip", source: "sample", value: "fastqc-pair" },
       { port: "samplesheet", source: "upload", files: [{ name: "../mine.csv", contentBase64: csv }] },
       { port: "min_q", source: "path", value: "30" },
@@ -72,16 +72,16 @@ describe("planTryRunInputs", () => {
   });
 
   it("rejects a value port upload, a missing file, and a duplicated name", () => {
-    expect(() => planTryRunInputs([input("title", "str", { required: false })], {}, undefined, [
+    expect(() => planTryRunInputs([input("title", "str", { required: false })], [
       { port: "title", source: "upload", files: [{ name: "a.txt", contentBase64: "YQ==" }] },
     ])).toThrow(/不能上传文件/);
-    expect(() => planTryRunInputs([input("samplesheet", "path")], {}, undefined, [
+    expect(() => planTryRunInputs([input("samplesheet", "path")], [
       { port: "samplesheet", source: "upload", files: [] },
     ])).toThrow(/还没有上传文件/);
-    expect(() => planTryRunInputs([input("samplesheet", "path")], {}, undefined, [
+    expect(() => planTryRunInputs([input("samplesheet", "path")], [
       { port: "samplesheet", source: "sample", value: "fastqc-pair" },
     ])).toThrow(/没有样例/);
-    expect(() => planTryRunInputs([input("reads", "path[]")], {}, undefined, [
+    expect(() => planTryRunInputs([input("reads", "path[]")], [
       {
         port: "reads",
         source: "upload",
@@ -99,16 +99,10 @@ describe("planTryRunInputs", () => {
     expect(() => decodeUpload("!!!!", "reads")).toThrow(/无效/);
   });
 
-  it("maps a legacy sample id onto the matching port and still names the other args as paths", () => {
-    const plan = planTryRunInputs([ports[0]!, ports[2]!, ports[3]!], {
-      fastq_zip: "S1_fastq.zip,S2_fastq.zip",
-      min_q: "30",
-      title: "QC 汇总",
-    }, "fastqc-pair");
-    expect(plan.records.find((record) => record.port === "fastq_zip")?.source).toBe("sample");
-    expect(plan.records.find((record) => record.port === "title")?.source).toBe("path");
-    expect(plan.files.map((file) => file.name)).toEqual(["S1_fastq.zip", "S2_fastq.zip"]);
-    expect(plan.values.samplesheet).toBeUndefined();
+  it("leaves an unbound port as an empty path", () => {
+    const plan = planTryRunInputs([input("title", "str", { required: false })]);
+    expect(plan.records).toEqual([{ port: "title", source: "path", label: "（空）" }]);
+    expect(plan.values).toEqual({});
   });
 });
 
@@ -120,7 +114,7 @@ describe("stageInputPlan", () => {
     const csvPath = join(dir, "sheet.csv");
     await writeFile(csvPath, "sample,fastq_1\nUp,a.fq\n");
     try {
-      const plan = planTryRunInputs([input("samplesheet", "path")], {}, undefined, [
+      const plan = planTryRunInputs([input("samplesheet", "path")], [
         { port: "samplesheet", source: "path", value: csvPath },
       ]);
       const staged = await stageInputPlan(work, plan, ["hello.py"]);
@@ -139,7 +133,7 @@ describe("stageInputPlan", () => {
   it("leaves a missing path as the typed string", async () => {
     const work = await mkdtemp(join(tmpdir(), "nb-miss-"));
     try {
-      const plan = planTryRunInputs([input("samplesheet", "path")], {}, undefined, [
+      const plan = planTryRunInputs([input("samplesheet", "path")], [
         { port: "samplesheet", source: "path", value: "missing.csv" },
       ]);
       const staged = await stageInputPlan(work, plan);
@@ -154,9 +148,7 @@ describe("stageInputPlan", () => {
 describe("simulateTryRun bindings", () => {
   it("names each port source in the demo log", () => {
     const hello = demoNotebooks().find((doc) => doc.id === "hello_py")!;
-    const record = simulateTryRun(hello, {}, undefined, {
-      bindings: [{ port: "samplesheet", source: "sample", value: "samplesheet" }],
-    });
+    const record = simulateTryRun(hello, [{ port: "samplesheet", source: "sample", value: "samplesheet" }]);
     expect(record.passed).toBe(true);
     expect(record.log).toContain("输入 samplesheet · 样例 · 内置样例：samplesheet.csv");
     expect(record.bindings).toEqual([

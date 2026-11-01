@@ -35,8 +35,6 @@ export interface TryRunExecOptions {
   tools?: TryRunTools;
   cacheDir?: string;
   run?: typeof runCommand;
-  /** Per-port upload / path / sample bindings. When set, values and sampleId are ignored. */
-  bindings?: PortBindingRequest[];
 }
 
 interface LaunchStep {
@@ -115,8 +113,7 @@ async function collectOutputs(dir: string, converted: ConvertedNotebook): Promis
 
 export async function executeTryRun(
   notebook: NotebookDoc,
-  values: Record<string, string>,
-  sampleId?: string,
+  bindings: PortBindingRequest[],
   envInput?: ModuleEnvPatch,
   options: TryRunExecOptions = {},
 ): Promise<TryRunRecord> {
@@ -128,7 +125,7 @@ export async function executeTryRun(
   const run = options.run ?? runCommand;
   let planned: InputPlan;
   try {
-    planned = planTryRunInputs(converted.inputs, values, sampleId, options.bindings);
+    planned = planTryRunInputs(converted.inputs, bindings);
   } catch (error) {
     return refusedRecord(notebook, converted, env, started, error instanceof Error ? error.message : "无法准备输入");
   }

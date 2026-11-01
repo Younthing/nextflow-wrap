@@ -8,7 +8,7 @@ import { PercentError } from "@/features/notebook/jupytext";
 import { referenceCounts, scriptModuleViews, summarizeNotebook } from "@/features/notebook/library";
 import { notebookFromLibrary, storedLibraryCopy } from "@/features/notebook/library-copy";
 import { publishScriptModule } from "@/features/notebook/publish";
-import { simulateCells, simulateTryRun, withSampleValues } from "@/features/notebook/simulate";
+import { simulateCells, simulateTryRun } from "@/features/notebook/simulate";
 import { languageForKernel, type NotebookDoc } from "@/features/notebook/types";
 import { newId } from "@/features/workflow/nodes";
 import { commitWorkflowPut } from "@/features/workflow/revision";
@@ -165,8 +165,6 @@ export const handlers = [
     const doc = readDb().notebooks[params.id as string];
     if (!doc) return HttpResponse.json({ message: "笔记本不存在" }, { status: 404 });
     const body = (await request.json().catch(() => ({}))) as {
-      args?: Record<string, string>;
-      sampleId?: "fastqc-pair" | "samplesheet";
       bindings?: PortBindingRequest[];
       condaYaml?: string;
       containerImage?: string;
@@ -177,13 +175,7 @@ export const handlers = [
     } catch (error) {
       return HttpResponse.json({ message: error instanceof Error ? error.message : "环境无效" }, { status: 400 });
     }
-    const useBindings = !!body.bindings?.length;
-    const record = simulateTryRun(
-      doc,
-      useBindings ? {} : withSampleValues(body.args ?? {}, body.sampleId),
-      env,
-      { bindings: useBindings ? body.bindings : undefined, sampleId: useBindings ? undefined : body.sampleId },
-    );
+    const record = simulateTryRun(doc, body.bindings ?? [], env);
     writeDb((db) => {
       db.tryRuns[`${doc.id}:${doc.rev}`] = record;
     });

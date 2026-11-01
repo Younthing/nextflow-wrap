@@ -9,9 +9,8 @@ import type { CellRunResult, NotebookDoc, TryRunRecord } from "./types";
 /** Demo-mode try-run. Checks the marker contract and does not execute a kernel. */
 export function simulateTryRun(
   notebook: NotebookDoc,
-  values: Record<string, string>,
+  bindings: PortBindingRequest[],
   envInput?: ModuleEnvPatch,
-  input?: { bindings?: PortBindingRequest[]; sampleId?: string },
 ): TryRunRecord {
   const converted = convertNotebook(notebook);
   const env = readModuleEnv(envInput ?? {});
@@ -19,7 +18,7 @@ export function simulateTryRun(
   let argError = "";
   let planned: InputPlan | undefined;
   try {
-    planned = planTryRunInputs(converted.inputs, values, input?.sampleId, input?.bindings);
+    planned = planTryRunInputs(converted.inputs, bindings);
     argv = tryRunArgv(converted.inputs, planned.values);
   } catch (error) {
     argError = error instanceof Error ? error.message : "参数不完整";
@@ -61,11 +60,4 @@ export function simulateCells(notebook: NotebookDoc, cellId?: string): CellRunRe
       outputs: [{ outputType: "stream", name: "stdout", text: stdout }],
     });
   });
-}
-
-export function withSampleValues(values: Record<string, string>, sampleId: string | undefined): Record<string, string> {
-  const next = { ...values };
-  if (sampleId === "fastqc-pair" && !next.fastq_zip?.trim()) next.fastq_zip = "S1_fastq.zip,S2_fastq.zip";
-  if (sampleId === "samplesheet" && !next.samplesheet?.trim()) next.samplesheet = "samplesheet.csv";
-  return next;
 }

@@ -3,8 +3,6 @@ import { htmlHasContent, sanitizeHtml } from "./html-sanitize";
 import { imageMimeDataUrl, svgMarkupToDataUrl } from "./images";
 import { OUTPUT_MIME_ORDER, type CellMimeBundle, type OutputMimeType } from "./types";
 
-export type MimePlan = OutputView;
-
 function imageAlt(data: CellMimeBundle): string {
   const plain = data["text/plain"]?.replace(/\s+/g, " ").trim();
   if (plain && plain.length <= 120) return plain;

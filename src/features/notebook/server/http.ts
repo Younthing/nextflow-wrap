@@ -9,7 +9,6 @@ import { publishScriptModule } from "@/features/notebook/publish";
 import { demoLibraryCopies, demoNotebooks, demoRevisions, demoScriptModules } from "@/features/notebook/seed";
 import { executeCells, executeTryRun } from "@/features/notebook/execute";
 import { referenceCounts, scriptModuleViews, summarizeNotebook } from "@/features/notebook/library";
-import { withSampleValues } from "@/features/notebook/simulate";
 import { languageForKernel, type NotebookDoc } from "@/features/notebook/types";
 import { HttpError } from "@/features/runs/server/service";
 import type { StudioStore } from "@/lib/server/database";
@@ -49,8 +48,6 @@ const bindingSchema = z.object({
 });
 
 const trySchema = z.object({
-  args: z.record(z.string().regex(/^[A-Za-z_][\w]*$/), z.string().max(4000)).optional(),
-  sampleId: z.enum(["fastqc-pair", "samplesheet"]).optional(),
   bindings: z.array(bindingSchema).max(40).optional(),
   condaYaml: envField.optional(),
   containerImage: envField.optional(),
@@ -223,14 +220,10 @@ export async function handleNotebookApi(method: string, path: string[], request:
   if (action === "try-run" && method === "POST") {
     const notebook = requireNotebook(db, id);
     const body = trySchema.parse(await request.json().catch(() => ({})));
-    const useBindings = !!body.bindings?.length;
-    const values = useBindings ? {} : withSampleValues(body.args ?? {}, body.sampleId);
     try {
-      const record = await executeTryRun(notebook, values, useBindings ? undefined : body.sampleId, {
+      const record = await executeTryRun(notebook, body.bindings ?? [], {
         condaYaml: body.condaYaml,
         containerImage: body.containerImage,
-      }, {
-        bindings: useBindings ? body.bindings : undefined,
       });
       db.saveTryRun(record);
       return json(record);

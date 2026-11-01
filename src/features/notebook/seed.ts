@@ -1,5 +1,4 @@
 import type { ModuleDef } from "@/features/workflow/types";
-import { countCellChanges } from "./changes";
 import { convertNotebook, inputPorts, outputPorts } from "./convert";
 import { buildLibraryCopy, type ModuleLibraryCopy } from "./library-copy";
 import { processName } from "./publish";
@@ -295,10 +294,4 @@ export function demoLibraryCopies(
       savedAt: revision?.savedAt ?? notebook.updatedAt,
     })];
   });
-}
-
-export function qcPinnedCellChanges(notebooks = demoNotebooks(), revisions = demoRevisions(notebooks)): number {
-  const latest = notebooks.find((doc) => doc.id === "qc_summary")!;
-  const pinned = revisions.find((rev) => rev.notebookId === "qc_summary" && rev.rev === 12)!;
-  return countCellChanges(pinned.cells, latest.cells);
 }
