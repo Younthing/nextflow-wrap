@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { convertNotebook, scriptFileName, tryRunArgv, tryRunCommand } from "./convert";
+import { createNode } from "@/features/workflow/nodes";
+import type { ModuleDef } from "@/features/workflow/types";
+import { convertNotebook, inputPorts, scriptFileName, tryRunArgv, tryRunCommand } from "./convert";
 import { countCellChanges } from "./changes";
 import { demoNotebooks, demoRevisions } from "./seed";
 import type { NotebookDoc } from "./types";
@@ -46,6 +48,14 @@ describe("convertNotebook", () => {
     };
     expect(ports.inputs.find((input) => input.name === "min_q")?.type).toBe("int");
     expect(converted.script.startsWith("#!/usr/bin/env python3")).toBe(true);
+  });
+
+  it("starts canvas widgets at the notebook's declared defaults", () => {
+    const inputs = inputPorts(convertNotebook(qc()).inputs);
+    expect(inputs.find((port) => port.name === "min_q")).toMatchObject({ widget: "integer", default: 30 });
+    expect(inputs.find((port) => port.name === "title")).toMatchObject({ widget: "string", default: "QC 汇总" });
+    const def = { id: "script/qc_summary/v1", process: "QC_SUMMARY", inputs, outputs: [] } as unknown as ModuleDef;
+    expect(createNode(def, { x: 0, y: 0 }, []).data.widgets).toEqual({ min_q: 30, title: "QC 汇总" });
   });
 
   it("rejects a missing output pattern", () => {

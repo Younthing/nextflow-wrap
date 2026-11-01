@@ -21,6 +21,8 @@ export interface PortDef {
   collect?: boolean;
   /** Value-only inputs render as an inline widget instead of a socket. */
   widget?: string;
+  /** Initial widget value on a new node, such as a notebook input's declared default. */
+  default?: WidgetValue;
 }
 
 export interface ToolInfo {

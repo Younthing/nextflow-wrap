@@ -136,6 +136,15 @@ runner 启动时写入一个内置示例流程（host-chain：用本机 shell �
 pnpm smoke:runner # 幂等提交 → 实时任务 → 成功/下载 → 缓存续跑 → 运行中取消 → 缺失输入失败
 ```
 
+### 端到端验收（Playwright）
+
+`pnpm build:real && pnpm test:e2e` 启动真实 runner 和 web，用浏览器走完整闭环：
+
+- `e2e/user-path.spec.ts`：Python 和 R 笔记本出图、发布、画布运行、源改动提示、发布 v2 后从原运行恢复命中缓存。
+- `e2e/single-cell.spec.ts`：两本 scanpy 笔记本（质控、聚类）在常驻 Jupyter 内核里逐格运行，用本机 Python 试跑后发布；画布上把「参考文件」接到质控、再接到聚类，用 Shell 运行时跑真实 Nextflow，结果页显示 UMAP 和 marker 表。数据由 `scripts/make-pbmc-demo.py` 准备：优先 `PBMC3K_H5AD` 指向的文件，其次下载 10x PBMC 3k，都不可用时生成确定性的合成 PBMC 计数。
+
+需要 `python3 -m pip install ipykernel matplotlib scanpy igraph leidenalg`，R 部分另需 `Rscript`。runner 首次运行要从 Nextflow 插件仓库下载 `nf-weblog@1.2.0`。
+
 ### Codex harness
 
 `src/features/codex-harness` 用本机 `codex app-server` 的 stdio JSON-RPC 开一个会话，方便以后用已经 `codex login` 的订阅驱动助手。认证留在 `~/.codex`，代码不读取 token。没有安装 CLI 时 `pnpm test` 仍通过（测试使用假的 stdio）。对真实登录跑一轮：

@@ -27,7 +27,8 @@ import {
 import { condaCachePrefix, condaFileProblem, discoverTryRunTools } from "./try-run-tools";
 import type { CellRunResult, ConvertedNotebook, NotebookDoc, NotebookRunResult, TryRunOutput, TryRunRecord } from "./types";
 
-const HOST_TIMEOUT_MS = 20_000;
+// Single-cell steps such as clustering take minutes on real data; a few seconds is too short.
+const HOST_TIMEOUT_MS = 10 * 60_000;
 const ENV_TIMEOUT_MS = 10 * 60_000;
 
 const inDir = (dir: string, name: string) => join(/* turbopackIgnore: true */ dir, name);
@@ -347,7 +348,7 @@ export async function executeCells(notebook: NotebookDoc, cellId?: string): Prom
     await writeFile(inDir(dir, "driver.py"), CELL_DRIVER);
     let failure = "";
     try {
-      await runCommand("python3", ["driver.py"], { cwd: dir, timeoutMs: 20_000, quiet: true });
+      await runCommand("python3", ["driver.py"], { cwd: dir, timeoutMs: HOST_TIMEOUT_MS, quiet: true });
     } catch (error) {
       failure = failureText(error);
     }
