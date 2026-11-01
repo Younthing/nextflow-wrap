@@ -24,9 +24,9 @@ describe("shell launch", () => {
   });
 
   it("keeps an extra profile without naming shell", () => {
-    const config = { ...defaultLaunchConfig(), engine: "shell" as const, extraProfiles: ["test", "debug"] };
-    expect(profileList(config)).toBe("test,debug");
-    expect(launchCommand(config)).toContain("-profile test,debug");
+    const config = { ...defaultLaunchConfig(), engine: "shell" as const, extraProfiles: ["gpu", "debug"] };
+    expect(profileList(config)).toBe("gpu,debug");
+    expect(launchCommand(config)).toContain("-profile gpu,debug");
     expect(launchCommand(config)).not.toContain("shell");
   });
 

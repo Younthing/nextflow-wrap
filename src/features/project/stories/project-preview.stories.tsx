@@ -1,16 +1,26 @@
 import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 
-import catalog from "@/data/nf-core-modules.json";
+import { demoScriptModules } from "@/features/notebook/seed";
+import { REFERENCE_ID } from "@/features/workflow/builtins";
 import { indexModules } from "@/features/workflow/catalog";
-import { demoRnaseqWorkflow } from "@/features/workflow/demo";
-import type { ModuleCatalog } from "@/features/workflow/types";
+import { emptyWorkflow } from "@/features/workflow/document";
+import type { WorkflowDoc } from "@/features/workflow/types";
 import { CodeViewer } from "../components/code-viewer";
 import { ProjectPreview } from "../components/project-preview";
 import { generateProject } from "../generate";
 import { defaultLaunchConfig, renderRunConfig } from "../launch";
 
-const typed = catalog as ModuleCatalog;
-const project = generateProject(demoRnaseqWorkflow("wf_story"), indexModules(typed.modules), { modulesSha: typed.gitSha });
+const hello = demoScriptModules().find((def) => def.id === "script/hello_py/v2")!;
+const workflow: WorkflowDoc = {
+  ...emptyWorkflow("wf_story", "Hello"),
+  params: { sheet: "data/samplesheet.csv", outdir: "results" },
+  nodes: [
+    { id: "sheet", position: { x: 0, y: 0 }, data: { moduleId: REFERENCE_ID, alias: "SHEET", widgets: {}, config: {}, settings: { param: "sheet", format: "other" } } },
+    { id: "hello", position: { x: 320, y: 0 }, data: { moduleId: hello.id, alias: "HELLO", widgets: {}, config: { publish: true } } },
+  ],
+  edges: [{ id: "e1", source: "sheet", sourceHandle: "out:file", target: "hello", targetHandle: "in:samplesheet" }],
+};
+const project = generateProject(workflow, indexModules([hello]));
 const file = (path: string) => project.files.find((f) => f.path === path)!;
 
 const meta = {
@@ -21,11 +31,15 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const FileBrowser: Story = {
-  render: () => <ProjectPreview files={project.files} components={project.components} className="h-[640px]" />,
+  render: () => <ProjectPreview files={project.files} className="h-[640px]" />,
 };
 
-export const WorkflowScript: Story = {
-  render: () => <CodeViewer code={file("workflows/rnaseq.nf").content} language="groovy" className="h-[640px]" />,
+export const MainScript: Story = {
+  render: () => <CodeViewer code={file("main.nf").content} language="groovy" className="h-[640px]" />,
+};
+
+export const LocalModule: Story = {
+  render: () => <CodeViewer code={file(`modules/local/${hello.path}/main.nf`).content} language="groovy" className="h-[640px]" />,
 };
 
 export const GoogleBatchRunConfig: Story = {

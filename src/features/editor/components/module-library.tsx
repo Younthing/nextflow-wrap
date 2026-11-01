@@ -6,14 +6,13 @@ import { ChevronRight } from "lucide-react";
 
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { SearchField } from "@/components/ui/search-field";
-import { Switch } from "@/components/ui/switch";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { groupByCategory, searchModules } from "@/features/workflow/catalog";
-import { moduleListLabel, moduleOrigin, modulesForDrawer } from "@/features/workflow/origin";
+import { modulesForDrawer } from "@/features/workflow/origin";
 import type { ModuleDef } from "@/features/workflow/types";
 import { cn } from "@/lib/utils";
 import { useShortcutLabels } from "@/lib/use-action-shortcuts";
@@ -49,7 +48,7 @@ function LibraryItem({
             className="size-1.5 shrink-0 rounded-full"
             style={{ background: categoryColor(def.category) }}
           />
-          <span className="truncate font-mono text-xs">{moduleListLabel(def)}</span>
+          <span className="truncate font-mono text-xs">{def.name}</span>
           {def.version && <span className="ml-auto text-[10px] text-muted-foreground">{def.version}</span>}
         </button>
       </TooltipTrigger>
@@ -109,32 +108,17 @@ function Groups({
 
 export function ModuleLibrary({
   modules,
-  syncedAt,
   onAdd,
   className,
-  showNfCore,
-  onShowNfCoreChange,
 }: {
   modules: ModuleDef[];
-  syncedAt?: string;
   onAdd: (def: ModuleDef) => void;
   className?: string;
-  showNfCore?: boolean;
-  onShowNfCoreChange?: (value: boolean) => void;
 }) {
   const [query, setQuery] = React.useState("");
   const [collapsed, setCollapsed] = React.useState<Set<string>>(new Set(["通道"]));
-  const [openedNf, setOpenedNf] = React.useState<Set<string>>(new Set());
-  const [uncontrolledNf, setUncontrolledNf] = React.useState(false);
-  const nfOpen = showNfCore ?? uncontrolledNf;
-  const setNfOpen = onShowNfCoreChange ?? setUncontrolledNf;
   const searchKeys = useShortcutLabels(EDITOR_ACTIONS.search.shortcut);
-  const visible = React.useMemo(() => modulesForDrawer(modules, false), [modules]);
-  const nfCore = React.useMemo(
-    () => modules.filter((def) => moduleOrigin(def) === "nf-core"),
-    [modules],
-  );
-  const hiddenMatch = query.trim() !== "" && !nfOpen && searchModules(nfCore, query).length > 0;
+  const visible = React.useMemo(() => modulesForDrawer(modules), [modules]);
 
   return (
     <aside
@@ -167,33 +151,6 @@ export function ModuleLibrary({
               })
             }
           />
-          {hiddenMatch && (
-            <p className="px-2 py-2 text-[11px] text-muted-foreground">nf-core 里有匹配。打开下面的「显示 nf-core」。</p>
-          )}
-          <div className="mt-2 border-t border-border pt-2">
-            <div className="flex items-center gap-2 px-1 py-1 text-xs text-muted-foreground">
-              <ChevronRight className={cn("size-3.5", nfOpen && "rotate-90")} />
-              <span className="flex-1">nf-core · {nfCore.length} · 只读</span>
-              <Switch checked={nfOpen} onCheckedChange={setNfOpen} aria-label="显示 nf-core" />
-            </div>
-            {nfOpen && (
-              <Groups
-                modules={nfCore}
-                query={query}
-                collapsed={new Set(nfCore.map((def) => def.category).filter((category) => !openedNf.has(category)))}
-                onAdd={onAdd}
-                onToggle={(category) =>
-                  setOpenedNf((prev) => {
-                    const next = new Set(prev);
-                    if (next.has(category)) next.delete(category);
-                    else next.add(category);
-                    return next;
-                  })
-                }
-              />
-            )}
-            {nfOpen && syncedAt && <p className="px-2 py-1 text-[11px] text-muted-foreground">目录只读，同步于 {syncedAt}</p>}
-          </div>
         </div>
       </ScrollArea>
       <div className="border-t border-border px-3 py-2 text-[11px] text-muted-foreground">

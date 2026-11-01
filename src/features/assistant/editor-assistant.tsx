@@ -91,7 +91,7 @@ function EditorTools({ onCanvasChange }: { onCanvasChange: () => void }) {
       parameters: z.object({
         moduleId: z
           .string()
-          .describe("模块 id，例如 nf-core/fastqc 或 builtin/samplesheet"),
+          .describe("模块 id，例如 script/scanpy_qc/v1 或 builtin/samplesheet"),
         after: z.string().optional().describe("放在这个节点（id 或别名）右边"),
         alias: z.string().optional().describe("自定义别名，大写字母和下划线"),
       }),

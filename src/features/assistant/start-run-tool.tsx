@@ -174,7 +174,7 @@ async function startRun(
 
 function snapshot(
   health: HealthStatus | undefined,
-  catalog: { index: ModuleIndex; gitSha: string; error?: string },
+  catalog: { index: ModuleIndex; error?: string },
   store: EditorStore,
 ): StartRunPlan {
   const state = store.getState();
@@ -182,7 +182,6 @@ function snapshot(
     docId: state.docId,
     doc: state.toDoc(),
     index: catalog.index,
-    modulesSha: catalog.gitSha,
     config: readLaunchConfig(state.docId),
     real: !!health && !health.mocked,
     runnerReady: !!health?.runnerReady,

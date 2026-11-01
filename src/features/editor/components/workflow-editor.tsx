@@ -8,8 +8,6 @@ import { PanelLoading, PanelNotice } from "@/components/ui/panel-notice";
 import { Button } from "@/components/ui/button";
 import { EditorAssistant } from "@/features/assistant/editor-assistant";
 import { RunDialog } from "@/features/runs/components/run-dialog";
-import { useScriptModules } from "@/features/notebook/queries";
-import { indexModules } from "@/features/workflow/catalog";
 import { BUILTIN_MODULES } from "@/features/workflow/builtins";
 import { modulesForDrawer } from "@/features/workflow/origin";
 import { useModuleCatalog, useWorkflow } from "@/features/workflow/queries";
@@ -50,9 +48,7 @@ function BackToLibrary() {
 
 function Editor({ workflowId }: { workflowId: string }) {
   const catalog = useModuleCatalog();
-  const scripts = useScriptModules();
   const workflow = useWorkflow(workflowId);
-  const [showNfCore, setShowNfCore] = React.useState(false);
   const { fitView, screenToFlowPosition } = useReactFlow();
   const canvasRef = React.useRef<HTMLDivElement>(null);
   const [search, setSearch] = React.useState<SearchRequest | null>(null);
@@ -69,8 +65,8 @@ function Editor({ workflowId }: { workflowId: string }) {
 
   React.useEffect(() => {
     if (!catalog.data) return;
-    store.getState().setIndex(indexModules([...(catalog.data.modules), ...(scripts.data?.modules ?? [])]));
-  }, [catalog.data, scripts.data, store]);
+    store.getState().setIndex(catalog.data.index);
+  }, [catalog.data, store]);
 
   React.useEffect(() => {
     const doc = workflow.data;
@@ -154,12 +150,12 @@ function Editor({ workflowId }: { workflowId: string }) {
   );
 
   const modules = React.useMemo(
-    () => [...BUILTIN_MODULES, ...(scripts.data?.modules ?? []), ...(catalog.data?.modules ?? [])],
-    [catalog.data, scripts.data],
+    () => [...BUILTIN_MODULES, ...(catalog.data?.modules ?? [])],
+    [catalog.data],
   );
   const searchable = React.useMemo(
-    () => modulesForDrawer(modules, showNfCore),
-    [modules, showNfCore],
+    () => modulesForDrawer(modules),
+    [modules],
   );
 
   // Keep nodes the assistant adds in view.
@@ -209,12 +205,12 @@ function Editor({ workflowId }: { workflowId: string }) {
     setSearch(null);
   };
 
-  if (catalog.isPending || scripts.isPending || workflow.isPending)
+  if (catalog.isPending || workflow.isPending)
     return <PanelLoading message="加载模块库和流程…" />;
-  if (catalog.isError || scripts.isError || workflow.isError) {
+  if (catalog.isError || workflow.isError) {
     return (
       <PanelNotice
-        message={`加载失败：${(catalog.error ?? scripts.error ?? workflow.error)?.message}`}
+        message={`加载失败：${(catalog.error ?? workflow.error)?.message}`}
         tone="danger"
       >
         <BackToLibrary />
@@ -235,10 +231,7 @@ function Editor({ workflowId }: { workflowId: string }) {
     <div className="flex size-full gap-3">
       <ModuleLibrary
         modules={modules}
-        syncedAt={catalog.data?.syncedAt}
         onAdd={addAtCenter}
-        showNfCore={showNfCore}
-        onShowNfCoreChange={setShowNfCore}
         className="w-60 shrink-0"
       />
       <div className="flex min-w-0 flex-1 flex-col gap-3">
@@ -282,7 +275,6 @@ function Editor({ workflowId }: { workflowId: string }) {
         open={runOpen}
         onOpenChange={setRunOpen}
         issues={issues}
-        modulesSha={catalog.data?.gitSha ?? ""}
       />
       <EditorAssistant onCanvasChange={onAssistantChange} />
     </div>

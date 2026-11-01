@@ -95,7 +95,7 @@ export function scriptModuleViews(
       const sourceChanged = !!notebook && mod.sourceNotebookRev !== undefined && notebook.rev !== mod.sourceNotebookRev;
       return {
         ...mod,
-        sourceNotebookName: notebook?.name ?? "源笔记本已删除",
+        sourceNotebookName: notebook?.name ?? (mod.sourceNotebookId ? "源笔记本已删除" : "示例模块"),
         sourceNotebookRevCurrent: notebook?.rev,
         sourceChanged,
         cellChanges,

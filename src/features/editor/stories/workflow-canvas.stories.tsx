@@ -5,6 +5,7 @@ import { useStoreApi } from "@xyflow/react";
 
 import { SAMPLESHEET_ID } from "@/features/workflow/builtins";
 import { emptyWorkflow } from "@/features/workflow/document";
+import { EXAMPLE_FASTQ_QC_ID, EXAMPLE_REPORT_ID } from "@/features/workflow/example-modules";
 import type { WorkflowDoc } from "@/features/workflow/types";
 import { WorkflowCanvas } from "../components/workflow-canvas";
 import { useEditorStoreApi } from "../editor-provider";
@@ -20,9 +21,9 @@ function textWidgetWorkflow(): WorkflowDoc {
         id: "widget",
         position: { x: 80, y: 80 },
         data: {
-          moduleId: "nf-core/hisat2/build",
-          alias: "HISAT2",
-          widgets: { hisat2_memory_input: "12" },
+          moduleId: EXAMPLE_REPORT_ID,
+          alias: "SUMMARY_REPORT",
+          widgets: { title: "12" },
           config: {},
         },
       },
@@ -447,8 +448,8 @@ function linkedPair(): WorkflowDoc {
         id: "drop",
         position: { x: 420, y: 80 },
         data: {
-          moduleId: "nf-core/fastqc",
-          alias: "FASTQC",
+          moduleId: EXAMPLE_FASTQ_QC_ID,
+          alias: "FASTQ_QC",
           widgets: {},
           config: {},
         },

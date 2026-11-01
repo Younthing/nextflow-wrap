@@ -1,6 +1,5 @@
 import { delay, http, HttpResponse } from "msw";
 
-import catalog from "@/data/nf-core-modules.json";
 import samplesheetSchema from "@/data/samplesheet-schema.json";
 import { patchModuleEnv, readModuleEnv } from "@/features/notebook/env";
 import type { PortBindingRequest } from "@/features/notebook/input-bindings";
@@ -12,7 +11,7 @@ import { simulateCells, simulateTryRun } from "@/features/notebook/simulate";
 import { languageForKernel, type NotebookDoc } from "@/features/notebook/types";
 import { newId } from "@/features/workflow/nodes";
 import { commitWorkflowPut } from "@/features/workflow/revision";
-import type { ModuleCatalog, WorkflowDoc, WorkflowSummary } from "@/features/workflow/types";
+import type { WorkflowDoc, WorkflowSummary } from "@/features/workflow/types";
 import { NEXTFLOW_VERSION } from "@/features/project/templates";
 import type { HealthStatus } from "@/lib/api-types";
 import { readDb, writeDb } from "./db";
@@ -36,11 +35,6 @@ export const handlers = [
       nextflowVersion: NEXTFLOW_VERSION,
       mocked: true,
     });
-  }),
-
-  http.get("/api/modules", async () => {
-    await delay(200);
-    return HttpResponse.json(catalog as ModuleCatalog);
   }),
 
   http.post("/api/script-modules/reopen", async ({ request }) => {

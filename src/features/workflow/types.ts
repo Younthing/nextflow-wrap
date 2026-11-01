@@ -31,19 +31,19 @@ export interface ToolInfo {
   licence?: string[];
 }
 
-/** Where a module comes from. Legacy nf-core rows omit this; `moduleOrigin` infers it. */
-export type ModuleOrigin = "nf-core" | "builtin" | "script";
+/** Where a module comes from. Older rows omit this; `moduleOrigin` infers it from the id. */
+export type ModuleOrigin = "builtin" | "script";
 
 /** Result of the publish try-run. Failed script modules stay in the catalog but are not draggable. */
 export type TryRunStatus = "passed" | "failed";
 
 export interface ModuleDef {
-  /** `nf-core/<path>` for nf-core modules, `builtin/<name>` or `script/<notebook>/<version>` otherwise. */
+  /** `builtin/<name>` or `script/<notebook>/<version>`. */
   id: string;
-  /** Path under modules/nf-core, e.g. `star/align`. Local script folder for published notebooks. Empty for built-ins. */
+  /** Folder under modules/local for published notebooks. Empty for built-ins. */
   path: string;
   name: string;
-  /** Nextflow process name, e.g. `STAR_ALIGN`. */
+  /** Nextflow process name, e.g. `SCANPY_QC`. */
   process: string;
   category: string;
   description: string;
@@ -56,9 +56,9 @@ export interface ModuleDef {
   inputs: PortDef[];
   outputs: PortDef[];
   builtin?: boolean;
-  /** Host-command process used to exercise patterns. Not an nf-core module. */
+  /** Host-command process used to exercise patterns. */
   temporary?: boolean;
-  /** nf-core (read-only catalog), builtin functional node, or a notebook-published CLI. */
+  /** Builtin functional node or a notebook-published CLI. */
   origin?: ModuleOrigin;
   /** Notebook that published this script module. */
   sourceNotebookId?: string;
@@ -79,14 +79,6 @@ export interface ModuleDef {
   containerImage?: string;
   /** Free-text note saved with this published version. */
   changelog?: string;
-}
-
-export interface ModuleCatalog {
-  source: string;
-  /** nf-core/modules commit the catalog was read from. */
-  gitSha: string;
-  syncedAt: string;
-  modules: ModuleDef[];
 }
 
 export type WidgetValue = string | number | boolean;
@@ -163,7 +155,7 @@ export interface WorkflowEdge {
 
 export type PipelineParams = Record<string, WidgetValue>;
 
-/** How the workflow is published as an nf-core style pipeline. */
+/** How the workflow is published as a Nextflow project. */
 export interface ProjectSettings {
   /** Repository-style name, e.g. `studio/rnaseq`. */
   name: string;

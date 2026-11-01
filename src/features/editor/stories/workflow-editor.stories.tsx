@@ -69,7 +69,7 @@ export const Missing: Story = {
 export const CatalogError: Story = {
   parameters: {
     msw: [
-      http.get("/api/modules", () =>
+      http.get("/api/script-modules", () =>
         HttpResponse.json({ message: "模块库不可用" }, { status: 500 }),
       ),
     ],

@@ -6,7 +6,7 @@ describe("parseWorkflowDoc", () => {
   it("fills node fields missing from hand-written files", () => {
     const doc = parseWorkflowDoc({
       version: 1,
-      nodes: [{ id: "n1", data: { moduleId: "nf-core/fastqc", alias: "FASTQC" } }],
+      nodes: [{ id: "n1", data: { moduleId: "script/fastq_qc/v1", alias: "FASTQ_QC" } }],
       edges: [],
     });
     expect(doc.nodes[0].data.config).toEqual({});

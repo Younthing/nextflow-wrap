@@ -41,14 +41,14 @@ describe("Codex assistant turns", () => {
           content: "",
           toolCalls: [{ id: "call_1", function: { name: "search_modules", arguments: "{\"query\":\"fastqc\"}" } }],
         },
-        { role: "tool", toolCallId: "call_1", content: "{\"moduleId\":\"nf-core/fastqc\"}" },
+        { role: "tool", toolCallId: "call_1", content: "{\"moduleId\":\"script/fastq_qc/v1\"}" },
       ],
     });
     expect(prompt).toContain("系统提示");
     expect(prompt).toContain("当前流程");
     expect(prompt).toContain("search_modules");
     expect(prompt).toContain("加一个 FastQC");
-    expect(prompt).toContain("nf-core/fastqc");
+    expect(prompt).toContain("script/fastq_qc/v1");
     expect(prompt).toContain("这次调用会被拒绝，不会执行");
     expect(prompt).toContain("这一轮最多调用 12 次工具");
     expect(prompt).not.toContain("auth.json");

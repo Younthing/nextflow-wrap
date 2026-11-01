@@ -15,7 +15,7 @@ export interface ModuleSearchHit {
 }
 
 /**
- * nf-core read inputs often ship without a glob, so the catalog leaves them
+ * Read inputs often ship without a glob, so the module leaves them
  * as untyped files. `checkCompatibility` then treats BAM and FastQ as the
  * same shape. When the description names FastQ and no other alignment
  * format, suggestions use that type. Stored formats are left alone.

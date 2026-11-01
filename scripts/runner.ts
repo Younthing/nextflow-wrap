@@ -4,21 +4,18 @@ import { createServer } from "node:http";
 import { access, copyFile, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
-import catalog from "@/data/nf-core-modules.json";
-import { generateProject } from "@/features/project/generate";
 import { gstr } from "@/features/project/groovy";
 import { profileList, renderRunConfig } from "@/features/project/launch";
 import { CommandError, runCommand } from "@/features/project/server/command";
-import { installComponents, materializeProject } from "@/features/project/server/materialize";
+import { materializeProject } from "@/features/project/server/materialize";
 import { preflight, requireLaunchTools, type RuntimeTools } from "@/features/project/server/preflight";
 import { smokeFastq } from "@/features/project/smoke-data";
-import { NF_SCHEMA_VERSION } from "@/features/project/templates";
-import { executionModuleIndex } from "@/features/runs/server/execution-index";
+import { usesSamplesheet } from "@/features/project/schema";
 import { active } from "@/features/runs/server/service";
 import { ingestEvent, reconcileTrace, refreshProgress } from "@/features/runs/server/tasks";
 import { resultFiles } from "@/features/runs/server/files";
 import { hostChainWorkflow, writeHostChainInputs } from "@/features/workflow/host-chain-demo";
-import { qcDemoWorkflow } from "@/features/workflow/qc-demo";
+import type { PipelineParams } from "@/features/workflow/types";
 import { dataDirectory, store, type StoredExecution } from "@/lib/server/database";
 
 const db = store();
@@ -47,6 +44,7 @@ async function publishDiagnostics(run: StoredExecution) {
 }
 
 async function seedDemo() {
+  // Synthetic FASTQs and a samplesheet for the SAMPLESHEET node; the end-to-end user path reads them.
   const root = join(dataDirectory(), "demo");
   await mkdir(root, { recursive: true });
   for (const [name, seed, mate] of [["single_R1", 17, 1], ["paired_R1", 29, 1], ["paired_R2", 29, 2]] as const) {
@@ -54,11 +52,6 @@ async function seedDemo() {
   }
   const input = join(root, "samplesheet.csv");
   await writeFile(input, `sample,fastq_1,fastq_2\nSINGLE,${join(root, "single_R1.fastq.gz")},\nPAIRED,${join(root, "paired_R1.fastq.gz")},${join(root, "paired_R2.fastq.gz")}\n`, { flag: "wx" }).catch((error: NodeJS.ErrnoException) => { if (error.code !== "EEXIST") throw error; });
-  if (!db.workflow("qc-smoke")) {
-    const demo = qcDemoWorkflow(input);
-    demo.params = { ...demo.params, custom_config_base: "", monochrome_logs: true };
-    db.saveWorkflow(demo);
-  }
   const hostRoot = join(dataDirectory(), "host-chain");
   writeHostChainInputs(hostRoot);
   const reads = join(hostRoot, "reads.fastq.gz");
@@ -68,7 +61,6 @@ async function seedDemo() {
   if (!db.workflow("hostchain")) {
     const demo = hostChainWorkflow(hostRoot, hostInput);
     demo.id = "hostchain";
-    demo.params = { ...demo.params, custom_config_base: "", monochrome_logs: true };
     demo.updatedAt = new Date().toISOString();
     db.saveWorkflow(demo);
   }
@@ -94,18 +86,19 @@ async function execute(run: StoredExecution, tools: RuntimeTools, port: number) 
     const workDir = local || requested.workDir === "work" ? join(run.projectDir, "../work") : requested.workDir;
     const launch = { ...requested, settings: local ? { ...requested.settings, cpus, memory } : requested.settings, workDir, extraProfiles: [...new Set([...requested.extraProfiles, ...(emulate ? ["emulate_amd64"] : [])])] };
     await requireLaunchTools(launch, tools.env);
-    const params = { ...run.detail.params, input: String(run.detail.params.input), outdir: join(run.attemptDir, "results"), custom_config_base: "", publish_dir_mode: "copy", trace_report_suffix: id };
-    // Web launches use explicit host paths; the server cannot read a browser's filesystem.
-    if (!params.input.startsWith("/")) throw new Error("请输入 runner 主机上的绝对样本表路径；可先使用内置质控示例");
-    await access(params.input);
-    const project = generateProject(run.detail.workflow, executionModuleIndex(db.scriptModules()), { modulesSha: catalog.gitSha, registry: launch.registry });
+    const params: PipelineParams = { ...run.detail.params, outdir: join(run.attemptDir, "results"), publish_dir_mode: "copy", trace_report_suffix: id };
+    if (usesSamplesheet(run.detail.workflow)) {
+      const input = String(params.input ?? "");
+      // Web launches use explicit host paths; the server cannot read a browser's filesystem.
+      if (!input.startsWith("/")) throw new Error("请输入 runner 主机上样本表的绝对路径");
+      await access(input);
+    }
     if (!run.resumeFrom) {
-      await materializeProject(project, run.projectDir);
-      await installComponents(project, run.projectDir, tools, controller.signal);
+      // The project generated at submit time is what runs, even if a module is republished meanwhile.
+      await materializeProject(run.detail.project, run.projectDir);
     } else {
       await access(join(run.projectDir, ".nextflow/cache", run.sessionId!));
       if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(workDir)) await access(workDir);
-      await access(join(run.projectDir, "installed-components.json"));
     }
     controller.signal.throwIfAborted();
     const emulation = launch.extraProfiles.includes("emulate_amd64") ? " --platform=linux/amd64" : "";
@@ -113,7 +106,7 @@ async function execute(run: StoredExecution, tools: RuntimeTools, port: number) 
       renderRunConfig(launch),
       ...(local ? [`executor.cpus = ${cpus}`, `executor.memory = ${gstr(String(memory))}`, "executor.queueSize = 2"] : []),
       ...(!docker ? [] : [`docker.runOptions = ${gstr(`-u ${process.getuid?.() ?? 0}:${process.getgid?.() ?? 0} --label nextflow-studio.run=${id}${emulation}`)}`]),
-      `plugins { id 'nf-schema@${NF_SCHEMA_VERSION}'; id 'nf-weblog@1.2.0' }`,
+      "plugins { id 'nf-weblog@1.2.0' }",
       `weblog { enabled = true; url = ${gstr(`http://127.0.0.1:${port}/events/${id}/${token}`)} }`,
       "trace.enabled = true", "trace.raw = true",
       `trace.file = ${gstr(join(run.attemptDir, "trace.tsv"))}`,
@@ -128,7 +121,7 @@ async function execute(run: StoredExecution, tools: RuntimeTools, port: number) 
     if (run.resumeFrom) args.push("-resume", run.sessionId!);
     await writeFile(join(run.attemptDir, "params.json"), JSON.stringify(params, null, 2));
     await writeFile(join(run.attemptDir, "run.config"), runConfig);
-    await writeFile(join(run.attemptDir, "manifest.json"), JSON.stringify({ workflow: run.detail.workflow, versions: runtimeState.versions, resources: tools.resources, executable: tools.nextflow, args, modulesSha: catalog.gitSha }, null, 2));
+    await writeFile(join(run.attemptDir, "manifest.json"), JSON.stringify({ workflow: run.detail.workflow, versions: runtimeState.versions, resources: tools.resources, executable: tools.nextflow, args }, null, 2));
     db.updateRun(id, (record) => {
       record.detail.params = params;
       record.detail.launch = launch;

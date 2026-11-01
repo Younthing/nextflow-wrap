@@ -50,17 +50,14 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Install Nextflow
         run: bash scripts/install-nextflow.sh
-      - name: Install nf-core and R
+      - name: Install R
         run: |
-          python3 -m pip install --user --break-system-packages "nf-core==4.2.1"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y r-base-core
       - name: Toolchain
         run: |
           java -version
           nextflow -version
-          nf-core --version
           python3 --version
           Rscript --version
       - run: pnpm exec playwright install --with-deps chromium

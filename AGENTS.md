@@ -2,9 +2,9 @@
 
 ## Project Structure & Module Organization
 
-This is a Next.js 16 App Router application for composing and running nf-core/Nextflow workflows. Routes and global styling live in `src/app/`; run history is in `src/app/runs/`. Keep product code in `src/features/<domain>/` (such as `workflow`, `editor`, `project`, and `runs`). Put primitives in `src/components/ui/`, shell components in `src/components/layout/`, and shared helpers in `src/lib/`.
+This is a Next.js 16 App Router application for composing and running Nextflow workflows from notebook-published modules. Routes and global styling live in `src/app/`; run history is in `src/app/runs/`. Keep product code in `src/features/<domain>/` (such as `workflow`, `editor`, `project`, and `runs`). Put primitives in `src/components/ui/`, shell components in `src/components/layout/`, and shared helpers in `src/lib/`.
 
-Mock API behavior belongs in `src/mocks/`. Generated nf-core module metadata is committed at `src/data/nf-core-modules.json`; regenerate it with the provided script instead of editing it manually. Component examples belong beside their area in `stories/` directories.
+Mock API behavior belongs in `src/mocks/`; tests, stories and mocks share the example modules in `src/features/workflow/example-modules.ts`. Component examples belong beside their area in `stories/` directories.
 
 ## Build, Test, and Development Commands
 
@@ -17,7 +17,6 @@ pnpm lint                    # run ESLint and Next.js rules
 pnpm test                    # run Vitest unit tests
 pnpm build                   # create a production build
 pnpm build-storybook         # verify Storybook production output
-pnpm sync:modules            # refresh committed nf-core module metadata (network required)
 ```
 
 Before a PR, run `pnpm typecheck && pnpm lint && pnpm test && pnpm build && pnpm build-storybook`.

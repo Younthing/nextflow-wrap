@@ -8,7 +8,7 @@ const file = (name: string, format?: string) => ({
   format,
 });
 
-/** Functional builtins shown ahead of nf-core. Names match the IA v3 catalog. */
+/** Functional builtins listed next to published modules. Names match the IA v3 catalog. */
 export const CATALOG_BUILTINS: ModuleDef[] = [
   {
     id: "builtin/merge-samplesheet",

@@ -138,7 +138,6 @@ function RunBody({ run: data }: { run: RunDetail }) {
         <TabsContent value="project" className="flex min-h-0 flex-col">
           <ProjectPreview
             files={data.project.files}
-            components={data.project.components}
             className="min-h-0 flex-1"
           />
         </TabsContent>

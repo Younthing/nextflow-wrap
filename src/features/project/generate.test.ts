@@ -1,80 +1,77 @@
 import { describe, expect, it } from "vitest";
 
-import catalog from "@/data/nf-core-modules.json";
+import { demoScriptModules } from "@/features/notebook/seed";
+import { REFERENCE_ID } from "@/features/workflow/builtins";
 import { indexModules } from "@/features/workflow/catalog";
-import { demoRnaseqWorkflow } from "@/features/workflow/demo";
-import { qcDemoWorkflow } from "@/features/workflow/qc-demo";
-import type { ModuleCatalog, WorkflowDoc } from "@/features/workflow/types";
-import { GenerateError, generateProject, NF_SCHEMA_UTILS_SHA, projectMeta } from "./generate";
+import { demoWorkflow, readsQcWorkflow } from "@/features/workflow/demo";
+import { EXAMPLE_MODULES } from "@/features/workflow/example-modules";
+import type { WorkflowDoc } from "@/features/workflow/types";
+import { GenerateError, generateProject, projectMeta } from "./generate";
 
-const typed = catalog as ModuleCatalog;
-const index = indexModules(typed.modules);
-const generate = (doc: WorkflowDoc) => generateProject(doc, index, { modulesSha: typed.gitSha });
+const index = indexModules(EXAMPLE_MODULES);
+const generate = (doc: WorkflowDoc) => generateProject(doc, index);
 const file = (doc: WorkflowDoc, path: string) => generate(doc).files.find((f) => f.path === path)!.content;
 
 describe("generateProject", () => {
-  const demo = demoRnaseqWorkflow("wf");
+  const demo = demoWorkflow("wf");
+  const reads = readsQcWorkflow("qc");
 
-  it("generates a QC workflow whose test input belongs to the exported project", () => {
-    const doc = qcDemoWorkflow();
-    const workflow = file(doc, "workflows/qcsmoke.nf");
-    expect(workflow).toContain("FASTQC (");
-    expect(workflow).toContain("FASTQC.out.zip");
-    expect(workflow).toContain("MULTIQC (");
-    const config = file(doc, "conf/test.config");
-    expect(config).toContain('${projectDir}/assets/samplesheet.csv');
-    expect(config).not.toContain("viralrecon");
+  it("lays out a plain Nextflow project without nf-core pieces", () => {
+    const paths = generate(demo).files.map((f) => f.path);
+    expect(paths).toEqual(["main.nf", "nextflow.config", "conf/base.config", "conf/modules.config", "nextflow_schema.json", "README.md"]);
+    const config = file(demo, "nextflow.config");
+    expect(config).not.toMatch(/plugins|nf-schema|nf-core|validation/);
+    expect(config).toContain("profiles {");
   });
 
-  it("lays out an nf-core style project", () => {
-    const paths = generate(demo).files.map((f) => f.path);
-    expect(paths).toEqual(
-      expect.arrayContaining([
-        "main.nf",
-        "workflows/rnaseq.nf",
-        "subworkflows/local/utils_nfcore_rnaseq_pipeline/main.nf",
-        "nextflow.config",
-        "conf/base.config",
-        "conf/modules.config",
-        "nextflow_schema.json",
-        "assets/schema_input.json",
-        "modules.json",
-      ]),
-    );
+  it("adds the samplesheet schema and example only when the canvas reads one", () => {
+    const paths = generate(reads).files.map((f) => f.path);
+    expect(paths).toContain("assets/schema_input.json");
+    expect(paths).toContain("assets/samplesheet.csv");
+    const main = file(reads, "main.nf");
+    expect(main).toContain("channel.fromPath(params.input, checkIfExists: true)");
+    expect(main).toContain(".splitCsv(header: true, strip: true)");
+    expect(file(demo, "main.nf")).not.toContain("params.input");
+  });
+
+  it("includes every module from modules/local", () => {
+    const main = file(demo, "main.nf");
+    expect(main).toMatch(/include \{ SCANPY_QC\s+\} from '.\/modules\/local\/scanpy_qc\/main'/);
+    expect(main).toMatch(/include \{ SUMMARY_REPORT\s+\} from '.\/modules\/local\/summary_report\/main'/);
+    expect(main).not.toContain("nf-core");
   });
 
   it("wires channels with the right adapters", () => {
-    const wf = file(demo, "workflows/rnaseq.nf");
-    expect(wf).toContain("include { FASTP");
-    expect(wf).toContain("} from '../modules/nf-core/star/align/main'");
-    // samplesheet [meta, reads] into fastp [meta, reads, adapter_fasta]
-    expect(wf).toContain("ch_samplesheet.map { tuple -> tuple + [ [] ] }");
-    // reference params become value channels
-    expect(wf).toContain("def ch_gtf_meta = channel.value([ [ id: file(params.gtf).baseName ], file(params.gtf, checkIfExists: true) ])");
-    // a one-off index feeding a per-sample process becomes a value channel
-    expect(wf).toContain("STAR_GENOMEGENERATE.out.index.first()");
+    const main = file(reads, "main.nf");
+    // samplesheet [meta, reads] into [meta, reads, adapters]
+    expect(main).toContain("ch_samplesheet.map { tuple -> tuple + [ [] ] }");
     // widgets are passed as literals
-    expect(wf).toContain("false // star_ignore_sjdbgtf");
-    expect(wf).toContain("false, // discard_trimmed_pass");
-    // MultiQC gathers every linked report
-    expect(wf).toContain("FASTQC.out.zip.map { tuple -> tuple[1..-1] }");
-    expect(wf).toContain("MULTIQC.out.report.map { _meta, report -> [report] }.toList()");
-    // Groovy interpolation survives templating
-    expect(wf).toContain('"${outdir}/pipeline_info"');
-    expect(wf).not.toContain("@{");
+    expect(main).toContain("30 // min_length");
+    // the collecting report gathers every linked output
+    expect(main).toContain("FASTQ_QC.out.html.map { tuple -> tuple[1..-1] }");
+    expect(main).toContain(".map { files -> [ [ id: 'summary_report' ], files ] }");
+    // reference params become value channels
+    expect(file(demo, "main.nf")).toContain(
+      "def ch_counts_meta = channel.value([ [ id: file(params.counts).baseName ], file(params.counts, checkIfExists: true) ])",
+    );
+    expect(main).not.toContain("@{");
   });
 
   it("orders module calls after their inputs", () => {
-    const wf = file(demo, "workflows/rnaseq.nf");
-    expect(wf.indexOf("STAR_GENOMEGENERATE (")).toBeLessThan(wf.indexOf("STAR_ALIGN ("));
-    expect(wf.indexOf("FASTP (")).toBeLessThan(wf.indexOf("FASTQC ("));
+    const main = file(reads, "main.nf");
+    expect(main.indexOf("TRIM_READS (")).toBeLessThan(main.indexOf("FASTQ_QC ("));
+    expect(main.indexOf("FASTQ_QC (")).toBeLessThan(main.indexOf("SUMMARY_REPORT ("));
   });
 
   it("writes per-node module options", () => {
-    const cfg = file(demo, "conf/modules.config");
-    expect(cfg).toContain("withName: 'STAR_ALIGN' {");
-    expect(cfg).toContain("ext.args   = '--outSAMtype BAM SortedByCoordinate --quantMode GeneCounts'");
-    expect(cfg).toContain('path: { "${params.outdir}/star_align" }');
+    const doc = {
+      ...demo,
+      nodes: demo.nodes.map((n) => (n.id === "cluster" ? { ...n, data: { ...n.data, config: { publish: true, args: "--n-pcs 30" } } } : n)),
+    };
+    const cfg = file(doc, "conf/modules.config");
+    expect(cfg).toContain("withName: 'SCANPY_CLUSTER' {");
+    expect(cfg).toContain("ext.args   = '--n-pcs 30'");
+    expect(cfg).toContain('path: { "${params.outdir}/scanpy_cluster" }');
   });
 
   it("declares every schema param in nextflow.config", () => {
@@ -86,36 +83,42 @@ describe("generateProject", () => {
         expect(config).toMatch(new RegExp(`^\\s+${key}\\s+=`, "m"));
       }
     }
-    expect(schema.$defs.reference_files.properties.fasta.format).toBe("file-path");
+    expect(schema.$defs.reference_files.properties.counts.format).toBe("file-path");
+    expect(schema.$defs.input_output_options.required).toEqual(["outdir"]);
   });
 
-  it("pins modules.json to the catalog commit", () => {
-    const modulesJson = JSON.parse(file(demo, "modules.json"));
-    const modules = modulesJson.repos["https://github.com/nf-core/modules.git"].modules["nf-core"];
-    expect(Object.keys(modules).sort()).toEqual(["fastp", "fastqc", "multiqc", "star/align", "star/genomegenerate"]);
-    expect(modules.fastp.git_sha).toBe(typed.gitSha);
-    const utils = modulesJson.repos["https://github.com/nf-core/modules.git"].subworkflows["nf-core"];
-    expect(utils.utils_nfschema_plugin.git_sha).toBe(NF_SCHEMA_UTILS_SHA);
+  it("writes published notebook modules and their scripts", () => {
+    const hello = demoScriptModules().find((def) => def.id === "script/hello_py/v2")!;
+    const doc: WorkflowDoc = {
+      ...demo,
+      params: { sheet: "sheet.csv", outdir: "results" },
+      nodes: [
+        { id: "sheet", position: { x: 0, y: 0 }, data: { moduleId: REFERENCE_ID, alias: "SHEET", widgets: {}, config: {}, settings: { param: "sheet", format: "other" } } },
+        { id: "hello", position: { x: 0, y: 0 }, data: { moduleId: hello.id, alias: "HELLO", widgets: {}, config: {} } },
+      ],
+      edges: [{ id: "e", source: "sheet", sourceHandle: "out:file", target: "hello", targetHandle: "in:samplesheet" }],
+    };
+    const project = generateProject(doc, indexModules([hello]));
+    const paths = project.files.map((f) => f.path);
+    expect(paths).toContain(`modules/local/${hello.path}/main.nf`);
+    expect(paths).toContain(hello.command);
   });
 
   it("skips disabled nodes and rejects a missing main input", () => {
     const disabled = {
-      ...demo,
-      nodes: demo.nodes.map((n) => (n.id === "fastqc" ? { ...n, data: { ...n.data, disabled: true } } : n)),
+      ...reads,
+      nodes: reads.nodes.map((n) => (n.id === "qc" ? { ...n, data: { ...n.data, disabled: true } } : n)),
     };
-    expect(file(disabled, "workflows/rnaseq.nf")).not.toContain("FASTQC (");
+    expect(file(disabled, "main.nf")).not.toContain("FASTQ_QC (");
 
-    const unlinked = { ...demo, edges: demo.edges.filter((e) => e.target !== "fastqc") };
+    const unlinked = { ...reads, edges: reads.edges.filter((e) => e.target !== "qc") };
     expect(() => generate(unlinked)).toThrow(GenerateError);
   });
 
   it("rejects cycles", () => {
     const cyclic = {
-      ...demo,
-      edges: [
-        ...demo.edges,
-        { id: "loop", source: "fastqc", sourceHandle: "out:zip", target: "fastp", targetHandle: "in:reads" },
-      ],
+      ...reads,
+      edges: [...reads.edges, { id: "loop", source: "qc", sourceHandle: "out:html", target: "trim", targetHandle: "in:reads" }],
     };
     expect(() => generate(cyclic)).toThrow(/循环/);
   });
@@ -133,22 +136,5 @@ describe("project naming", () => {
   it("keeps workflow identifiers starting with a letter", () => {
     const meta = projectMeta({ name: "x", project: { name: "studio/10xrnaseq", version: "1.0", author: "a" } });
     expect(meta.workflowName).toBe("NF10XRNASEQ");
-  });
-});
-
-describe("generated project extras", () => {
-  it("renames the pipeline workflow when a module alias takes its name", () => {
-    const doc = { ...demoRnaseqWorkflow("wf"), project: { name: "studio/fastqc", version: "1.0", author: "a" } };
-    const script = file(doc, "workflows/fastqc.nf");
-    expect(script).toMatch(/^workflow FASTQC_PIPELINE \{/m);
-    expect(file(doc, "main.nf")).toContain("FASTQC_PIPELINE");
-  });
-
-  it("ships the templates completionEmail reads", () => {
-    const paths = generate(demoRnaseqWorkflow("wf")).files.map((f) => f.path);
-    expect(paths).toEqual(
-      expect.arrayContaining(["assets/email_template.txt", "assets/email_template.html", "assets/sendmail_template.txt"]),
-    );
-    expect(file(demoRnaseqWorkflow("wf"), "assets/email_template.html")).not.toMatch(/__NAME__|\{\{/);
   });
 });

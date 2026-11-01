@@ -7,7 +7,8 @@ import type { PortDef } from "@/features/workflow/types";
 import { ModuleLibrary } from "../components/module-library";
 import { NodeSearchDialog } from "../components/node-search-dialog";
 import { SchemaForm } from "../components/schema-form";
-import { storyCatalog, storyModules } from "./fixtures";
+import { EXAMPLE_CLUSTER_ID } from "@/features/workflow/example-modules";
+import { storyModules } from "./fixtures";
 
 const meta = {
   title: "Editor/Panels",
@@ -20,7 +21,6 @@ export const Library: Story = {
   render: () => (
     <ModuleLibrary
       modules={storyModules}
-      syncedAt={storyCatalog.syncedAt}
       onAdd={fn()}
       className="h-[600px] w-64"
     />
@@ -31,11 +31,10 @@ export const PipelineParams: Story = {
   render: () => (
     <div className="glass w-96 rounded-xl p-4">
       <SchemaForm
-        schema={buildParamsSchema("studio/rnaseq", "RNA-seq", [
-          { name: "fasta", format: "fasta", nodeAlias: "REFERENCE" },
-          { name: "gtf", format: "gtf", nodeAlias: "REFERENCE_2" },
+        schema={buildParamsSchema("studio/scrna", "单细胞聚类", [
+          { name: "counts", format: "other", nodeAlias: "COUNTS" },
         ])}
-        values={{ input: "assets/samplesheet.csv", outdir: "results" }}
+        values={{ counts: "data/pbmc3k.h5ad", outdir: "results" }}
         onChange={fn()}
       />
     </div>
@@ -54,9 +53,9 @@ export const NodeSearch: Story = {
 };
 
 const samplesheet = storyModules.find((m) => m.id === SAMPLESHEET_ID)!;
-const sortedBam = storyModules
-  .find((module) => module.id === "nf-core/samtools/sort")!
-  .outputs.find((port) => port.name === "bam")!;
+const clustered = storyModules
+  .find((module) => module.id === EXAMPLE_CLUSTER_ID)!
+  .outputs.find((port) => port.name === "adata")!;
 
 export const NodeSearchFromPort: Story = {
   name: "Node search (from a dropped link)",
@@ -73,13 +72,13 @@ export const NodeSearchFromPort: Story = {
   ),
 };
 
-export const NodeSearchFromBam: Story = {
-  name: "Node search (from a BAM output)",
+export const NodeSearchFromAnnData: Story = {
+  name: "Node search (from an AnnData output)",
   render: () => (
     <NodeSearchDialog
       request={{
         position: { x: 0, y: 0 },
-        from: { nodeId: "sort", port: sortedBam, side: "source" },
+        from: { nodeId: "cluster", port: clustered, side: "source" },
       }}
       modules={storyModules}
       onPick={fn()}

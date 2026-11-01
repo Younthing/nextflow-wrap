@@ -4,9 +4,8 @@ import type { ModuleDef, ModuleOrigin } from "./types";
 
 export function moduleOrigin(def: ModuleDef): ModuleOrigin {
   if (def.origin) return def.origin;
-  if (def.builtin || def.id.startsWith("builtin/")) return "builtin";
   if (def.id.startsWith("script/")) return "script";
-  return "nf-core";
+  return "builtin";
 }
 
 export function versionNumber(version: string | undefined): number {
@@ -14,7 +13,7 @@ export function versionNumber(version: string | undefined): number {
   return match ? Number(match[1]) : 0;
 }
 
-/** Builtins listed on `/workflows/modules` ahead of the optional nf-core section. */
+/** Builtins listed on `/workflows/modules` next to the published modules. */
 export function isCatalogBuiltin(def: ModuleDef): boolean {
   return def.id === SAMPLESHEET_ID || def.id === REFERENCE_ID || CATALOG_BUILTIN_IDS.has(def.id);
 }
@@ -34,30 +33,24 @@ export function latestPassedScripts(modules: readonly ModuleDef[]): ModuleDef[] 
 /**
  * Canvas drawer and node search.
  * Try-run-failed script modules are omitted entirely.
- * nf-core stays out until the user shows it.
  */
-export function modulesForDrawer(modules: readonly ModuleDef[], showNfCore: boolean): ModuleDef[] {
+export function modulesForDrawer(modules: readonly ModuleDef[]): ModuleDef[] {
   const latestIds = new Set(latestPassedScripts(modules).map((def) => def.id));
   return modules.filter((def) => {
     if (def.temporary) return false;
     const origin = moduleOrigin(def);
-    if (origin === "script") return latestIds.has(def.id);
-    if (origin === "nf-core") return showNfCore;
-    return true;
+    return origin === "script" ? latestIds.has(def.id) : true;
   });
 }
 
 /**
  * Module catalog rows.
- * Failed script modules stay visible (labeled 不可拖入). nf-core is opt-in.
+ * Failed script modules stay visible (labeled 不可拖入).
  */
-export function modulesForCatalog(modules: readonly ModuleDef[], showNfCore: boolean): ModuleDef[] {
+export function modulesForCatalog(modules: readonly ModuleDef[]): ModuleDef[] {
   return modules.filter((def) => {
     if (def.temporary) return false;
-    const origin = moduleOrigin(def);
-    if (origin === "nf-core") return showNfCore;
-    if (origin === "script") return true;
-    return isCatalogBuiltin(def);
+    return moduleOrigin(def) === "script" || isCatalogBuiltin(def);
   });
 }
 
@@ -72,8 +65,4 @@ export function newerScriptModule(current: ModuleDef, modules: readonly ModuleDe
     if (!best || versionNumber(def.version) > versionNumber(best.version)) best = def;
   }
   return best;
-}
-
-export function moduleListLabel(def: ModuleDef): string {
-  return moduleOrigin(def) === "nf-core" ? def.path : def.name;
 }

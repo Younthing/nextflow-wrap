@@ -1,12 +1,12 @@
 import { http, HttpResponse } from "msw";
-import catalog from "@/data/nf-core-modules.json";
-import { demoRnaseqWorkflow } from "@/features/workflow/demo";
+import { demoWorkflow } from "@/features/workflow/demo";
+import { EXAMPLE_MODULES } from "@/features/workflow/example-modules";
 import { defaultLaunchConfig } from "@/features/project/launch";
 import { NEXTFLOW_VERSION } from "@/features/project/templates";
 import type { RunDetail } from "@/features/runs/types";
 
 export const storyWorkflow = {
-  ...demoRnaseqWorkflow("wf_story"),
+  ...demoWorkflow("wf_story"),
   id: "wf_story",
   updatedAt: "2026-01-01T12:00:00.000Z",
 };
@@ -36,16 +36,14 @@ export const storyRun: RunDetail = {
   command: "nextflow run main.nf -profile docker",
   runConfig: "process.executor = 'local'",
   project: {
-    name: "studio/qc",
+    name: "studio/scrna",
     files: [{ path: "main.nf", content: "nextflow.enable.dsl = 2" }],
-    components: [],
   },
 };
 
 /** Deterministic, read-only fixtures. Unknown APIs fail here instead of reaching a runner. */
 export const storyHandlers = [
-  http.get("/api/modules", () => HttpResponse.json(catalog)),
-  http.get("/api/script-modules", () => HttpResponse.json({ modules: [], references: {} })),
+  http.get("/api/script-modules", () => HttpResponse.json({ modules: EXAMPLE_MODULES, references: {} })),
   http.get("/api/health", () =>
     HttpResponse.json({
       status: "ok",

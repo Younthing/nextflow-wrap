@@ -315,13 +315,13 @@ describe("CopilotKit route with a fake Codex harness", () => {
             function: { name: "search_modules", arguments: args?.delta ?? "" },
           }],
         },
-        { id: crypto.randomUUID(), role: "tool", toolCallId, content: "{\"moduleId\":\"nf-core/fastqc\"}" },
+        { id: crypto.randomUUID(), role: "tool", toolCallId, content: "{\"moduleId\":\"script/fastq_qc/v1\"}" },
       ],
       { tools },
     )));
     const secondEvents = await readEvents(second);
     expect(textOf(secondEvents)).toBe("已经加上 FastQC。");
-    expect(harness.prompts[1]).toContain("nf-core/fastqc");
+    expect(harness.prompts[1]).toContain("script/fastq_qc/v1");
     expect(harness.prompts[1]).toContain("search_modules");
     expect(harness.prompts[1]).toContain("加一个 FastQC");
     expect(harness.opens).toHaveLength(2);

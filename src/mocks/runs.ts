@@ -1,18 +1,16 @@
 import { delay, http, HttpResponse } from "msw";
 
-import catalog from "@/data/nf-core-modules.json";
 import { randomRunName } from "@/features/runs/names";
 import { consoleLog, resultContent, resultFiles, taskLog } from "@/features/runs/outputs";
 import { simulateRun } from "@/features/runs/simulate";
 import type { LaunchRequest, RunDetail, RunSummary } from "@/features/runs/types";
 import { indexModules, resolveNodeDef } from "@/features/workflow/catalog";
-import type { ModuleCatalog } from "@/features/workflow/types";
 import { newId } from "@/features/workflow/nodes";
 import { profileList } from "@/features/project/launch";
 import { readDb, writeDb, type StoredRun } from "./db";
 
 function moduleIndex() {
-  return indexModules([...(catalog as ModuleCatalog).modules, ...Object.values(readDb().scriptModules)]);
+  return indexModules(Object.values(readDb().scriptModules));
 }
 
 function simulate(run: StoredRun, now = Date.now()) {

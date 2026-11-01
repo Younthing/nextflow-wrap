@@ -30,7 +30,8 @@ function hashNumber(s: string) {
 export function fileNameFor(pattern: string, tag: string): string | null {
   if (!pattern || pattern.includes("${")) return `${tag}/`;
   if (pattern === "*/*") return `${tag}/`;
-  if (!pattern.includes("*") && !pattern.startsWith(".")) return `${pattern}/`; // a directory like `star`
+  // A literal name: `report.html` is a file, `star` a directory.
+  if (!pattern.includes("*") && !pattern.startsWith(".")) return /\.[A-Za-z0-9]+$/.test(pattern) ? pattern : `${pattern}/`;
   let name = pattern.replace(/^\*/, "").replace(/\{([^}]*)\}/g, (_, alts: string) => alts.split(",").find(Boolean) ?? "");
   name = name.replace(/\*/g, "");
   if (!name) return null;
@@ -76,7 +77,7 @@ export function resultFiles(run: RunLike, tasks: TaskRecord[], index: ModuleInde
       if (SKIPPED_OUTPUTS.has(out.name) || out.name === "versions" || out.name.startsWith("versions_")) continue;
       for (const el of out.elements) {
         if (el.kind !== "file" || !el.pattern) continue;
-        const name = def.id === "nf-core/multiqc" ? (out.name === "report" ? "multiqc_report.html" : `multiqc_${out.name}/`) : fileNameFor(el.pattern, tag);
+        const name = fileNameFor(el.pattern, tag);
         if (!name) continue;
         const path = `${dir}/${name}`;
         if (files.some((f) => f.path === path)) continue;
@@ -91,7 +92,6 @@ export function resultFiles(run: RunLike, tasks: TaskRecord[], index: ModuleInde
       `pipeline_info/execution_trace_${ts}.txt`,
       `pipeline_info/execution_timeline_${ts}.html`,
       `pipeline_info/params_${ts}.json`,
-      `pipeline_info/${shortName(run)}_software_mqc_versions.yml`,
     ];
     for (const path of info) files.push({ path, size: approxSize(path), preview: previewKind(path) });
   }
@@ -121,19 +121,6 @@ function traceTable(tasks: TaskRecord[]): string {
   return ["task_id\thash\tnative_id\tname\tstatus\texit\tsubmit\tduration\trealtime\t%cpu\tpeak_rss\trchar\twchar", ...rows].join("\n") + "\n";
 }
 
-function versionsYaml(run: RunLike, tasks: TaskRecord[], index: ModuleIndex): string {
-  const lines: string[] = [];
-  const seen = new Set<string>();
-  for (const node of run.workflow.nodes) {
-    const def = resolveNodeDef(index, node.data);
-    if (!def || def.builtin || seen.has(node.data.alias) || !tasks.some((t) => t.nodeId === node.id)) continue;
-    seen.add(node.data.alias);
-    lines.push(`${node.data.alias}:`, ...def.tools.map((t) => `  ${t.name}: ${versionOf(def)}`));
-  }
-  lines.push("Workflow:", `  ${projectMeta(run.workflow).name}: ${projectMeta(run.workflow).version}`, `  Nextflow: ${NEXTFLOW_VERSION}`);
-  return `${lines.join("\n")}\n`;
-}
-
 const escapeHtml = (s: string) => s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 
 const REPORT_CSS = `body{font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;margin:0;color:#1f2937;background:#fff}
@@ -142,45 +129,6 @@ main{padding:20px 24px;max-width:1100px}h2{font-size:16px;margin:28px 0 8px;bord
 table{border-collapse:collapse;width:100%;font-size:13px}th,td{border-bottom:1px solid #eef0f3;padding:6px 8px;text-align:left}
 th{background:#f8fafc;font-weight:600}td.n{text-align:right;font-variant-numeric:tabular-nums}
 .bar{height:10px;border-radius:3px;background:#3b82f6}.muted{color:#6b7280;font-size:12px}`;
-
-function sampleMetrics(sample: string) {
-  const r = (salt: string) => hashNumber(`${sample}:${salt}`) / 4294967296;
-  return {
-    reads: Math.round(18 + r("reads") * 24),
-    q30: 88 + r("q30") * 9,
-    gc: 46 + r("gc") * 6,
-    dups: 8 + r("dups") * 30,
-    mapped: 82 + r("mapped") * 15,
-  };
-}
-
-/** A small stand-in for MultiQC's report, built from the samples that ran. */
-function multiqcReport(run: RunLike, tasks: TaskRecord[], index: ModuleIndex): string {
-  const samples = [...new Set(tasks.map((t) => t.tag).filter((t): t is string => !!t))].sort();
-  const title = String(run.params.multiqc_title || projectMeta(run.workflow).name);
-  const rows = samples
-    .map((s) => {
-      const m = sampleMetrics(s);
-      return `<tr><td>${escapeHtml(s)}</td><td class="n">${m.reads.toFixed(1)} M</td><td class="n">${m.q30.toFixed(1)}%</td><td class="n">${m.gc.toFixed(1)}%</td><td class="n">${m.dups.toFixed(1)}%</td><td class="n">${m.mapped.toFixed(1)}%</td><td style="width:30%"><div class="bar" style="width:${m.mapped}%"></div></td></tr>`;
-    })
-    .join("");
-  const versions = versionsYaml(run, tasks, index)
-    .trim()
-    .split("\n")
-    .filter((l) => l.startsWith("  "))
-    .map((l) => l.trim().split(": "))
-    .map(([tool, v]) => `<tr><td>${escapeHtml(tool)}</td><td>${escapeHtml(v)}</td></tr>`)
-    .join("");
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>MultiQC Report</title><style>${REPORT_CSS}</style></head><body>
-<header><h1>${escapeHtml(title)}</h1><p>MultiQC report · run ${escapeHtml(run.runName)} · ${samples.length} samples</p></header>
-<main>
-<p class="muted">Simulated by Nextflow Studio's mock backend. A real run shows the report MultiQC wrote to <code>multiqc/multiqc_report.html</code>.</p>
-<h2>General statistics</h2>
-<table><thead><tr><th>Sample</th><th>Reads</th><th>% ≥Q30</th><th>% GC</th><th>% Dups</th><th>% Aligned</th><th></th></tr></thead><tbody>${rows}</tbody></table>
-<h2>Software versions</h2>
-<table><thead><tr><th>Software</th><th>Version</th></tr></thead><tbody>${versions}</tbody></table>
-</main></body></html>`;
-}
 
 function timelineReport(run: RunLike, tasks: TaskRecord[]): string {
   const ran = tasks.filter((t) => t.startedAt);
@@ -239,10 +187,8 @@ export function resultContent(
   const html = (body: string): ResultBody => ({ contentType: "text/html; charset=utf-8", body });
   const text = (body: string, contentType = "text/plain; charset=utf-8"): ResultBody => ({ contentType, body });
 
-  if (path.endsWith("multiqc_report.html")) return html(multiqcReport(run, tasks, index));
   if (path.includes("execution_timeline")) return html(timelineReport(run, tasks));
   if (path.includes("execution_trace")) return text(traceTable(tasks));
-  if (path.includes("software_mqc_versions")) return text(versionsYaml(run, tasks, index));
   if (path.startsWith("pipeline_info/params_")) return text(`${JSON.stringify(run.params, null, 4)}\n`);
   const task = tasks.find((t) => t.nodeId === file.nodeId && (!t.tag || path.includes(t.tag)));
   if (file.preview === "html") {
@@ -274,7 +220,7 @@ export function consoleLog(run: RunLike, tasks: TaskRecord[], now = Date.now()):
     `Launching \`./main.nf\` [${run.runName}] DSL2 - revision: ${hashNumber(run.id).toString(16).slice(0, 10)}`,
     "",
   ];
-  if (!run.startedAt) return [...lines, "Pulling nf-core modules and resolving the project…"];
+  if (!run.startedAt) return [...lines, "Resolving the project…"];
 
   lines.push(
     `${meta.name} v${meta.version}`,

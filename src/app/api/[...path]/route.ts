@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import { ZodError } from "zod";
-import catalog from "@/data/nf-core-modules.json";
 import samplesheetSchema from "@/data/samplesheet-schema.json";
 import { containedFile, fileResponse, readTail, resultFiles } from "@/features/runs/server/files";
 import { active, assertSameOrigin, cancelRun, HttpError, requireRun, resumeRun, runnerReady, submitRun, workflowInput } from "@/features/runs/server/service";
@@ -29,7 +28,6 @@ async function handle(request: Request, context: Context): Promise<Response> {
       const ready = runnerReady();
       return json({ status: ready ? "ok" : "degraded", nextflowVersion: state?.versions?.nextflow ?? "未就绪", mocked: false, runnerReady: !!ready, diagnostics: state?.error ?? (ready ? undefined : "请启动 pnpm runner"), resources: state?.resources } satisfies HealthStatus);
     }
-    if (resource === "modules" && method === "GET") return json(catalog);
     if (resource === "notebooks" || resource === "script-modules") return handleNotebookApi(method, path, request);
     if (resource === "schemas" && id === "samplesheet" && method === "GET") return json(samplesheetSchema);
     if (resource === "workflows") {

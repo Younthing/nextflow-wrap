@@ -243,6 +243,10 @@ const ENGINE_EXTRAS: Partial<Record<ContainerEngine, string[]>> = {
   apptainer: ["apptainer.autoMounts = true"],
 };
 
+/** Profiles a generated project defines besides the runtimes, usable as extra `-profile` entries. */
+export const EXTRA_PROFILES = ["debug", "gpu", "arm64", "emulate_amd64", "wave"] as const;
+export type ExtraProfile = (typeof EXTRA_PROFILES)[number];
+
 /** One `-profile` per runtime: it switches that runtime on and every other one off. */
 export function runtimeProfiles(indent = "    "): string {
   return ENGINES.filter((engine) => engine !== "shell" && engine !== "wave")

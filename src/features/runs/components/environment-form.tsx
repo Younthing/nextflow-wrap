@@ -18,6 +18,7 @@ import {
   ENGINE_LABELS,
   EXECUTORS,
   executorDef,
+  EXTRA_PROFILES,
   REGISTRIES,
   type ExecutorField,
   type ExecutorId,
@@ -237,15 +238,15 @@ export function EnvironmentForm({
             htmlFor={`${formId}-profiles`}
             hint={
               real
-                ? "支持 test、debug、gpu、arm64、emulate_amd64、wave；逗号分隔"
-                : "逗号分隔，例如 test,gpu"
+                ? `支持 ${EXTRA_PROFILES.join("、")}；逗号分隔`
+                : "逗号分隔，例如 debug,gpu"
             }
           >
             <Input
               id={`${formId}-profiles`}
               aria-describedby={`${formId}-profiles-hint`}
               value={config.extraProfiles.join(",")}
-              placeholder="test"
+              placeholder="debug"
               onChange={(e) =>
                 set({
                   extraProfiles: e.target.value

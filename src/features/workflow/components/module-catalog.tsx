@@ -3,13 +3,12 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronRight, Loader2, NotebookText } from "lucide-react";
+import { Loader2, NotebookText } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SearchField } from "@/components/ui/search-field";
-import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AsyncPlaceholder } from "@/components/ui/async-placeholder";
 import { EnvConfigAssistant } from "@/features/assistant/modules/surfaces";
@@ -18,7 +17,6 @@ import { SourceDriftBanner } from "@/features/notebook/components/source-drift-b
 import { useReopenLibraryNotebook, useScriptModules } from "@/features/notebook/queries";
 import type { ScriptModuleView } from "@/features/notebook/library";
 import { BUILTIN_MODULES } from "@/features/workflow/builtins";
-import { useModuleCatalog } from "@/features/workflow/queries";
 import { isCatalogBuiltin, moduleOrigin } from "@/features/workflow/origin";
 import type { ModuleDef, PortDef } from "@/features/workflow/types";
 import { cn } from "@/lib/utils";
@@ -57,11 +55,9 @@ export function ModuleCatalog() {
   const router = useRouter();
   const scripts = useScriptModules();
   const reopen = useReopenLibraryNotebook();
-  const nfcore = useModuleCatalog();
   const [reopenError, setReopenError] = React.useState<string | null>(null);
   const [filter, setFilter] = React.useState<CatalogFilter>("both");
   const [query, setQuery] = React.useState("");
-  const [showNfCore, setShowNfCore] = React.useState(false);
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [contract, setContract] = React.useState<ModuleDef | null>(null);
 
@@ -74,7 +70,6 @@ export function ModuleCatalog() {
     if (filter === "builtin" && moduleOrigin(def) !== "builtin") return false;
     return matches(def, query);
   });
-  const nfRows = showNfCore ? (nfcore.data?.modules ?? []).filter((def) => matches(def, query)) : [];
   const counts = {
     both: scriptRows.length + builtins.length,
     script: scriptRows.length,
@@ -94,7 +89,7 @@ export function ModuleCatalog() {
           </div>
           <h1 className="mt-1 font-serif text-xl font-semibold">模块库</h1>
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-            已发布模块，挂在「流程」之下。默认只列自定义（笔记本发布）和内置功能节点。新模块请在笔记本里发布。nf-core 是可选来源，默认隐藏。
+            已发布模块，挂在「流程」之下：自定义（笔记本发布）和内置功能节点。新模块请在笔记本里发布。
           </p>
         </div>
         <Button asChild>
@@ -115,10 +110,6 @@ export function ModuleCatalog() {
         <div className="min-w-48 flex-1">
           <SearchField value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索模块名、工具、端口类型" aria-label="搜索模块" />
         </div>
-        <label className="flex items-center gap-2 text-xs text-muted-foreground">
-          显示 nf-core
-          <Switch checked={showNfCore} onCheckedChange={setShowNfCore} />
-        </label>
       </div>
 
       <div className="min-h-0 flex-1 space-y-4 overflow-auto">
@@ -225,34 +216,6 @@ export function ModuleCatalog() {
             </TableBody>
           </Table>
         )}
-
-        <div className="mt-3 rounded-lg border border-border">
-          <button type="button" className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-muted-foreground" onClick={() => setShowNfCore((value) => !value)}>
-            <ChevronRight className={cn("size-4 transition-transform", showNfCore && "rotate-90")} />
-            nf-core 模块 · {nfcore.data?.modules.length ?? "…"} 个 · 只读
-            <span className="ml-auto">{showNfCore ? "收起" : "显示"}</span>
-          </button>
-          {showNfCore && (
-            <div className="max-h-72 overflow-auto border-t border-border px-3 py-2">
-              {nfcore.isPending ? (
-                <p className="text-sm text-muted-foreground">正在加载 nf-core 目录…</p>
-              ) : nfRows.length === 0 ? (
-                <p className="text-sm text-muted-foreground">没有匹配的 nf-core 模块</p>
-              ) : (
-                <ul className="grid gap-1">
-                  {nfRows.slice(0, 80).map((def) => (
-                    <li key={def.id} className="flex items-center justify-between gap-3 text-xs">
-                      <span className="truncate font-mono">{def.path}</span>
-                      <span className="shrink-0 text-muted-foreground">{ioLine(def)}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {nfRows.length > 80 && <p className="mt-2 text-xs text-muted-foreground">还有 {nfRows.length - 80} 个，用搜索缩小范围。</p>}
-              {nfcore.data?.syncedAt && <p className="mt-2 text-[11px] text-muted-foreground">目录只读，同步于 {nfcore.data.syncedAt}。此页不提供同步。</p>}
-            </div>
-          )}
-        </div>
       </div>
 
       {selectedId && selected && (
@@ -278,7 +241,7 @@ export function ModuleCatalog() {
       )}
 
       <p className="text-xs text-muted-foreground">
-        每个自定义模块记录 sourceNotebookId 与 sourceNotebookRev，并保存一份 jupytext 库副本。「从库重建」按那一版新建可编辑笔记本，不改源笔记本。试跑不通过的版本留在这里，标成「不可拖入画布」，不会出现在画布抽屉。内置节点随产品提供。nf-core 打开「显示 nf-core」后才列出，只读。
+        每个自定义模块记录 sourceNotebookId 与 sourceNotebookRev，并保存一份 jupytext 库副本。「从库重建」按那一版新建可编辑笔记本，不改源笔记本。试跑不通过的版本留在这里，标成「不可拖入画布」，不会出现在画布抽屉。内置节点随产品提供。
       </p>
 
       <Dialog open={!!contract} onOpenChange={(open) => !open && setContract(null)}>

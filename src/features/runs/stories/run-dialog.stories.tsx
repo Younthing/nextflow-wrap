@@ -1,10 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { expect, fn, within } from "storybook/test";
 import { RunDialog } from "../components/run-dialog";
-import {
-  EditorFixture,
-  storyCatalog,
-} from "@/features/editor/stories/fixtures";
+import { EditorFixture } from "@/features/editor/stories/fixtures";
 const meta = {
   title: "Runs/RunDialog",
   component: RunDialog,
@@ -12,7 +9,6 @@ const meta = {
     open: true,
     onOpenChange: fn(),
     issues: [],
-    modulesSha: storyCatalog.gitSha,
   },
   decorators: [
     (Story) => (
