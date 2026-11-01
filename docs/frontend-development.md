@@ -17,7 +17,7 @@ The app keeps its existing glass theme and page layouts. Reusable primitives liv
 
 Use `useEditorStore(selector)` from `editor-provider` to subscribe to state and `useEditorStoreApi()` for event handlers. Pure assistant operations receive their store through `createEditorActions(store)`. Each store also has its own save coordinator, including the request queue and acknowledged server revisions. `useEditorAutosave` captures the document at enqueue time and flushes dirty edits when the route unmounts. Existing revision/generation checks remain in force.
 
-The standalone exports in `store.ts`, `editor-actions.ts` and `editor-save.ts` retain compatibility with non-React callers and domain tests. UI code must use the provider or explicitly inject its store. Keyboard commands run for the session most recently focused or clicked, including its portals.
+There is no module-level editor store or save queue. Tests and non-React callers create a store with `createEditorStore()`, pass it to `createEditorActions(store)`, and look up its queue with `getEditorSaveSession(store)`. Keyboard commands run for the session most recently focused or clicked, including its portals.
 
 ## Tailwind and theme
 
