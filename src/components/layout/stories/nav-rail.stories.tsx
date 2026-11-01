@@ -28,6 +28,12 @@ export const Editor: Story = {
   },
 };
 
+export const Notebooks: Story = {
+  parameters: {
+    nextjs: { navigation: { pathname: "/notebooks" } },
+  },
+};
+
 export const Runs: Story = {
   parameters: {
     nextjs: { navigation: { pathname: "/runs" } },

@@ -44,6 +44,7 @@ export const storyRun: RunDetail = {
 /** Deterministic, read-only fixtures. Unknown APIs fail here instead of reaching a runner. */
 export const storyHandlers = [
   http.get("/api/modules", () => HttpResponse.json(catalog)),
+  http.get("/api/script-modules", () => HttpResponse.json({ modules: [], references: {} })),
   http.get("/api/health", () =>
     HttpResponse.json({
       status: "ok",

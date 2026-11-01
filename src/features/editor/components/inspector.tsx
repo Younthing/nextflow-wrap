@@ -1,8 +1,11 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { ExternalLink, Trash2 } from "lucide-react";
 
+import { SourceDriftBanner } from "@/features/notebook/components/source-drift-banner";
+import { useScriptModules } from "@/features/notebook/queries";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { FormField } from "@/components/ui/form-field";
@@ -24,6 +27,7 @@ import {
   SAMPLESHEET_ID,
 } from "@/features/workflow/builtins";
 import { resolveNodeDef } from "@/features/workflow/catalog";
+import { moduleOrigin, newerScriptModule } from "@/features/workflow/origin";
 import { portSignature, socketInputs } from "@/features/workflow/ports";
 import { projectMeta } from "@/features/project/generate";
 import { formatPublishRules, parsePublishRules } from "@/features/project/publish-rules";
@@ -245,6 +249,7 @@ function NodeInspector({ node }: { node: FlowNode }) {
   const index = useEditorStore((s) => s.index);
   const update = useEditorStore((s) => s.updateNodeData);
   const removeNodes = useEditorStore((s) => s.removeNodes);
+  const scripts = useScriptModules();
   const def = resolveNodeDef(index, node.data);
   if (!def)
     return (
@@ -254,6 +259,9 @@ function NodeInspector({ node }: { node: FlowNode }) {
     );
 
   const { config } = node.data;
+  const origin = moduleOrigin(def);
+  const view = scripts.data?.modules.find((mod) => mod.id === def.id);
+  const newer = newerScriptModule(def, scripts.data?.modules ?? []);
   const setConfig = (patch: Partial<typeof config>, key: string) =>
     update(
       node.id,
@@ -270,7 +278,7 @@ function NodeInspector({ node }: { node: FlowNode }) {
             style={{ background: categoryColor(def.category) }}
           />
           <span className="text-xs text-muted-foreground">{def.category}</span>
-          {!def.builtin && (
+          {origin === "nf-core" && (
             <a
               href={`https://nf-co.re/modules/${def.path.replace("/", "_")}`}
               target="_blank"
@@ -280,11 +288,35 @@ function NodeInspector({ node }: { node: FlowNode }) {
               nf-core 文档 <ExternalLink className="size-3" />
             </a>
           )}
+          {origin === "script" && def.sourceNotebookId && (
+            <Link
+              href={`/notebooks/${def.sourceNotebookId}`}
+              className="ml-auto flex items-center gap-1 text-xs text-primary hover:underline"
+            >
+              在笔记本中打开源
+            </Link>
+          )}
         </div>
         <div className="font-serif text-lg font-semibold">
-          {def.builtin ? def.name : def.process}
+          {origin === "nf-core" ? def.process : def.name}
+          {def.version ? <span className="ml-2 font-mono text-xs text-muted-foreground">{def.version}</span> : null}
         </div>
         <p className="text-sm text-muted-foreground">{def.description}</p>
+        {view?.sourceChanged && view.sourceNotebookId && view.sourceNotebookRev !== undefined && view.sourceNotebookRevCurrent !== undefined && (
+          <SourceDriftBanner
+            notebookId={view.sourceNotebookId}
+            notebookName={view.sourceNotebookName}
+            pinnedRev={view.sourceNotebookRev}
+            currentRev={view.sourceNotebookRevCurrent}
+            cellChanges={view.cellChanges}
+            version={view.version}
+          />
+        )}
+        {newer && (
+          <Button type="button" size="sm" variant="outline" onClick={() => update(node.id, { moduleId: newer.id })}>
+            有新版本 {newer.version} · 更新
+          </Button>
+        )}
         {def.tools.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             {def.tools.map((t) =>
@@ -332,8 +364,48 @@ function NodeInspector({ node }: { node: FlowNode }) {
         </label>
       </Section>
 
-      {def.builtin ? (
+      {origin === "builtin" ? (
         <BuiltinSettings node={node} def={def} />
+      ) : origin === "script" ? (
+        <Section title="这一次用法">
+          <FormField
+            label={<Label htmlFor="ext-args" className="font-mono text-xs">args</Label>}
+            htmlFor="ext-args"
+          >
+            <Textarea
+              id="ext-args"
+              value={config.args ?? ""}
+              placeholder="额外的命令行参数"
+              onChange={(event) => setConfig({ args: event.target.value }, "args")}
+              className="min-h-14 font-mono text-xs"
+            />
+          </FormField>
+          <FormField label="publish" htmlFor="publish-path" hint="发布到这个目录，例如 results/qc/">
+            <Input
+              id="publish-path"
+              value={config.publishPath ?? ""}
+              onChange={(event) => setConfig({ publishPath: event.target.value }, "publishPath")}
+              className="h-8 font-mono text-xs"
+            />
+          </FormField>
+          <label className="flex items-center justify-between text-sm">
+            发布输出
+            <Switch checked={config.publish !== false} onCheckedChange={(value) => setConfig({ publish: value }, "publish")} />
+          </label>
+          <FormField label="label">
+            <Select value={config.label ?? def.label ?? "process_low"} onValueChange={(value) => setConfig({ label: value }, "label")}>
+              <SelectTrigger size="sm" className="font-mono text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {LABELS.map((label) => (
+                  <SelectItem key={label} value={label} className="font-mono text-xs">{label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FormField>
+          <p className="text-xs text-muted-foreground">
+            这里只改这一次用法，不改模块定义。改代码要回到笔记本，再发布新版本。
+          </p>
+        </Section>
       ) : (
         <Section title="模块配置（conf/modules.config）">
           <FormField

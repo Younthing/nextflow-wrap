@@ -1,6 +1,7 @@
 import samplesheetSchema from "@/data/samplesheet-schema.json";
 import emailTemplates from "./email-templates.json";
 import type { ModuleIndex } from "@/features/workflow/catalog";
+import { moduleOrigin } from "@/features/workflow/origin";
 import type { NodeConfig, ProjectSettings, PublishDir, WorkflowDoc } from "@/features/workflow/types";
 import { gdynamic, gstr, section } from "./groovy";
 import { buildParamsSchema, paramsBlock, patternParams, referenceParams } from "./schema";
@@ -16,6 +17,7 @@ import {
   utilsSubworkflow,
   type ProjectMeta,
 } from "./templates";
+import { scriptProjectFiles } from "./script-process";
 import { GenerateError, MULTIQC_ID, generateWorkflowScript, planNodes } from "./workflow-script";
 
 export { GenerateError };
@@ -247,7 +249,7 @@ export function generateProject(doc: WorkflowDoc, index: ModuleIndex, opts: Gene
   if (order.some((p) => p.node.data.alias === meta.workflowName)) meta.workflowName += "_PIPELINE";
   const schema = buildParamsSchema(meta.name, meta.description, refs, patternParams(doc));
 
-  const moduleComponents = [...new Map(order.filter((p) => !p.def.builtin).map((p) => [p.def.path, p.def])).values()]
+  const moduleComponents = [...new Map(order.filter((p) => moduleOrigin(p.def) === "nf-core").map((p) => [p.def.path, p.def])).values()]
     .sort((a, b) => a.path.localeCompare(b.path))
     .map((def) => ({ kind: "module" as const, path: def.path, gitSha: opts.modulesSha }));
   if (!moduleComponents.some((c) => c.path === "multiqc") && order.some((p) => p.def.id === MULTIQC_ID)) {
@@ -318,6 +320,7 @@ template:
 `,
     },
     { path: "README.md", language: "markdown", content: readme(meta, doc, index) },
+    ...scriptProjectFiles(order),
   ];
 
   return { meta, files, components };

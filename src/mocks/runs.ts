@@ -11,14 +11,16 @@ import { newId } from "@/features/workflow/nodes";
 import { profileList } from "@/features/project/launch";
 import { readDb, writeDb, type StoredRun } from "./db";
 
-const index = indexModules((catalog as ModuleCatalog).modules);
+function moduleIndex() {
+  return indexModules([...(catalog as ModuleCatalog).modules, ...Object.values(readDb().scriptModules)]);
+}
 
 function simulate(run: StoredRun, now = Date.now()) {
-  const sim = simulateRun(run, index, now);
+  const sim = simulateRun(run, moduleIndex(), now);
   return { sim, detail: materialize(run, now, sim) };
 }
 
-export function materialize(run: StoredRun, now = Date.now(), sim = simulateRun(run, index, now)): RunDetail {
+export function materialize(run: StoredRun, now = Date.now(), sim = simulateRun(run, moduleIndex(), now)): RunDetail {
   const iso = (ms?: number) => (ms !== undefined && ms <= now ? new Date(ms).toISOString() : undefined);
   return {
     ...run,
@@ -112,7 +114,7 @@ export const runHandlers = [
     const task = simulate(run).sim.tasks.find((t) => t.hash === hash);
     if (!task) return HttpResponse.json({ message: "任务不存在" }, { status: 404 });
     const node = run.workflow.nodes.find((n) => n.id === task.nodeId);
-    return HttpResponse.json({ text: taskLog(task, node && resolveNodeDef(index, node.data)) });
+    return HttpResponse.json({ text: taskLog(task, node && resolveNodeDef(moduleIndex(), node.data)) });
   }),
 
   http.get("/api/runs/:id/results", async ({ params }) => {
@@ -120,7 +122,7 @@ export const runHandlers = [
     const run = readDb().runs[params.id as string];
     if (!run) return notFound();
     const { sim, detail } = simulate(run);
-    return HttpResponse.json(resultFiles(detail, sim.tasks, index));
+    return HttpResponse.json(resultFiles(detail, sim.tasks, moduleIndex()));
   }),
 
   http.get("/api/runs/:id/results/content", async ({ params, request }) => {
@@ -129,7 +131,7 @@ export const runHandlers = [
     if (!run) return notFound();
     const { sim, detail } = simulate(run);
     const path = new URL(request.url).searchParams.get("path") ?? "";
-    const content = resultContent(detail, sim.tasks, index, path);
+    const content = resultContent(detail, sim.tasks, moduleIndex(), path);
     if (!content) return HttpResponse.json({ message: "文件不存在或无法预览" }, { status: 404 });
     return new HttpResponse(content.body, { headers: { "content-type": content.contentType } });
   }),

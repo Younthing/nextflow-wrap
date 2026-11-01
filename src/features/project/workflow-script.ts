@@ -1,6 +1,8 @@
 import { REFERENCE_ID, SAMPLESHEET_ID } from "@/features/workflow/builtins";
 import { resolveNodeDef, type ModuleIndex } from "@/features/workflow/catalog";
 import { isOperator, operatorChannel } from "@/features/workflow/operators";
+import { renderCatalogBuiltinProcesses } from "@/features/workflow/catalog-builtins";
+import { moduleOrigin } from "@/features/workflow/origin";
 import { renderTemporaryProcesses } from "@/features/workflow/test-modules";
 import { checkCompatibility, findPort, portFromHandle, socketInputs } from "@/features/workflow/ports";
 import type { ModuleDef, PortDef, WorkflowDoc, WorkflowEdge, WorkflowNode } from "@/features/workflow/types";
@@ -436,11 +438,20 @@ export function renderTemporaryModuleText(doc: WorkflowDoc, index: ModuleIndex):
 }
 
 export function workflowIncludes(order: PlannedNode[]): string[] {
-  const modules = order.filter((p) => !p.def.builtin);
-  const width = Math.max(...modules.map((p) => (p.def.process === p.node.data.alias ? p.def.process.length : `${p.def.process} as ${p.node.data.alias}`.length)), 22);
-  return modules.map(({ node, def }) => {
+  const rows = order.flatMap(({ node, def }) => {
+    const origin = moduleOrigin(def);
+    if (origin === "nf-core") return [{ node, def, from: `../modules/nf-core/${def.path}/main` }];
+    if (origin === "script") return [{ node, def, from: `../modules/local/${def.path}/main` }];
+    return [];
+  });
+  if (!rows.length) return [];
+  const width = Math.max(
+    ...rows.map(({ node, def }) => (def.process === node.data.alias ? def.process.length : `${def.process} as ${node.data.alias}`.length)),
+    22,
+  );
+  return rows.map(({ node, def, from }) => {
     const name = def.process === node.data.alias ? def.process : `${def.process} as ${node.data.alias}`;
-    return `include { ${name.padEnd(width)} } from '../modules/nf-core/${def.path}/main'`;
+    return `include { ${name.padEnd(width)} } from '${from}'`;
   });
 }
 
@@ -518,7 +529,7 @@ ${section("IMPORT MODULES / SUBWORKFLOWS / FUNCTIONS")}
 
 ${includes.join("\n")}
 
-${renderTemporaryProcesses(order) ? `${section("TEMPORARY TEST MODULES — not nf-core")}\n\n${renderTemporaryProcesses(order)}\n` : ""}
+${renderTemporaryProcesses(order) ? `${section("TEMPORARY TEST MODULES — not nf-core")}\n\n${renderTemporaryProcesses(order)}\n` : ""}${renderCatalogBuiltinProcesses(order) ? `${section("BUILTIN NODES")}\n\n${renderCatalogBuiltinProcesses(order)}\n` : ""}
 ${section("RUN MAIN WORKFLOW")}
 
 workflow ${opts.workflowName} {

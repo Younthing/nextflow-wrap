@@ -31,10 +31,16 @@ export interface ToolInfo {
   licence?: string[];
 }
 
+/** Where a module comes from. Legacy nf-core rows omit this; `moduleOrigin` infers it. */
+export type ModuleOrigin = "nf-core" | "builtin" | "script";
+
+/** Result of the publish try-run. Failed script modules stay in the catalog but are not draggable. */
+export type TryRunStatus = "passed" | "failed";
+
 export interface ModuleDef {
-  /** `nf-core/<path>` for nf-core modules, `builtin/<name>` otherwise. */
+  /** `nf-core/<path>` for nf-core modules, `builtin/<name>` or `script/<notebook>/<version>` otherwise. */
   id: string;
-  /** Path under modules/nf-core, e.g. `star/align`. Empty for built-ins. */
+  /** Path under modules/nf-core, e.g. `star/align`. Local script folder for published notebooks. Empty for built-ins. */
   path: string;
   name: string;
   /** Nextflow process name, e.g. `STAR_ALIGN`. */
@@ -52,6 +58,23 @@ export interface ModuleDef {
   builtin?: boolean;
   /** Host-command process used to exercise patterns. Not an nf-core module. */
   temporary?: boolean;
+  /** nf-core (read-only catalog), builtin functional node, or a notebook-published CLI. */
+  origin?: ModuleOrigin;
+  /** Notebook that published this script module. */
+  sourceNotebookId?: string;
+  /** Notebook revision pinned at publish time. */
+  sourceNotebookRev?: number;
+  /** Published label, for example `v1`. */
+  version?: string;
+  tryRun?: TryRunStatus;
+  /** CLI entry inside a generated project, for example `bin/qc_summary.py`. */
+  command?: string;
+  /** Generated script. The canvas never shows this; Nextflow calls it. */
+  script?: string;
+  /** Kernel label copied from the source notebook, for example `py311-pandas`. */
+  kernel?: string;
+  /** Free-text note saved with this published version. */
+  changelog?: string;
 }
 
 export interface ModuleCatalog {

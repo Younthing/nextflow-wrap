@@ -1,0 +1,76 @@
+import { describe, expect, it } from "vitest";
+
+import { indexModules } from "@/features/workflow/catalog";
+import { buildScriptModule } from "@/features/notebook/publish";
+import type { NotebookDoc, TryRunRecord } from "@/features/notebook/types";
+import type { WorkflowDoc } from "@/features/workflow/types";
+import { generateProject } from "./generate";
+
+const notebook: NotebookDoc = {
+  id: "nb_hello",
+  name: "hello_note",
+  description: "问候",
+  kernel: "python3.11",
+  language: "python",
+  rev: 2,
+  createdAt: "2026-10-31T00:00:00.000Z",
+  updatedAt: "2026-10-31T00:00:00.000Z",
+  cells: [
+    {
+      id: "c1",
+      role: "input",
+      source: '# @input name=title type=str default="hi"\n',
+    },
+    {
+      id: "c2",
+      role: "output",
+      source: '# @output name=report type=path pattern="report.html"\nopen("report.html", "w", encoding="utf-8").write(title)\n',
+    },
+  ],
+};
+
+const receipt: TryRunRecord = {
+  notebookId: notebook.id,
+  rev: notebook.rev,
+  passed: true,
+  exitCode: 0,
+  durationMs: 5,
+  log: "ok",
+  outputs: [{ name: "report", file: "report.html", bytes: 2, ok: true }],
+  ranAt: notebook.updatedAt,
+};
+
+describe("script module project files", () => {
+  it("emits a hidden local process and keeps the script out of nf-core install", () => {
+    const def = buildScriptModule({
+      notebook,
+      name: "hello_note",
+      description: notebook.description,
+      existing: [],
+      receipt,
+    });
+    const doc: WorkflowDoc = {
+      id: "wf_script",
+      name: "script flow",
+      version: 1,
+      params: { input: "assets/samplesheet.csv", outdir: "results" },
+      nodes: [
+        { id: "input", position: { x: 0, y: 0 }, data: { moduleId: "builtin/samplesheet", alias: "SAMPLESHEET", widgets: {}, config: {} } },
+        { id: "hello", position: { x: 240, y: 0 }, data: { moduleId: def.id, alias: "HELLO_NOTE", widgets: { title: "hi" }, config: { publish: true } } },
+      ],
+      edges: [],
+      updatedAt: notebook.updatedAt,
+    };
+    const project = generateProject(doc, indexModules([def]), { modulesSha: "abc" });
+    const workflow = project.files.find((file) => file.path.startsWith("workflows/"))!.content;
+    const process = project.files.find((file) => file.path === `modules/local/${def.path}/main.nf`)!.content;
+    const script = project.files.find((file) => file.path === def.command)!.content;
+    expect(workflow).toContain(`from '../modules/local/${def.path}/main'`);
+    expect(workflow).toContain("HELLO_NOTE (");
+    expect(process).toContain("process HELLO_NOTE");
+    expect(process).not.toContain("notebook");
+    expect(script).toContain("argparse");
+    expect(project.components.some((component) => component.path === def.path)).toBe(false);
+    expect(JSON.parse(project.files.find((file) => file.path === "modules.json")!.content).repos["https://github.com/nf-core/modules.git"].modules["nf-core"][def.path]).toBeUndefined();
+  });
+});

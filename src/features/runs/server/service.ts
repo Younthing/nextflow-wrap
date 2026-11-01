@@ -47,7 +47,7 @@ export function submitRun(body: unknown, idempotency?: string) {
   const workflow = workflowInput(request.workflow);
   if (!store().workflow(workflow.id)) throw new HttpError(400, "请先保存流程");
   workflow.params = request.params;
-  const index = indexModules((catalog as ModuleCatalog).modules);
+  const index = indexModules([...(catalog as ModuleCatalog).modules, ...store().scriptModules()]);
   const issues = validateWorkflow(workflow.nodes, workflow.edges, request.params, index).filter((issue) => issue.level === "error");
   if (issues.length) throw new HttpError(400, issues.map((issue) => issue.message).join("；"));
   if (new Set(workflow.nodes.map((node) => node.id)).size !== workflow.nodes.length) throw new HttpError(400, "节点 ID 重复");

@@ -226,11 +226,14 @@ export function ModuleNode({ id, data, selected }: NodeProps<FlowNode>) {
   }
 
   const accent = categoryColor(def.category);
-  const subtitle = def.builtin
-    ? data.settings?.param
-      ? `--${data.settings.param}`
-      : def.name
-    : def.path;
+  const origin = def.origin ?? (def.builtin ? "builtin" : def.id.startsWith("script/") ? "script" : "nf-core");
+  const subtitle = origin === "script"
+    ? `${def.name}${def.version ? ` · ${def.version}` : ""}`
+    : def.builtin
+      ? data.settings?.param
+        ? `--${data.settings.param}`
+        : def.name
+      : def.path;
 
   return (
     <div

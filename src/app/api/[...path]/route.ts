@@ -6,6 +6,7 @@ import catalog from "@/data/nf-core-modules.json";
 import samplesheetSchema from "@/data/samplesheet-schema.json";
 import { containedFile, fileResponse, readTail, resultFiles } from "@/features/runs/server/files";
 import { active, assertSameOrigin, cancelRun, HttpError, requireRun, resumeRun, runnerReady, submitRun, workflowInput } from "@/features/runs/server/service";
+import { handleNotebookApi } from "@/features/notebook/server/http";
 import { store } from "@/lib/server/database";
 
 type Context = { params: Promise<{ path: string[] }> };
@@ -28,6 +29,7 @@ async function handle(request: Request, context: Context): Promise<Response> {
       return json({ status: ready ? "ok" : "degraded", nextflowVersion: state?.versions?.nextflow ?? "未就绪", mocked: false, runnerReady: !!ready, diagnostics: state?.error ?? (ready ? undefined : "请启动 pnpm runner"), capabilities: { executors: ["local"], engines: ["shell", "docker"] }, resources: state?.resources, versions: state?.versions });
     }
     if (resource === "modules" && method === "GET") return json(catalog);
+    if (resource === "notebooks" || resource === "script-modules") return handleNotebookApi(method, path, request);
     if (resource === "schemas" && id === "samplesheet" && method === "GET") return json(samplesheetSchema);
     if (resource === "workflows") {
       if (!id && method === "GET") return json(store().workflows().map((doc) => ({ id: doc.id, name: doc.name, description: doc.description, updatedAt: doc.updatedAt, nodeCount: doc.nodes.length })));

@@ -1,0 +1,113 @@
+"use client";
+
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+
+import { api } from "@/lib/api";
+import type { ModuleDef } from "@/features/workflow/types";
+import type { ScriptModuleView } from "./library";
+import type { CellRunResult, NotebookDoc, NotebookRevision, NotebookSummary, TryRunRecord } from "./types";
+
+export const notebookKeys = {
+  all: ["notebooks"] as const,
+  detail: (id: string) => ["notebooks", id] as const,
+  revision: (id: string, rev: string) => ["notebooks", id, "rev", rev] as const,
+};
+
+export const scriptModuleKey = ["script-modules"] as const;
+
+export interface ScriptModuleList {
+  modules: ScriptModuleView[];
+  references: Record<string, number>;
+}
+
+export function useNotebooks() {
+  return useQuery({
+    queryKey: notebookKeys.all,
+    queryFn: () => api<NotebookSummary[]>("/notebooks"),
+  });
+}
+
+export function useNotebook(id: string | undefined) {
+  return useQuery({
+    queryKey: notebookKeys.detail(id ?? ""),
+    queryFn: () => api<NotebookDoc>(`/notebooks/${id}`),
+    enabled: !!id,
+  });
+}
+
+export function useNotebookRevision(id: string | undefined, rev: string | null) {
+  return useQuery({
+    queryKey: notebookKeys.revision(id ?? "", rev ?? ""),
+    queryFn: () => api<NotebookRevision>(`/notebooks/${id}/revisions/${rev}`),
+    enabled: !!id && !!rev,
+  });
+}
+
+export function useScriptModules() {
+  return useQuery({
+    queryKey: scriptModuleKey,
+    queryFn: () => api<ScriptModuleList>("/script-modules"),
+  });
+}
+
+function refreshNotebooks(qc: ReturnType<typeof useQueryClient>, doc?: NotebookDoc) {
+  if (doc) qc.setQueryData(notebookKeys.detail(doc.id), doc);
+  void qc.invalidateQueries({ queryKey: notebookKeys.all });
+  void qc.invalidateQueries({ queryKey: scriptModuleKey });
+}
+
+export function useCreateNotebook() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Pick<NotebookDoc, "name" | "description" | "kernel" | "cells">) =>
+      api<NotebookDoc>("/notebooks", { method: "POST", body: JSON.stringify(body) }),
+    onSuccess: (doc) => refreshNotebooks(qc, doc),
+  });
+}
+
+export function useSaveNotebook() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (doc: NotebookDoc) =>
+      api<NotebookDoc>(`/notebooks/${doc.id}`, { method: "PUT", body: JSON.stringify(doc) }),
+    onSuccess: (doc) => refreshNotebooks(qc, doc),
+  });
+}
+
+export function useRunNotebook() {
+  return useMutation({
+    mutationFn: (id: string) => api<{ cells: CellRunResult[] }>(`/notebooks/${id}/run`, { method: "POST", body: "{}" }),
+  });
+}
+
+export function useTryRunNotebook() {
+  return useMutation({
+    mutationFn: ({ id, args, sampleId }: { id: string; args: Record<string, string>; sampleId?: string }) =>
+      api<TryRunRecord>(`/notebooks/${id}/try-run`, {
+        method: "POST",
+        body: JSON.stringify({ args, sampleId }),
+      }),
+  });
+}
+
+export function usePublishNotebook() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      name,
+      description,
+      changelog,
+    }: {
+      id: string;
+      name: string;
+      description: string;
+      changelog?: string;
+    }) =>
+      api<ModuleDef>(`/notebooks/${id}/publish`, {
+        method: "POST",
+        body: JSON.stringify({ name, description, changelog }),
+      }),
+    onSuccess: () => refreshNotebooks(qc),
+  });
+}
