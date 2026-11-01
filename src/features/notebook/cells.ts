@@ -14,6 +14,14 @@ export function cellsForRun(notebook: NotebookDoc, cellId?: string): NotebookCel
   return runnable(notebook.cells.slice(0, index + 1));
 }
 
+/** Cells a persistent kernel runs: just the chosen cell, or every runnable cell for run-all. */
+export function cellsForKernelRun(notebook: NotebookDoc, cellId?: string): NotebookCell[] {
+  if (!cellId) return runnable(notebook.cells);
+  const cell = notebook.cells.find((item) => item.id === cellId);
+  if (!cell) throw new ConvertError("单元格不存在");
+  return cell.role === "markdown" ? [] : [cell];
+}
+
 export function nextCellId(cells: readonly { id: string }[], id: string): string | null {
   const index = cells.findIndex((cell) => cell.id === id);
   if (index < 0 || index >= cells.length - 1) return null;

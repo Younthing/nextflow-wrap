@@ -15,6 +15,8 @@ export interface CellOutputModel {
   stdout: string;
   error?: string;
   outputs?: CellOutput[];
+  /** Jupyter execution count from a persistent kernel. */
+  executionCount?: number;
 }
 
 function clip(value: string, limit: number): string {

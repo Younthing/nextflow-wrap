@@ -15,6 +15,7 @@ import type { WorkflowDoc, WorkflowSummary } from "@/features/workflow/types";
 import { NEXTFLOW_VERSION } from "@/features/project/templates";
 import type { HealthStatus } from "@/lib/api-types";
 import { readDb, writeDb } from "./db";
+import { kernelHandlers } from "./kernels";
 import { runHandlers } from "./runs";
 
 const summarize = (w: WorkflowDoc): WorkflowSummary => ({
@@ -28,6 +29,7 @@ const summarize = (w: WorkflowDoc): WorkflowSummary => ({
 const notFound = () => HttpResponse.json({ message: "流程不存在" }, { status: 404 });
 
 export const handlers = [
+  ...kernelHandlers,
   http.get("/api/health", async () => {
     await delay(150);
     return HttpResponse.json<HealthStatus>({

@@ -15,8 +15,9 @@ import { dispatchNotebookKey, notebookDraftKey } from "@/features/notebook/edit"
 import { COMMAND_HINT, EDIT_HINT, interpretNotebookKey, toNotebookKeyEvent, type NotebookMode } from "@/features/notebook/keyboard";
 import { latestModuleForNotebook } from "@/features/notebook/library";
 import { useNotebook, useNotebookRevision, useRunNotebook, useSaveNotebook, useScriptModules } from "@/features/notebook/queries";
-import { languageForKernel, type CellRunResult, type NotebookCell, type NotebookCellRole, type NotebookDoc } from "@/features/notebook/types";
+import { languageForKernel, type CellRunResult, type NotebookCell, type NotebookCellRole, type NotebookDoc, type NotebookRunKernel } from "@/features/notebook/types";
 import { cn } from "@/lib/utils";
+import { KernelControls } from "./kernel-controls";
 import { KernelPicker } from "./kernel-picker";
 import { NotebookCellCard } from "./notebook-cell";
 
@@ -107,6 +108,7 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
   const [prepOverride, setPrepOverride] = React.useState<boolean | null>(null);
   const [outputs, setOutputs] = React.useState<Record<string, CellRunResult>>({});
   const [runningTarget, setRunningTarget] = React.useState<string | "all" | null>(null);
+  const [lastKernel, setLastKernel] = React.useState<NotebookRunKernel | null>(null);
   const [mode, setMode] = React.useState<NotebookMode>("command");
   const [deleteArmed, setDeleteArmed] = React.useState(false);
   const [markdownEditId, setMarkdownEditId] = React.useState<string | null>(null);
@@ -227,6 +229,7 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
       { id: notebookId, cellId },
       {
         onSuccess: (result) => {
+          setLastKernel(result.kernel ?? null);
           setOutputs((current) => {
             const next = cellId ? { ...current } : {};
             for (const cell of result.cells) next[cell.id] = cell;
@@ -259,6 +262,7 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
       }
       if (!cellId) return;
       const result = await run.mutateAsync({ id: notebookId, cellId });
+      setLastKernel(result.kernel ?? null);
       setOutputs((current) => {
         const next = { ...current };
         for (const cell of result.cells) next[cell.id] = cell;
@@ -391,10 +395,13 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
       <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(0,1fr)_18rem]">
         <section className="glass flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl">
           <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
-            <Button type="button" size="sm" variant="outline" disabled={runDisabled} onClick={() => beginRun()}>
+            <Button type="button" size="sm" variant="outline" disabled={runDisabled} title="重启内核后从第一个单元格依次运行，遇到报错停下" onClick={() => beginRun()}>
               {run.isPending ? <Loader2 className="animate-spin" /> : <Play />}
               运行全部
             </Button>
+            {live.language === "python" ? (
+              <KernelControls notebookId={notebookId} running={runningTarget !== null} disabled={readOnly} />
+            ) : null}
             <Button type="button" size="sm" variant="ghost" disabled={readOnly} onClick={() => {
               const cell = newCell("code");
               update({ cells: [...live.cells, cell] });
@@ -416,8 +423,16 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
             </div>
           </div>
           <p className="border-b border-border px-3 py-2 text-xs text-muted-foreground">
+            {live.language === "python"
+              ? "单元格在常驻 Jupyter 内核里运行，变量和工作目录里的文件会保留。"
+              : null}
             内核只决定笔记本里怎么跑；发布页的试跑和模块 conda／容器单独手填，互不覆盖。
           </p>
+          {lastKernel?.note ? (
+            <p role="status" className="border-b border-border bg-warning/10 px-3 py-2 text-xs text-foreground">
+              {lastKernel.note}
+            </p>
+          ) : null}
           <p className="border-b border-border px-3 py-2 text-xs text-muted-foreground">
             {mode === "command" ? COMMAND_HINT : EDIT_HINT}
           </p>

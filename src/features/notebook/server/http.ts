@@ -7,7 +7,8 @@ import { PercentError } from "@/features/notebook/jupytext";
 import { notebookFromLibrary, storedLibraryCopy } from "@/features/notebook/library-copy";
 import { publishScriptModule } from "@/features/notebook/publish";
 import { demoLibraryCopies, demoNotebooks, demoRevisions, demoScriptModules } from "@/features/notebook/seed";
-import { executeCells, executeTryRun } from "@/features/notebook/execute";
+import { executeTryRun, runNotebookCells } from "@/features/notebook/execute";
+import { existingKernel, kernelFor, kernelInfo, KernelUnavailableError, listKernelSpecs, shutdownKernel } from "@/features/notebook/server/kernels";
 import { referenceCounts, scriptModuleViews, summarizeNotebook } from "@/features/notebook/library";
 import { languageForKernel, type NotebookDoc } from "@/features/notebook/types";
 import { HttpError } from "@/features/runs/server/service";
@@ -31,6 +32,10 @@ const writeSchema = z.object({
 
 const runSchema = z.object({
   cellId: z.string().min(1).max(80).optional(),
+});
+
+const kernelActionSchema = z.object({
+  action: z.enum(["interrupt", "restart", "shutdown"]),
 });
 
 const envField = z.string().max(500);
@@ -115,6 +120,8 @@ function libraryForModule(db: StudioStore, moduleId: string) {
 export async function handleNotebookApi(method: string, path: string[], request: Request, db: StudioStore = store()): Promise<Response> {
   ensureNotebookDemo(db);
   const [resource, id, action, extra] = path;
+
+  if (resource === "kernels" && !id && method === "GET") return json(await listKernelSpecs());
 
   if (resource === "script-modules" && !id && method === "GET") {
     const revisions = allRevisions(db);
@@ -210,11 +217,34 @@ export async function handleNotebookApi(method: string, path: string[], request:
   if (action === "run" && method === "POST") {
     const body = runSchema.parse(await request.json().catch(() => ({})));
     try {
-      return json({ cells: await executeCells(requireNotebook(db, id), body.cellId) });
+      return json(await runNotebookCells(requireNotebook(db, id), body.cellId));
     } catch (error) {
       if (error instanceof ConvertError) throw new HttpError(400, error.message);
       throw error;
     }
+  }
+
+  if (action === "kernel" && method === "GET") {
+    requireNotebook(db, id);
+    return json(kernelInfo(id));
+  }
+
+  if (action === "kernel" && method === "POST") {
+    const notebook = requireNotebook(db, id);
+    const body = kernelActionSchema.parse(await request.json().catch(() => ({})));
+    if (body.action === "interrupt") existingKernel(id)?.interrupt();
+    if (body.action === "shutdown") shutdownKernel(id);
+    if (body.action === "restart") {
+      shutdownKernel(id);
+      if (notebook.language !== "python") throw new HttpError(400, "R 笔记本本期没有常驻内核");
+      try {
+        await (await kernelFor(id, notebook.kernel)).whenReady();
+      } catch (error) {
+        if (error instanceof KernelUnavailableError) throw new HttpError(400, `${error.message}。安装 ipykernel 后再启动内核`);
+        throw new HttpError(500, error instanceof Error ? error.message : "内核启动失败");
+      }
+    }
+    return json(kernelInfo(id));
   }
 
   if (action === "try-run" && method === "POST") {

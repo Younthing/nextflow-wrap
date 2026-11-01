@@ -6,6 +6,7 @@ import { Popover } from "radix-ui";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useKernelSpecs } from "@/features/notebook/queries";
 import { KERNELS, kernelLabel, normalizeKernelName, type KernelId } from "@/features/notebook/types";
 import { cn } from "@/lib/utils";
 
@@ -24,7 +25,9 @@ export function KernelPicker({
   const [custom, setCustom] = React.useState(false);
   const [draft, setDraft] = React.useState("");
   const [error, setError] = React.useState("");
-  const known = value in KERNELS;
+  const specs = useKernelSpecs();
+  const jupyter = (specs.data?.kernels ?? []).filter((spec) => !(spec.name in KERNELS));
+  const known = value in KERNELS || jupyter.some((spec) => spec.name === value);
 
   const choose = (kernel: string) => {
     onChange(kernel);
@@ -77,7 +80,24 @@ export function KernelPicker({
                 onSelect={() => choose(id)}
               />
             ))}
+            {jupyter.length > 0 && (
+              <p className="px-2.5 pt-2 pb-1 text-[11px] text-muted-foreground">本机 Jupyter 内核</p>
+            )}
+            {jupyter.map((spec) => (
+              <KernelOption
+                key={spec.name}
+                selected={spec.name === value}
+                label={spec.displayName === spec.name ? spec.name : `${spec.displayName} · ${spec.name}`}
+                onSelect={() => choose(spec.name)}
+              />
+            ))}
           </div>
+          {specs.data && !specs.data.available && (
+            <p className="px-2.5 py-1.5 text-[11px] text-muted-foreground">
+              未检测到 Jupyter，单元格每次从头运行。安装后可用常驻内核：
+              <span className="font-mono">python3 -m pip install ipykernel</span>
+            </p>
+          )}
           <div className="mt-1 border-t border-border pt-1">
             {custom ? (
               <form

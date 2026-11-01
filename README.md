@@ -24,6 +24,19 @@ ComfyUI 式的 Nextflow 可视化前端：在笔记本里写分析脚本并发�
 - 撤销/重做（Ctrl+Z / ⌘Z，重做 Ctrl+Shift+Z / ⇧⌘Z，也可 Ctrl+Y / ⌘Y），Ctrl+S / ⌘S 保存，已保存的流程会自动保存；也可以导入/导出 JSON。
 - 复制、粘贴、创建副本（Ctrl+C / ⌘C、Ctrl+V / ⌘V、Ctrl+D / ⌘D）。Delete 或 Backspace 删除选中的节点和连线，撤销可恢复。粘贴只保留选区内部的连线。Ctrl+A / ⌘A 全选，Esc 取消选择。Ctrl+K / ⌘K 或 / 打开节点搜索，F 或 Shift+1 / ⇧1 适应视图（有选中节点时对准选区）。
 
+## 笔记本
+
+- Python 笔记本的单元格在常驻 Jupyter 内核里运行，每本笔记本一个内核，变量和工作目录（`<数据目录>/scratch/notebooks/<笔记本 id>/`）里的文件在多次运行之间保留。运行单个单元格只跑这一格；「运行全部」先重启内核，再从第一格依次运行，遇到报错停下。工具栏显示内核状态，可以中断正在跑的单元格或重启内核。
+- 内核选择器列出本机已安装的 Jupyter kernelspec（如 `python -m ipykernel install --user --name scanpy` 注册的环境）。笔记本记的内核名不是已安装的 kernelspec 时改用 `python3`，并在工具栏下方说明。
+- 需要 `python3 -m pip install ipykernel`（`NEXTFLOW_STUDIO_JUPYTER_PYTHON` 可换解释器）。没有 Jupyter 时退回旧行为：每次在新进程里从头运行到所选单元格。内核空闲 2 小时后自动关闭（`NEXTFLOW_STUDIO_KERNEL_IDLE_MS`）。R 笔记本本期只编辑，试跑时调用 `Rscript`。
+
+| 方法   | 路径                         | 说明                                                              |
+| ------ | ---------------------------- | ----------------------------------------------------------------- |
+| `POST` | `/api/notebooks/:id/run`     | 运行单元格：`{ cellId? }`，返回 `{ cells, kernel }`               |
+| `GET`  | `/api/notebooks/:id/kernel`  | 内核状态：`stopped`、`starting`、`idle`、`busy`、`dead`           |
+| `POST` | `/api/notebooks/:id/kernel`  | `{ action: "interrupt" \| "restart" \| "shutdown" }`               |
+| `GET`  | `/api/kernels`               | 本机 Jupyter kernelspec 列表                                      |
+
 ## 一键运行
 
 点工具栏的「运行」会把画布生成一个标准 Nextflow 项目（`src/features/project`），并选择运行环境后提交到后端：
