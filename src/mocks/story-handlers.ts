@@ -5,6 +5,7 @@ import { defaultLaunchConfig } from "@/features/project/launch";
 import { NEXTFLOW_VERSION } from "@/features/project/templates";
 import type { RunDetail } from "@/features/runs/types";
 import { fsHandlers } from "./fs";
+import { settingsHandlers } from "./settings";
 import { kernelHandlers } from "./kernels";
 
 export const storyWorkflow = {
@@ -47,6 +48,7 @@ export const storyRun: RunDetail = {
 export const storyHandlers = [
   ...kernelHandlers,
   ...fsHandlers,
+  ...settingsHandlers,
   http.get("/api/script-modules", () => HttpResponse.json({ modules: EXAMPLE_MODULES, references: {} })),
   http.get("/api/health", () =>
     HttpResponse.json({

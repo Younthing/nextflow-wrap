@@ -1,9 +1,9 @@
 import { randomBytes } from "node:crypto";
 import { execFile } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { join } from "node:path";
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, session, shell, Tray, utilityProcess, type UtilityProcess } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, safeStorage, session, shell, Tray, utilityProcess, type UtilityProcess } from "electron";
 
 import { SESSION_COOKIE } from "../../src/features/desktop/session-guard";
 import { parseEnvBlock, quitPrompt, RestartTracker, SHELL_ENV_KEYS } from "../../src/features/desktop/supervisor";
@@ -56,6 +56,22 @@ async function shellEnvironment(): Promise<Record<string, string>> {
 }
 
 let baseEnv: NodeJS.ProcessEnv = process.env;
+
+/**
+ * Key for the API keys saved on the settings page. It is random per install and stored encrypted with
+ * safeStorage (macOS Keychain, libsecret / kwallet on Linux). Linux without a keyring falls back to a plain
+ * 0600 secrets file in the data directory.
+ */
+function keychainSecret(): string | undefined {
+  if (!safeStorage.isEncryptionAvailable()) return undefined;
+  if (process.platform === "linux" && safeStorage.getSelectedStorageBackend() === "basic_text") return undefined;
+  const file = join(app.getPath("userData"), "secret-key.bin");
+  try { return safeStorage.decryptString(readFileSync(file)); }
+  catch { /* First start, or the keychain entry changed: make a new key. */ }
+  const key = randomBytes(32).toString("hex");
+  writeFileSync(file, safeStorage.encryptString(key), { mode: 0o600 });
+  return key;
+}
 
 function serviceEnv(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
   return {
@@ -232,7 +248,8 @@ if (!app.requestSingleInstanceLock()) app.quit();
 else app.on("second-instance", showWindow);
 
 app.whenReady().then(async () => {
-  baseEnv = { ...process.env, ...(await shellEnvironment()) };
+  const secret = keychainSecret();
+  baseEnv = { ...process.env, ...(await shellEnvironment()), ...(secret ? { NEXTFLOW_STUDIO_SECRET_KEY: secret } : {}) };
   port = await freePort();
   const origin = `http://127.0.0.1:${port}`;
   await session.defaultSession.cookies.set({ url: origin, name: SESSION_COOKIE, value: token, httpOnly: true, sameSite: "strict" });

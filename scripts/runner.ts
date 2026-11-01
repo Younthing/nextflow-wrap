@@ -20,8 +20,11 @@ import { hostChainWorkflow, writeHostChainInputs } from "@/features/workflow/hos
 import type { PipelineParams } from "@/features/workflow/types";
 import { dataDirectory, store, type StoredExecution } from "@/lib/server/database";
 import { workDirectory } from "@/lib/server/paths";
+import { applyStoredSettings } from "@/lib/server/settings";
 import { WEBLOG_PLUGIN } from "@/lib/server/toolchain";
 
+// Runtime settings from the settings page (Java, Nextflow, proxy) apply before the preflight reads them.
+applyStoredSettings();
 const db = store();
 const owner = randomUUID();
 const limits = slotLimits();
