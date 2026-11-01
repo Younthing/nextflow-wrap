@@ -11,6 +11,7 @@ import { SearchField } from "@/components/ui/search-field";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AsyncPlaceholder } from "@/components/ui/async-placeholder";
+import { ModuleEnvEditor } from "@/features/notebook/components/module-env-form";
 import { SourceDriftBanner } from "@/features/notebook/components/source-drift-banner";
 import { useScriptModules } from "@/features/notebook/queries";
 import type { ScriptModuleView } from "@/features/notebook/library";
@@ -75,6 +76,7 @@ export function ModuleCatalog() {
     builtin: builtins.length,
   };
   const selected = scriptRows.find((row) => row.id === (selectedId ?? scriptRows.find((row) => row.sourceChanged)?.id));
+  const envModule = selected && primary.some((row) => row.id === selected.id) ? selected : undefined;
 
   return (
     <section className="glass flex size-full flex-col gap-4 overflow-hidden rounded-xl p-5">
@@ -113,7 +115,10 @@ export function ModuleCatalog() {
         </label>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto">
+      <div className="min-h-0 flex-1 space-y-4 overflow-auto">
+        {envModule ? <ModuleEnvEditor key={envModule.id} module={envModule} /> : scripts.data ? (
+          <p className="text-xs text-muted-foreground">点一个自定义模块，手填它的 Conda yaml 和容器。这两项写入 ModuleDef，并出现在生成的 process 里。</p>
+        ) : null}
         {scripts.isPending ? (
           <AsyncPlaceholder status="pending" className="h-40" />
         ) : scripts.error ? (

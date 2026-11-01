@@ -9,13 +9,13 @@ import { AsyncPlaceholder } from "@/components/ui/async-placeholder";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { nextCellId } from "@/features/notebook/cells";
 import { convertNotebook, ConvertError } from "@/features/notebook/convert";
 import { latestModuleForNotebook } from "@/features/notebook/library";
 import { useNotebook, useNotebookRevision, useRunNotebook, useSaveNotebook, useScriptModules } from "@/features/notebook/queries";
-import { KERNELS, kernelLabel, type CellRunResult, type NotebookCell, type NotebookCellRole, type NotebookDoc } from "@/features/notebook/types";
+import { languageForKernel, type CellRunResult, type NotebookCell, type NotebookCellRole, type NotebookDoc } from "@/features/notebook/types";
 import { cn } from "@/lib/utils";
+import { KernelPicker } from "./kernel-picker";
 import { NotebookCellCard } from "./notebook-cell";
 
 function newCell(role: NotebookCellRole): NotebookCell {
@@ -42,7 +42,7 @@ function PrepPanel({
   const outputs = converted?.outputs ?? [];
 
   return (
-    <aside className="glass flex w-80 shrink-0 flex-col rounded-xl">
+    <aside className="glass flex min-h-0 flex-col overflow-auto rounded-xl">
       <button type="button" className="flex items-center gap-2 px-4 py-3 text-left text-sm font-semibold" onClick={onToggle}>
         <ChevronDown className={cn("size-4 transition-transform", !open && "-rotate-90")} />
         发布准备
@@ -74,7 +74,6 @@ function PrepPanel({
             )}
           </div>
         )}
-        <div className="mt-4 text-xs text-muted-foreground">内核 {kernelLabel(doc.kernel)}</div>
       </div>
     </aside>
   );
@@ -251,8 +250,8 @@ export function NotebookEditor({ notebookId }: { notebookId: string }) {
         </div>
       )}
 
-      <div className="flex min-h-0 flex-1 gap-3">
-        <section className="glass flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl">
+      <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(0,1fr)_18rem]">
+        <section className="glass flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl">
           <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
             <Button type="button" size="sm" variant="outline" disabled={runDisabled} onClick={() => startRun()}>
               {run.isPending ? <Loader2 className="animate-spin" /> : <Play />}
@@ -270,18 +269,17 @@ export function NotebookEditor({ notebookId }: { notebookId: string }) {
             }}>+ 说明</Button>
             <Button type="button" size="sm" variant="ghost" disabled={readOnly || !selected} onClick={() => selected && updateCell(selected, { role: "input" })}>标为输入</Button>
             <Button type="button" size="sm" variant="ghost" disabled={readOnly || !selected} onClick={() => selected && updateCell(selected, { role: "output" })}>标为输出</Button>
-            <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
-              <span>内核</span>
-              <Select value={live.kernel} disabled={readOnly} onValueChange={(kernel) => update({ kernel })}>
-                <SelectTrigger size="sm" className="w-56 font-mono text-xs"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {Object.entries(KERNELS).map(([id, kernel]) => (
-                    <SelectItem key={id} value={id}>{kernel.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="ml-auto">
+              <KernelPicker
+                value={live.kernel}
+                disabled={readOnly}
+                onChange={(kernel) => update({ kernel, language: languageForKernel(kernel) })}
+              />
             </div>
           </div>
+          <p className="border-b border-border px-3 py-2 text-xs text-muted-foreground">
+            内核只决定笔记本里怎么跑；发布成模块时的 conda／容器在发布页单独手填，互不覆盖。
+          </p>
           <div className="min-h-0 flex-1 space-y-3 overflow-auto p-3">
             <Input
               value={live.name}

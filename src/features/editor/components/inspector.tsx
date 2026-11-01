@@ -30,6 +30,7 @@ import { resolveNodeDef } from "@/features/workflow/catalog";
 import { moduleOrigin, newerScriptModule } from "@/features/workflow/origin";
 import { portSignature, socketInputs } from "@/features/workflow/ports";
 import { projectMeta } from "@/features/project/generate";
+import { scriptEnvDirectives } from "@/features/project/script-process";
 import { formatPublishRules, parsePublishRules } from "@/features/project/publish-rules";
 import { buildParamsSchema, referenceParams } from "@/features/project/schema";
 import { operatorFields } from "@/features/workflow/operators";
@@ -405,6 +406,13 @@ function NodeInspector({ node }: { node: FlowNode }) {
           <p className="text-xs text-muted-foreground">
             这里只改这一次用法，不改模块定义。改代码要回到笔记本，再发布新版本。
           </p>
+          <div className="grid gap-1 text-xs">
+            <span className="text-muted-foreground">模块环境</span>
+            <code className="whitespace-pre-wrap rounded bg-secondary px-2 py-1 font-mono text-[11px]">
+              {scriptEnvDirectives(def).join("\n") || "未填写 conda / container"}
+            </code>
+            <Link href="/workflows/modules" className="text-primary hover:underline">在模块库修改环境</Link>
+          </div>
         </Section>
       ) : (
         <Section title="模块配置（conf/modules.config）">
