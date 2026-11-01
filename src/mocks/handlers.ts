@@ -118,11 +118,16 @@ export const handlers = [
     return revision ? HttpResponse.json(revision) : HttpResponse.json({ message: "这个修订不存在" }, { status: 404 });
   }),
 
-  http.post("/api/notebooks/:id/run", async ({ params }) => {
+  http.post("/api/notebooks/:id/run", async ({ params, request }) => {
     await delay(200);
     const doc = readDb().notebooks[params.id as string];
     if (!doc) return HttpResponse.json({ message: "笔记本不存在" }, { status: 404 });
-    return HttpResponse.json({ cells: simulateCells(doc) });
+    const body = (await request.json().catch(() => ({}))) as { cellId?: string };
+    try {
+      return HttpResponse.json({ cells: simulateCells(doc, body.cellId) });
+    } catch (error) {
+      return HttpResponse.json({ message: error instanceof Error ? error.message : "运行失败" }, { status: 400 });
+    }
   }),
 
   http.post("/api/notebooks/:id/try-run", async ({ params, request }) => {

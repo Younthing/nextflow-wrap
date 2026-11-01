@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { convertNotebook, tryRunArgv } from "./convert";
+import { convertNotebook, scriptFileName, tryRunArgv, tryRunCommand } from "./convert";
 import { demoNotebooks, qcPinnedCellChanges } from "./seed";
 import type { NotebookDoc } from "./types";
 
@@ -24,6 +24,18 @@ describe("convertNotebook", () => {
     expect(converted.script).not.toContain("print(\"explore\"");
     expect(converted.script).toContain("open(\"report.html\"");
     expect(converted.commandPreview).toContain("--min_q 30");
+    expect(scriptFileName(converted.entry)).toBe("qc_summary.py");
+    expect(converted.commandPreview.startsWith("qc_summary.py")).toBe(true);
+  });
+
+  it("names the script after the notebook, not main.py", () => {
+    expect(scriptFileName(convertNotebook(demoNotebooks().find((doc) => doc.id === "hello_py")!).entry)).toBe("hello.py");
+    expect(scriptFileName(convertNotebook(demoNotebooks().find((doc) => doc.id === "deseq2_plot")!).entry)).toBe("deseq2_plot.R");
+    expect(tryRunCommand("r", "bin/deseq2_plot.R", ["--counts", "counts.tsv"])).toBe("Rscript deseq2_plot.R --counts counts.tsv");
+    expect(tryRunCommand("python", "bin/qc_summary.py")).toBe("python3 qc_summary.py");
+    const renamed = convertNotebook(qc(), "bin/custom_entry.py");
+    expect(scriptFileName(renamed.entry)).toBe("custom_entry.py");
+    expect(renamed.commandPreview.startsWith("custom_entry.py")).toBe(true);
   });
 
   it("builds file sockets and value widgets", () => {

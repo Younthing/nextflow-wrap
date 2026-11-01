@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { CommandError, runCommand } from "@/features/project/server/command";
-import { ConvertError, convertNotebook, tryRunArgv } from "./convert";
+import { cellsForRun } from "./cells";
+import { ConvertError, convertNotebook, scriptFileName, scriptInterpreter, tryRunArgv, tryRunCommand } from "./convert";
 import type { CellRunResult, NotebookDoc, TryRunOutput, TryRunRecord } from "./types";
 
 const inDir = (dir: string, name: string) => join(/* turbopackIgnore: true */ dir, name);
@@ -33,14 +34,14 @@ export async function executeTryRun(
   const dir = await mkdtemp(join(/* turbopackIgnore: true */ tmpdir(), "nb-try-"));
   try {
     await materializeSample(dir, sampleId);
-    const filename = converted.language === "r" ? "main.R" : "main.py";
-    await writeFile(inDir(dir, filename), converted.script, { mode: 0o755 });
+    const scriptName = scriptFileName(converted.entry);
+    await writeFile(inDir(dir, scriptName), converted.script, { mode: 0o755 });
     const argv = tryRunArgv(converted.inputs, values);
-    const bin = converted.language === "r" ? "Rscript" : "python3";
+    const bin = scriptInterpreter(converted.language);
     let exitCode: number | null = 0;
     let log = "";
     try {
-      log = await runCommand(bin, [filename, ...argv], { cwd: dir, timeoutMs: 20_000, quiet: true });
+      log = await runCommand(bin, [scriptName, ...argv], { cwd: dir, timeoutMs: 20_000, quiet: true });
     } catch (error) {
       if (error instanceof CommandError) {
         exitCode = error.exitCode;
@@ -52,9 +53,9 @@ export async function executeTryRun(
     }
     const outputs: TryRunOutput[] = [];
     for (const output of converted.outputs) {
-      const filename = safeOutputName(output.pattern);
+      const outputFile = safeOutputName(output.pattern);
       try {
-        const info = await stat(inDir(dir, filename));
+        const info = await stat(inDir(dir, outputFile));
         outputs.push({
           name: output.name,
           file: output.pattern,
@@ -67,7 +68,7 @@ export async function executeTryRun(
     }
     const passed = exitCode === 0 && outputs.length > 0 && outputs.every((item) => item.ok);
     const durationMs = Date.now() - started;
-    const header = `$ ${bin} ${filename} ${argv.join(" ")}`;
+    const header = `$ ${tryRunCommand(converted.language, converted.entry, argv)}`;
     const body = [header, log.trim(), passed ? `完成，用时 ${durationMs}ms` : ""].filter(Boolean).join("\n");
     return {
       notebookId: notebook.id,
@@ -98,9 +99,10 @@ for cell in cells:
         print(json.dumps({"id": cell["id"], "stdout": buf.getvalue(), "error": traceback.format_exc()}, ensure_ascii=False))
 `;
 
-/** Runs notebook cells in one Python process. Markdown is skipped. R stays editable without a kernel. */
-export async function executeCells(notebook: NotebookDoc): Promise<CellRunResult[]> {
-  const cells = notebook.cells.filter((cell) => cell.role !== "markdown");
+/** Runs notebook cells in one Python process. A cell id runs from the top through that cell. Markdown is skipped. */
+export async function executeCells(notebook: NotebookDoc, cellId?: string): Promise<CellRunResult[]> {
+  const cells = cellsForRun(notebook, cellId);
+  if (cells.length === 0) return [];
   if (notebook.language !== "python") {
     return cells.map((cell) => ({
       id: cell.id,
