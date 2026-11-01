@@ -11,19 +11,22 @@ import { SAMPLE_PDF } from "@/features/output/samples";
 import { planMime } from "./mime";
 import { demoNotebooks } from "./seed";
 import { simulateTryRun } from "./simulate";
+import type { PortBindingRequest } from "./input-bindings";
 import type { CellOutput, NotebookCell, NotebookDoc } from "./types";
 
 const qc = () => demoNotebooks().find((doc) => doc.id === "qc_summary")!;
+
+const qcBindings: PortBindingRequest[] = [
+  { port: "fastq_zip", source: "sample", value: "fastqc-pair" },
+  { port: "min_q", source: "path", value: "30" },
+  { port: "title", source: "path", value: "QC 汇总" },
+];
 
 describe("executeTryRun", () => {
   it("runs the generated qc_summary CLI and checks output files", async () => {
     const notebook = qc();
     const scriptName = scriptFileName(convertNotebook(notebook).entry);
-    const record = await executeTryRun(
-      notebook,
-      { fastq_zip: "S1_fastq.zip,S2_fastq.zip", min_q: "30", title: "QC 汇总" },
-      "fastqc-pair",
-    );
+    const record = await executeTryRun(notebook, qcBindings);
     expect(record.exitCode).toBe(0);
     expect(record.passed).toBe(true);
     expect(record.outputs.map((output) => [output.name, output.ok])).toEqual([
@@ -46,11 +49,7 @@ describe("executeTryRun", () => {
     ]);
     expect(record.log).toContain(`$ python3 ${scriptName} `);
     expect(record.log).not.toContain("main.py");
-    const demo = simulateTryRun(notebook, {
-      fastq_zip: "S1_fastq.zip,S2_fastq.zip",
-      min_q: "30",
-      title: "QC 汇总",
-    });
+    const demo = simulateTryRun(notebook, qcBindings);
     const commandLine = (log: string) => log.split("\n").find((line) => line.startsWith("$"));
     expect(demo.log.split("\n")[0]).toBe(record.log.split("\n")[0]);
     expect(commandLine(demo.log)).toBe(commandLine(record.log));
@@ -59,7 +58,6 @@ describe("executeTryRun", () => {
 });
 
 const shimPath = fileURLToPath(new URL("../../../scripts/e2e-docker-shim.sh", import.meta.url));
-const qcValues = { fastq_zip: "S1_fastq.zip,S2_fastq.zip", min_q: "30", title: "QC 汇总" };
 
 async function fakeConda(dir: string): Promise<{ bin: string; log: string }> {
   const log = join(dir, "conda.log");
@@ -91,7 +89,7 @@ describe("executeTryRun module environment", () => {
       await writeFile(yaml, "name: py311-pandas\ndependencies:\n  - python\n");
       const conda = await fakeConda(dir);
       await chmod(shimPath, 0o755);
-      const record = await executeTryRun(qc(), qcValues, "fastqc-pair", {
+      const record = await executeTryRun(qc(), qcBindings, {
         condaYaml: yaml,
         containerImage: "python:3.11-slim",
       }, {
@@ -122,7 +120,7 @@ describe("executeTryRun module environment", () => {
       const yaml = join(dir, "py.yml");
       await writeFile(yaml, "name: py\n");
       const conda = await fakeConda(dir);
-      const record = await executeTryRun(qc(), qcValues, "fastqc-pair", {
+      const record = await executeTryRun(qc(), qcBindings, {
         condaYaml: `  ${yaml}  `,
         containerImage: "python:3.11-slim",
       }, {
@@ -146,7 +144,7 @@ describe("executeTryRun module environment", () => {
 
   it("does not fall back to the host interpreter when the requested runtime is missing", async () => {
     const notebook = qc();
-    const missing = await executeTryRun(notebook, qcValues, "fastqc-pair", {
+    const missing = await executeTryRun(notebook, qcBindings, {
       containerImage: "python:3.11-slim",
     }, { tools: {} });
     expect(missing.passed).toBe(false);
@@ -156,7 +154,7 @@ describe("executeTryRun module environment", () => {
     expect(missing.log).not.toContain("选用本机");
     expect(missing.log).not.toContain("$ python3");
 
-    const absent = await executeTryRun(notebook, qcValues, "fastqc-pair", {
+    const absent = await executeTryRun(notebook, qcBindings, {
       condaYaml: "/tmp/nextflow-wrap-missing-env.yml",
       containerImage: "python:3.11-slim",
     }, { tools: { container: { bin: shimPath, kind: "docker" } } });
@@ -171,17 +169,13 @@ describe("executeTryRun own data", () => {
 
   it("runs an uploaded samplesheet and a sample fixture", async () => {
     const csv = Buffer.from("sample,fastq_1\nUploaded,a.fq\n").toString("base64");
-    const uploaded = await executeTryRun(hello(), {}, undefined, undefined, {
-      bindings: [{ port: "samplesheet", source: "upload", files: [{ name: "mine.csv", contentBase64: csv }] }],
-    });
+    const uploaded = await executeTryRun(hello(), [{ port: "samplesheet", source: "upload", files: [{ name: "mine.csv", contentBase64: csv }] }]);
     expect(uploaded.passed).toBe(true);
     expect(uploaded.bindings).toEqual([{ port: "samplesheet", source: "upload", label: "mine.csv" }]);
     expect(uploaded.log).toContain("输入 samplesheet · 上传 · mine.csv");
     expect(uploaded.log).toContain("--samplesheet mine.csv");
 
-    const sample = await executeTryRun(hello(), {}, undefined, undefined, {
-      bindings: [{ port: "samplesheet", source: "sample", value: "samplesheet" }],
-    });
+    const sample = await executeTryRun(hello(), [{ port: "samplesheet", source: "sample", value: "samplesheet" }]);
     expect(sample.passed).toBe(true);
     expect(sample.log).toContain("输入 samplesheet · 样例 · 内置样例：samplesheet.csv");
   });
@@ -191,9 +185,7 @@ describe("executeTryRun own data", () => {
     const csvPath = join(dir, "sheet.csv");
     await writeFile(csvPath, "sample,fastq_1\nHost,a.fq\n");
     try {
-      const record = await executeTryRun(hello(), {}, undefined, undefined, {
-        bindings: [{ port: "samplesheet", source: "path", value: csvPath }],
-      });
+      const record = await executeTryRun(hello(), [{ port: "samplesheet", source: "path", value: csvPath }]);
       expect(record.passed).toBe(true);
       expect(record.log).toContain(`输入 samplesheet · 路径 · ${csvPath} → sheet.csv`);
       expect(record.log).toContain("--samplesheet sheet.csv");
@@ -204,9 +196,7 @@ describe("executeTryRun own data", () => {
   });
 
   it("keeps a missing path string and reports the failure in the log", async () => {
-    const record = await executeTryRun(hello(), {}, undefined, undefined, {
-      bindings: [{ port: "samplesheet", source: "path", value: "missing.csv" }],
-    });
+    const record = await executeTryRun(hello(), [{ port: "samplesheet", source: "path", value: "missing.csv" }]);
     expect(record.passed).toBe(false);
     expect(record.log).toContain("输入 samplesheet · 路径 · missing.csv");
     expect(record.log).toContain("--samplesheet missing.csv");
