@@ -19,3 +19,17 @@
 .tok-key {
   color: var(--syntax-key);
 }
+
+/* Notebook source sits on a transparent field so the token layer shows through. */
+.cell-source {
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  caret-color: var(--foreground);
+  background-color: transparent;
+}
+
+.cell-source::selection {
+  background-color: color-mix(in oklch, var(--primary) 35%, transparent);
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}

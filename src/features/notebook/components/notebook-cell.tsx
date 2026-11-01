@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { Loader2, Play } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -9,9 +9,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { CellOutputModel } from "@/features/notebook/outputs";
-import type { NotebookCell, NotebookCellRole } from "@/features/notebook/types";
+import type { NotebookCell, NotebookCellRole, NotebookLanguage } from "@/features/notebook/types";
 import { cn } from "@/lib/utils";
 import { CellOutputView } from "./cell-output";
+import { CellSourceEditor } from "./cell-source-editor";
 import { MarkdownView } from "./markdown-view";
 
 const ROLE_LABEL: Record<NotebookCellRole, string> = {
@@ -36,6 +37,16 @@ export function NotebookCellCard({
   onChange,
   onRole,
   onDelete,
+  language,
+  completionScope = "",
+  deleteArmed = false,
+  editFocusToken = 0,
+  commandFocusToken = 0,
+  markdownOpen = false,
+  onEditKey,
+  onCommandKey,
+  onEnterEdit,
+  onEnterCommand,
 }: {
   cell: NotebookCell;
   index: number;
@@ -50,6 +61,17 @@ export function NotebookCellCard({
   onChange: (source: string) => void;
   onRole: (role: NotebookCellRole) => void;
   onDelete: () => void;
+  language?: NotebookLanguage;
+  completionScope?: string;
+  deleteArmed?: boolean;
+  editFocusToken?: number;
+  commandFocusToken?: number;
+  /** Keyboard Enter asked this markdown cell to open its editor. */
+  markdownOpen?: boolean;
+  onEditKey?: (event: KeyboardEvent<HTMLTextAreaElement>) => boolean;
+  onCommandKey?: (event: KeyboardEvent<HTMLButtonElement>) => boolean;
+  onEnterEdit?: () => void;
+  onEnterCommand?: () => void;
 }) {
   const number = index + 1;
   const executable = cell.role !== "markdown";
@@ -57,13 +79,51 @@ export function NotebookCellCard({
   const showRunning = running && executable;
   const markdown = cell.role === "markdown";
   const [markdownEditing, setMarkdownEditing] = useState(false);
+  const [menu, setMenu] = useState(false);
   const sourceRef = useRef<HTMLTextAreaElement>(null);
+  const commandRef = useRef<HTMLButtonElement>(null);
   if ((readOnly || !selected) && markdownEditing) setMarkdownEditing(false);
-  const showPreview = markdown && !markdownEditing && (readOnly || cell.source.trim().length > 0);
+  const showEditor = markdown && !readOnly && (markdownEditing || markdownOpen);
+  const showPreview = markdown && !showEditor && (readOnly || cell.source.trim().length > 0);
+  const highlighted = !markdown && language !== undefined;
 
   useEffect(() => {
     if (markdown && markdownEditing) sourceRef.current?.focus();
   }, [markdown, markdownEditing]);
+
+  useEffect(() => {
+    if (!editFocusToken) return;
+    sourceRef.current?.focus();
+  }, [editFocusToken]);
+
+  useEffect(() => {
+    if (!commandFocusToken) return;
+    commandRef.current?.focus();
+  }, [commandFocusToken]);
+
+  const handleSourceKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (onEditKey?.(event)) {
+      event.preventDefault();
+      if (markdown && (event.key === "Escape" || event.key === "Enter")) setMarkdownEditing(false);
+      return;
+    }
+    if (onEditKey) return;
+    if (markdown && event.key === "Escape") {
+      event.preventDefault();
+      if (cell.source.trim().length > 0) setMarkdownEditing(false);
+      return;
+    }
+    if (event.nativeEvent.isComposing || event.key !== "Enter" || !canRun) return;
+    const stay = (event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey;
+    const advance = event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey;
+    if (!stay && !advance) return;
+    event.preventDefault();
+    onRun({ advance });
+  };
+
+  const handleCommandKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+    if (onCommandKey?.(event)) event.preventDefault();
+  };
 
   return (
     <article
@@ -71,10 +131,17 @@ export function NotebookCellCard({
       aria-current={selected ? "true" : undefined}
       data-selected={selected ? "true" : "false"}
       className={cn(
-        "relative overflow-hidden rounded-lg border transition-colors",
+        "relative rounded-lg border transition-colors",
+        menu ? "z-20 overflow-visible" : "overflow-hidden",
         selected ? "border-primary bg-primary/10" : "border-border hover:border-primary/40",
       )}
-      onClick={onSelect}
+      onClick={(event) => {
+        onSelect();
+        const target = event.target;
+        if (!(target instanceof Element)) return;
+        if (target.closest("textarea, input, button, a, select, [data-markdown-preview]")) return;
+        onEnterCommand?.();
+      }}
     >
       <span aria-hidden className={cn("absolute inset-y-0 left-0 w-1", selected ? "bg-primary" : "bg-transparent")} />
       <div className="flex pl-1.5">
@@ -98,14 +165,30 @@ export function NotebookCellCard({
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                运行此单元格
-                <span className="ml-2 font-mono text-muted-foreground">Shift+Enter</span>
+                运行此单元格并留在原地
+                <span className="ml-2 font-mono text-muted-foreground">Ctrl+Enter</span>
               </TooltipContent>
             </Tooltip>
           ) : (
             <span className="size-8" />
           )}
-          <span className="font-mono text-[10px] leading-none text-muted-foreground">{showRunning ? "[*]" : `[${number}]`}</span>
+          <button
+            ref={commandRef}
+            type="button"
+            tabIndex={-1}
+            aria-label={`单元格 ${number} 命令模式`}
+            className={cn(
+              "rounded-sm font-mono text-[10px] leading-none text-muted-foreground outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+              deleteArmed && selected && "text-destructive",
+            )}
+            onMouseDown={() => {
+              onSelect();
+              onEnterCommand?.();
+            }}
+            onKeyDown={handleCommandKeyDown}
+          >
+            {showRunning ? "[*]" : `[${number}]`}
+          </button>
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 py-1.5 pr-2 text-xs text-muted-foreground">
@@ -125,6 +208,7 @@ export function NotebookCellCard({
                 ))}
               </SelectContent>
             </Select>
+            {deleteArmed && selected && <span role="status" className="text-destructive">再按 D 删除</span>}
             {markdown && !readOnly && cell.source.trim().length > 0 && (
               <Button
                 type="button"
@@ -135,7 +219,13 @@ export function NotebookCellCard({
                 onClick={(event) => {
                   event.stopPropagation();
                   onSelect();
-                  setMarkdownEditing(showPreview);
+                  if (showPreview) {
+                    onEnterEdit?.();
+                    setMarkdownEditing(true);
+                    return;
+                  }
+                  setMarkdownEditing(false);
+                  onEnterCommand?.();
                 }}
               >
                 {showPreview ? "编辑" : "预览"}
@@ -159,11 +249,14 @@ export function NotebookCellCard({
             <section
               aria-label={`单元格 ${number} 说明预览`}
               className="min-h-28 cursor-text px-3 py-2"
+              data-markdown-preview
               onClick={(event) => {
                 if (readOnly) return;
                 const target = event.target;
                 if (target instanceof Element && target.closest("a, button, input")) return;
+                event.stopPropagation();
                 onSelect();
+                onEnterEdit?.();
                 setMarkdownEditing(true);
               }}
               onKeyDown={(event) => {
@@ -180,6 +273,23 @@ export function NotebookCellCard({
                 <p className="text-sm text-muted-foreground">空的说明。点击编辑。</p>
               )}
             </section>
+          ) : highlighted && language ? (
+            <CellSourceEditor
+              cellId={cell.id}
+              value={cell.source}
+              language={language}
+              scope={completionScope}
+              disabled={readOnly}
+              label={`单元格 ${number} 源码`}
+              inputRef={sourceRef}
+              onChange={onChange}
+              onKeyDown={handleSourceKeyDown}
+              onFocus={() => {
+                onSelect();
+                onEnterEdit?.();
+              }}
+              onMenu={setMenu}
+            />
           ) : (
             <Textarea
               ref={sourceRef}
@@ -187,21 +297,12 @@ export function NotebookCellCard({
               disabled={readOnly}
               spellCheck={false}
               aria-label={`单元格 ${number} 源码`}
-              onFocus={onSelect}
-              onChange={(event) => onChange(event.target.value)}
-              onKeyDown={(event) => {
-                if (markdown && event.key === "Escape") {
-                  event.preventDefault();
-                  if (cell.source.trim().length > 0) setMarkdownEditing(false);
-                  return;
-                }
-                if (event.nativeEvent.isComposing || event.key !== "Enter" || !canRun) return;
-                const stay = (event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey;
-                const advance = event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey;
-                if (!stay && !advance) return;
-                event.preventDefault();
-                onRun({ advance });
+              onFocus={() => {
+                onSelect();
+                if (!markdown) onEnterEdit?.();
               }}
+              onChange={(event) => onChange(event.target.value)}
+              onKeyDown={handleSourceKeyDown}
               className={cn(
                 "min-h-28 rounded-none border-0 bg-transparent shadow-none",
                 markdown ? "text-sm" : "font-mono text-xs",
