@@ -2,6 +2,7 @@ import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import type { ModuleLibraryCopy } from "@/features/notebook/library-copy";
 import type { NotebookDoc, NotebookRevision, TryRunRecord } from "@/features/notebook/types";
 import type { RunDetail, TaskRecord } from "@/features/runs/types";
 import { commitWorkflowPut, type WorkflowPutResult } from "@/features/workflow/revision";
@@ -30,7 +31,7 @@ export class StudioStore {
     if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
     this.db = new DatabaseSync(path);
     const version = Number(this.db.prepare("PRAGMA user_version").get()?.user_version);
-    if (version > 2) { this.db.close(); throw new Error(`不支持的数据库版本：${version}`); }
+    if (version > 3) { this.db.close(); throw new Error(`不支持的数据库版本：${version}`); }
     this.db.exec(`
       PRAGMA journal_mode=WAL;
       PRAGMA busy_timeout=5000;
@@ -43,9 +44,11 @@ export class StudioStore {
       CREATE TABLE IF NOT EXISTS notebook_revisions (notebook_id TEXT NOT NULL, rev INTEGER NOT NULL, data TEXT NOT NULL, PRIMARY KEY(notebook_id, rev));
       CREATE TABLE IF NOT EXISTS script_modules (id TEXT PRIMARY KEY, data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS notebook_try_runs (notebook_id TEXT NOT NULL, rev INTEGER NOT NULL, data TEXT NOT NULL, PRIMARY KEY(notebook_id, rev));
+      CREATE TABLE IF NOT EXISTS module_library (module_id TEXT PRIMARY KEY, data TEXT NOT NULL);
     `);
     if (version < 1) this.db.exec("PRAGMA user_version=1");
     if (Number(this.db.prepare("PRAGMA user_version").get()?.user_version) < 2) this.db.exec("PRAGMA user_version=2");
+    if (Number(this.db.prepare("PRAGMA user_version").get()?.user_version) < 3) this.db.exec("PRAGMA user_version=3");
   }
   transaction<T>(fn: () => T): T {
     this.db.exec("BEGIN IMMEDIATE");
@@ -156,6 +159,21 @@ export class StudioStore {
   }
   saveScriptModule(mod: ModuleDef) {
     this.db.prepare("INSERT INTO script_modules(id, data) VALUES (?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data").run(mod.id, JSON.stringify(mod));
+  }
+  libraryCopies(): ModuleLibraryCopy[] {
+    return this.db.prepare("SELECT data FROM module_library").all().map((row) => JSON.parse(String(row.data)) as ModuleLibraryCopy);
+  }
+  libraryCopy(moduleId: string): ModuleLibraryCopy | undefined {
+    const row = this.db.prepare("SELECT data FROM module_library WHERE module_id=?").get(moduleId);
+    return row ? JSON.parse(String(row.data)) as ModuleLibraryCopy : undefined;
+  }
+  saveLibraryCopy(copy: ModuleLibraryCopy) {
+    this.db.prepare("INSERT INTO module_library(module_id, data) VALUES (?,?) ON CONFLICT(module_id) DO UPDATE SET data=excluded.data").run(copy.moduleId, JSON.stringify(copy));
+  }
+  /** Raw notebook JSON, for checks that a publish left the source row untouched. */
+  notebookJson(id: string): string | undefined {
+    const row = this.db.prepare("SELECT data FROM notebooks WHERE id=?").get(id);
+    return row ? String(row.data) : undefined;
   }
   tryRun(notebookId: string, rev: number): TryRunRecord | undefined {
     const row = this.db.prepare("SELECT data FROM notebook_try_runs WHERE notebook_id=? AND rev=?").get(notebookId, rev);

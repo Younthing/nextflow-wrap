@@ -1,5 +1,6 @@
 import { inputPorts, outputPorts, convertNotebook, moduleSlug } from "./convert";
 import { cleanEnvField } from "./env";
+import { buildLibraryCopy, type ModuleLibraryCopy } from "./library-copy";
 import type { NotebookDoc, TryRunRecord } from "./types";
 import type { ModuleDef } from "@/features/workflow/types";
 import { versionNumber } from "@/features/workflow/origin";
@@ -65,4 +66,21 @@ export function buildScriptModule(input: {
     changelog: input.changelog?.trim() || undefined,
     label: "process_low",
   };
+}
+
+/** Convert, require a passing try-run, and pair the CLI with a jupytext library copy. */
+export function publishScriptModule(input: {
+  notebook: NotebookDoc;
+  name: string;
+  description: string;
+  changelog?: string;
+  condaYaml?: string;
+  containerImage?: string;
+  existing: readonly ModuleDef[];
+  receipt: TryRunRecord | undefined;
+  savedAt?: string;
+}): { module: ModuleDef; library: ModuleLibraryCopy } {
+  const moduleDef = buildScriptModule(input);
+  const library = buildLibraryCopy({ notebook: input.notebook, module: moduleDef, savedAt: input.savedAt });
+  return { module: moduleDef, library };
 }

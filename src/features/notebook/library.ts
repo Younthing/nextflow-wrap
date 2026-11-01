@@ -27,6 +27,7 @@ export function summarizeNotebook(doc: NotebookDoc, modules: readonly ModuleDef[
     tryRun: published?.tryRun,
     moduleName: published?.name,
     moduleId: published?.id,
+    fromLibrary: Boolean(doc.libraryModuleId),
   };
 }
 

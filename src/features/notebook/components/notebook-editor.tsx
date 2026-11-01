@@ -214,6 +214,7 @@ export function NotebookEditor({ notebookId }: { notebookId: string }) {
             ) : (
               <Badge variant="secondary">仅分析</Badge>
             )}
+            {live.libraryModuleId && <Badge variant="outline">库重建</Badge>}
             <span className="text-xs text-muted-foreground">
               {readOnly ? `只读 · 原版 r${live.rev}` : save.isPending ? "保存中…" : `自动保存于 ${new Date(savedAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false })}`}
             </span>
@@ -247,6 +248,25 @@ export function NotebookEditor({ notebookId }: { notebookId: string }) {
       {readOnly && (
         <div className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm">
           正在查看钉住的原版 r{live.rev}。这一页只读，改最新笔记本不会改写这个修订。
+        </div>
+      )}
+
+      {live.libraryModuleId && (
+        <div className="rounded-lg border border-border bg-card px-3 py-2 text-sm">
+          <span className="font-medium">从模块库重建的可编辑副本</span>
+          <span className="text-muted-foreground">
+            {" "}· {live.libraryModuleId}
+            {live.librarySourceNotebookId ? (
+              <>
+                {" "}· 源笔记本{" "}
+                <Link href={`/notebooks/${live.librarySourceNotebookId}`} className="text-primary hover:underline">
+                  {live.librarySourceNotebookId}
+                </Link>
+                {live.librarySourceNotebookRev !== undefined ? ` r${live.librarySourceNotebookRev}` : ""}
+              </>
+            ) : null}
+            。改这本不会改源笔记本，也不会改已发布的模块。
+          </span>
         </div>
       )}
 

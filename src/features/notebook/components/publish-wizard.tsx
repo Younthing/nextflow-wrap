@@ -241,7 +241,9 @@ export function PublishWizard({ notebookId }: { notebookId: string }) {
             <p>笔记本内核 <span className="font-mono">{kernelLabel(doc.kernel)}</span>，不写入 conda／容器。</p>
             <ModuleEnvPreview condaYaml={condaYaml} containerImage={containerImage} />
             <p className={passed ? "text-success" : "text-destructive"}>{passed ? `试跑通过 · ${receipt?.durationMs ?? 0}ms` : "还没有通过当前修订的试跑"}</p>
-            <p className="text-xs text-muted-foreground">保存后出现在模块抽屉，可拖入。笔记本再改不会改这个版本。</p>
+            <p className="text-xs text-muted-foreground">
+              保存这一版的 jupytext 库副本（完整笔记本和命令行脚本）。源笔记本保持不动。之后可在模块库里把这一版重建成一本新的可编辑笔记本。
+            </p>
           </section>
         </div>
       )}

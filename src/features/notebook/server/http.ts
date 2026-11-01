@@ -3,8 +3,10 @@ import { z } from "zod";
 
 import { ConvertError } from "@/features/notebook/convert";
 import { patchModuleEnv } from "@/features/notebook/env";
-import { buildScriptModule } from "@/features/notebook/publish";
-import { demoNotebooks, demoRevisions, demoScriptModules } from "@/features/notebook/seed";
+import { PercentError } from "@/features/notebook/jupytext";
+import { notebookFromLibrary, storedLibraryCopy } from "@/features/notebook/library-copy";
+import { publishScriptModule } from "@/features/notebook/publish";
+import { demoLibraryCopies, demoNotebooks, demoRevisions, demoScriptModules } from "@/features/notebook/seed";
 import { executeCells, executeTryRun } from "@/features/notebook/execute";
 import { referenceCounts, scriptModuleViews, summarizeNotebook } from "@/features/notebook/library";
 import { withSampleValues } from "@/features/notebook/simulate";
@@ -52,36 +54,58 @@ const envSchema = z.object({
   containerImage: envField.optional(),
 });
 
+const reopenSchema = z.object({
+  moduleId: z.string().trim().min(1).max(200).regex(/^[\w./-]+$/),
+});
+
 export function ensureNotebookDemo(db: StudioStore = store()) {
   if (db.notebookCount() > 0) return;
   const notebooks = demoNotebooks();
   const revisions = demoRevisions(notebooks);
-  const modules = demoScriptModules(notebooks);
+  const modules = demoScriptModules(notebooks, revisions);
+  const libraries = demoLibraryCopies(notebooks, revisions, modules);
   db.transaction(() => {
     if (db.notebookCount() > 0) return;
     for (const doc of notebooks) db.insertNotebookSnapshot(doc);
     for (const revision of revisions) db.saveRevision(revision);
     for (const mod of modules) db.saveScriptModule(mod);
+    for (const copy of libraries) db.saveLibraryCopy(copy);
   });
 }
 
-function requireNotebook(id: string): NotebookDoc {
-  const doc = store().notebook(id);
+function requireNotebook(db: StudioStore, id: string): NotebookDoc {
+  const doc = db.notebook(id);
   if (!doc) throw new HttpError(404, "笔记本不存在");
   return doc;
 }
 
-function allRevisions() {
-  return store().notebooks().flatMap((doc) => store().revisions(doc.id));
+function allRevisions(db: StudioStore) {
+  return db.notebooks().flatMap((doc) => db.revisions(doc.id));
 }
 
-export async function handleNotebookApi(method: string, path: string[], request: Request): Promise<Response> {
-  ensureNotebookDemo();
-  const db = store();
+function newNotebookId(db: StudioStore): string {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const id = `nb_${randomUUID().slice(0, 8)}`;
+    if (!db.notebook(id)) return id;
+  }
+  throw new HttpError(500, "无法分配笔记本 id");
+}
+
+function libraryForModule(db: StudioStore, moduleId: string) {
+  const moduleDef = db.scriptModule(moduleId);
+  const notebook = moduleDef?.sourceNotebookId ? db.notebook(moduleDef.sourceNotebookId) : undefined;
+  const revision = notebook && moduleDef?.sourceNotebookRev !== undefined
+    ? db.revision(notebook.id, moduleDef.sourceNotebookRev)
+    : undefined;
+  return storedLibraryCopy(moduleId, db.libraryCopy(moduleId), moduleDef, notebook, revision);
+}
+
+export async function handleNotebookApi(method: string, path: string[], request: Request, db: StudioStore = store()): Promise<Response> {
+  ensureNotebookDemo(db);
   const [resource, id, action, extra] = path;
 
   if (resource === "script-modules" && !id && method === "GET") {
-    const revisions = allRevisions();
+    const revisions = allRevisions(db);
     return json({
       modules: scriptModuleViews(db.scriptModules(), db.notebooks(), revisions, db.workflows()),
       references: referenceCounts(db.workflows()),
@@ -101,8 +125,23 @@ export async function handleNotebookApi(method: string, path: string[], request:
       throw new HttpError(400, error instanceof Error ? error.message : "无法保存环境");
     }
     db.saveScriptModule(next);
-    const revisions = allRevisions();
+    const revisions = allRevisions(db);
     return json(scriptModuleViews([next], db.notebooks(), revisions, db.workflows())[0]);
+  }
+
+  if (resource === "script-modules" && id === "reopen" && method === "POST") {
+    const body = reopenSchema.parse(await request.json());
+    const copy = libraryForModule(db, body.moduleId);
+    if (!copy) throw new HttpError(404, "这个模块没有可重建的库副本");
+    if (!db.libraryCopy(copy.moduleId)) db.saveLibraryCopy(copy);
+    let doc: NotebookDoc;
+    try {
+      doc = notebookFromLibrary(copy, newNotebookId(db));
+    } catch (error) {
+      if (error instanceof PercentError) throw new HttpError(400, error.message);
+      throw error;
+    }
+    return json(db.saveNotebook(doc), 201);
   }
 
   if (resource !== "notebooks") throw new HttpError(404, "接口不存在");
@@ -132,10 +171,10 @@ export async function handleNotebookApi(method: string, path: string[], request:
   if (!id) throw new HttpError(404, "接口不存在");
   if (!/^[\w-]{1,80}$/.test(id)) throw new HttpError(400, "无效的笔记本 id");
 
-  if (!action && method === "GET") return json(requireNotebook(id));
+  if (!action && method === "GET") return json(requireNotebook(db, id));
 
   if (!action && method === "PUT") {
-    const current = requireNotebook(id);
+    const current = requireNotebook(db, id);
     const body = writeSchema.parse(await request.json());
     return json(db.saveNotebook({
       ...current,
@@ -150,7 +189,7 @@ export async function handleNotebookApi(method: string, path: string[], request:
   if (action === "revisions" && extra && method === "GET") {
     const rev = Number(extra);
     if (!Number.isInteger(rev) || rev < 1) throw new HttpError(400, "无效的修订号");
-    requireNotebook(id);
+    requireNotebook(db, id);
     const revision = db.revision(id, rev);
     if (!revision) throw new HttpError(404, "这个修订不存在");
     return json(revision);
@@ -159,7 +198,7 @@ export async function handleNotebookApi(method: string, path: string[], request:
   if (action === "run" && method === "POST") {
     const body = runSchema.parse(await request.json().catch(() => ({})));
     try {
-      return json({ cells: await executeCells(requireNotebook(id), body.cellId) });
+      return json({ cells: await executeCells(requireNotebook(db, id), body.cellId) });
     } catch (error) {
       if (error instanceof ConvertError) throw new HttpError(400, error.message);
       throw error;
@@ -167,7 +206,7 @@ export async function handleNotebookApi(method: string, path: string[], request:
   }
 
   if (action === "try-run" && method === "POST") {
-    const notebook = requireNotebook(id);
+    const notebook = requireNotebook(db, id);
     const body = trySchema.parse(await request.json().catch(() => ({})));
     const values = withSampleValues(body.args ?? {}, body.sampleId);
     try {
@@ -181,11 +220,11 @@ export async function handleNotebookApi(method: string, path: string[], request:
   }
 
   if (action === "publish" && method === "POST") {
-    const notebook = requireNotebook(id);
+    const notebook = requireNotebook(db, id);
     const body = publishSchema.parse(await request.json());
-    let moduleDef;
+    let published: ReturnType<typeof publishScriptModule>;
     try {
-      moduleDef = buildScriptModule({
+      published = publishScriptModule({
         notebook,
         name: body.name,
         description: body.description ?? notebook.description,
@@ -198,9 +237,12 @@ export async function handleNotebookApi(method: string, path: string[], request:
     } catch (error) {
       throw new HttpError(400, error instanceof Error ? error.message : "无法发布");
     }
-    db.saveScriptModule(moduleDef);
-    const revisions = allRevisions();
-    const view = scriptModuleViews([moduleDef], db.notebooks(), revisions, db.workflows())[0];
+    db.transaction(() => {
+      db.saveScriptModule(published.module);
+      db.saveLibraryCopy(published.library);
+    });
+    const revisions = allRevisions(db);
+    const view = scriptModuleViews([published.module], db.notebooks(), revisions, db.workflows())[0];
     return json(view, 201);
   }
 
