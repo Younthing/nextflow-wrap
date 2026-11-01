@@ -3,6 +3,7 @@
  * a generated project. Groovy `${…}` is written as `@{…}` (see `nf`).
  */
 import { BANNER, nf, section } from "./groovy";
+import { runtimeProfiles } from "./launch";
 
 export interface ProjectMeta {
   /** Repository-style name, e.g. `studio/rnaseq`. */
@@ -340,36 +341,7 @@ def methodsDescriptionText(mqc_methods_yaml) {
 `;
 }
 
-const CONTAINER_ENGINES = `    conda {
-        conda.enabled           = true
-        docker.enabled          = false
-        singularity.enabled     = false
-        podman.enabled          = false
-        shifter.enabled         = false
-        charliecloud.enabled    = false
-        conda.channels          = ['conda-forge', 'bioconda']
-        apptainer.enabled       = false
-    }
-    mamba {
-        conda.enabled           = true
-        conda.useMamba          = true
-        docker.enabled          = false
-        singularity.enabled     = false
-        podman.enabled          = false
-        shifter.enabled         = false
-        charliecloud.enabled    = false
-        apptainer.enabled       = false
-    }
-    docker {
-        docker.enabled          = true
-        conda.enabled           = false
-        singularity.enabled     = false
-        podman.enabled          = false
-        shifter.enabled         = false
-        charliecloud.enabled    = false
-        apptainer.enabled       = false
-        docker.runOptions       = '-u $(id -u):$(id -g)'
-    }
+const CONTAINER_ENGINES = `${runtimeProfiles()}
     arm64 {
         process.arch            = 'arm64'
         apptainer.ociAutoPull   = true
@@ -380,35 +352,6 @@ const CONTAINER_ENGINES = `    conda {
     }
     emulate_amd64 {
         docker.runOptions       = '-u $(id -u):$(id -g) --platform=linux/amd64'
-    }
-    singularity {
-        singularity.enabled     = true
-        singularity.autoMounts  = true
-        conda.enabled           = false
-        docker.enabled          = false
-        podman.enabled          = false
-        shifter.enabled         = false
-        charliecloud.enabled    = false
-        apptainer.enabled       = false
-    }
-    podman {
-        podman.enabled          = true
-        conda.enabled           = false
-        docker.enabled          = false
-        singularity.enabled     = false
-        shifter.enabled         = false
-        charliecloud.enabled    = false
-        apptainer.enabled       = false
-    }
-    apptainer {
-        apptainer.enabled       = true
-        apptainer.autoMounts    = true
-        conda.enabled           = false
-        docker.enabled          = false
-        singularity.enabled     = false
-        podman.enabled          = false
-        shifter.enabled         = false
-        charliecloud.enabled    = false
     }
     wave {
         apptainer.ociAutoPull   = true

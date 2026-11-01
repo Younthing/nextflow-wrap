@@ -18,7 +18,6 @@ import {
   ENGINE_LABELS,
   EXECUTORS,
   executorDef,
-  isRealEngine,
   REGISTRIES,
   type ExecutorField,
   type ExecutorId,
@@ -26,17 +25,10 @@ import {
 } from "@/features/project/launch";
 import { cn } from "@/lib/utils";
 
-const EXECUTOR_ICONS: Record<
-  ExecutorId,
-  React.ComponentType<{ className?: string }>
-> = {
-  local: Server,
-  slurm: Server,
-  "google-batch": Cloud,
-  "aws-batch": Cloud,
-  "azure-batch": Cloud,
-  k8s: Ship,
-};
+function executorIcon(id: ExecutorId): React.ComponentType<{ className?: string }> {
+  if (id === "k8s") return Ship;
+  return id.endsWith("-batch") ? Cloud : Server;
+}
 
 function SettingInput({
   field,
@@ -129,16 +121,14 @@ export function EnvironmentForm({
           }}
         >
           {EXECUTORS.map((e) => {
-            const Icon = EXECUTOR_ICONS[e.id];
+            const Icon = executorIcon(e.id);
             const active = e.id === config.executor;
             return (
               <RadioGroup.Item
                 value={e.id}
                 key={e.id}
                 type="button"
-                disabled={real && e.id !== "local"}
                 className={cn(
-                  real && e.id !== "local" && "cursor-not-allowed opacity-40",
                   "flex flex-col gap-1 rounded-lg border p-3 text-left transition-colors hover:bg-accent",
                   active
                     ? "border-primary bg-primary/10 shadow-sm"
@@ -153,7 +143,6 @@ export function EnvironmentForm({
                     )}
                   />
                   {e.name}
-                  {(!real || e.id !== "local") && <Badge variant="warning">预览</Badge>}
                 </span>
                 <span className="text-[11px] leading-snug text-muted-foreground">
                   {e.description}
@@ -208,9 +197,7 @@ export function EnvironmentForm({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {def.engines
-                  .filter((e) => !real || isRealEngine(e))
-                  .map((e) => (
+                {def.engines.map((e) => (
                     <SelectItem key={e} value={e}>
                       {ENGINE_LABELS[e]}
                     </SelectItem>
@@ -238,7 +225,7 @@ export function EnvironmentForm({
           <Field label="工作目录（workDir）" htmlFor={`${formId}-workdir`}>
             <Input
               id={`${formId}-workdir`}
-              disabled={real}
+              disabled={real && config.executor === "local"}
               value={config.workDir}
               placeholder={def.workDirHint}
               onChange={(e) => set({ workDir: e.target.value })}
@@ -250,7 +237,7 @@ export function EnvironmentForm({
             htmlFor={`${formId}-profiles`}
             hint={
               real
-                ? "支持 test、debug、emulate_amd64；逗号分隔"
+                ? "支持 test、debug、gpu、arm64、emulate_amd64、wave；逗号分隔"
                 : "逗号分隔，例如 test,gpu"
             }
           >
@@ -293,7 +280,10 @@ export function EnvironmentForm({
           </Field>
           {real ? (
             <p className="self-end text-xs text-muted-foreground">
-              工作目录自动隔离；断点续跑请从运行详情选择来源记录。
+              {config.executor === "local"
+                ? "本机工作目录自动隔离；"
+                : "集群和云上的工作目录需要计算节点也能访问；"}
+              断点续跑请从运行详情选择来源记录。
             </p>
           ) : (
             <label className="flex h-9 items-center justify-between self-end rounded-md border border-input px-3 text-sm">

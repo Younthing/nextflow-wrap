@@ -55,7 +55,7 @@ describe("prepareStartRun", () => {
     expect(plan.request).toMatchObject({
       modulesSha: typed.gitSha,
       params: { input: "assets/samplesheet.csv", outdir: "results" },
-      launch: { executor: "local", engine: "docker", resume: false },
+      launch: { executor: "local", engine: "shell", resume: false },
       command: expect.stringContaining("nextflow run ."),
     });
     expect(plan.request?.project.files.some((file) => file.path === "main.nf")).toBe(true);
@@ -73,14 +73,16 @@ describe("prepareStartRun", () => {
     expect(startConfirmView(broken).type).toBe("info");
   });
 
-  it("locks a real launch to local docker and blocks when the runner is down", () => {
+  it("keeps the chosen executor and profile on a real launch and blocks when the runner is down", () => {
     const plan = prepareStartRun(input({
       real: true,
       runnerReady: false,
       diagnostics: "Docker 没启动",
       config: { ...defaultLaunchConfig(), executor: "slurm", engine: "singularity", resume: true, settings: { queue: "normal" } },
     }));
-    expect(plan.launch).toMatchObject({ executor: "local", engine: "docker", resume: false });
+    expect(plan.launch).toMatchObject({ executor: "slurm", engine: "singularity", resume: false });
+    expect(plan.command).toContain("-profile singularity");
+    expect(plan.runConfig).toContain("process.executor = 'slurm'");
     const shell = prepareStartRun(input({
       real: true,
       runnerReady: true,
@@ -88,7 +90,8 @@ describe("prepareStartRun", () => {
     }));
     expect(shell.launch.engine).toBe("shell");
     expect(shell.command).not.toContain("-profile");
-    expect(plan.launch.settings).toMatchObject({ cpus: 2, memory: "2.GB", queue: "normal" });
+    expect(plan.launch.settings).toEqual({ queue: "normal" });
+    expect(shell.launch.settings).toMatchObject({ cpus: 2, memory: "2.GB" });
     expect(plan.problems).toContain("Docker 没启动");
     expect(plan.request).toBeNull();
   });

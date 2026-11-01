@@ -217,7 +217,7 @@ export interface StartRunPlan {
   request: LaunchRequest | null;
 }
 
-/** Real mode uses the same local launch as the run dialog. Shell stays; other engines become Docker. */
+/** Real mode uses the same launch as the run dialog: the chosen executor and -profile are kept. */
 export function effectiveLaunchConfig(
   config: LaunchConfig,
   real: boolean,
