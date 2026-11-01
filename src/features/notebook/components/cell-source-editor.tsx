@@ -2,7 +2,7 @@
 
 import { useLayoutEffect, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 
-import { applyCompletion, completeAt, indentAt, type Completion } from "@/features/notebook/complete";
+import { applyCompletion, completeAt, indentAt, tabEdit, type Completion } from "@/features/notebook/complete";
 import { HIGHLIGHT_CLASS, highlightSource } from "@/features/notebook/highlight";
 import { interpretNotebookKey, toNotebookKeyEvent } from "@/features/notebook/keyboard";
 import type { NotebookLanguage } from "@/features/notebook/types";
@@ -35,8 +35,7 @@ export function CellSourceEditor({
   onFocus: () => void;
   onMenu?: (open: boolean) => void;
 }) {
-  const pendingCursor = useRef<number | null>(null);
-  const [cursor, setCursor] = useState(0);
+  const pendingRange = useRef<{ start: number; end: number } | null>(null);
   const [session, setSession] = useState<Completion | null>(null);
   const [index, setIndex] = useState(0);
   const tokens = highlightSource(value, language);
@@ -60,31 +59,28 @@ export function CellSourceEditor({
     if (!node) return;
     node.style.height = "0px";
     node.style.height = `${node.scrollHeight}px`;
-    if (pendingCursor.current === null) return;
-    const next = pendingCursor.current;
-    pendingCursor.current = null;
-    node.setSelectionRange(next, next);
-    setCursor(next);
+    if (pendingRange.current === null) return;
+    const next = pendingRange.current;
+    pendingRange.current = null;
+    node.setSelectionRange(next.start, next.end);
   }, [value, inputRef]);
 
-  const write = (next: { source: string; cursor: number }) => {
-    pendingCursor.current = next.cursor;
-    setCursor(next.cursor);
+  const write = (next: { source: string; start: number; end?: number }) => {
+    const end = next.end ?? next.start;
     if (next.source === value) {
-      field()?.setSelectionRange(next.cursor, next.cursor);
+      pendingRange.current = null;
+      field()?.setSelectionRange(next.start, end);
       return;
     }
+    pendingRange.current = { start: next.start, end };
     onChange(next.source);
   };
 
   const accept = (word: string, node: HTMLTextAreaElement, from: Completion) => {
     const caret = node.selectionStart ?? node.value.length;
-    write(applyCompletion(node.value, caret, from.start, word));
+    const applied = applyCompletion(node.value, caret, from.start, word);
+    write({ source: applied.source, start: applied.cursor });
     setMenu(null);
-  };
-
-  const syncCursor = (node: HTMLTextAreaElement) => {
-    setCursor(node.selectionStart ?? node.value.length);
   };
 
   return (
@@ -116,15 +112,11 @@ export function CellSourceEditor({
           className={cn(FIELD, "cell-source col-start-1 row-start-1 resize-none overflow-hidden border-0 bg-transparent shadow-none outline-none")}
           onFocus={onFocus}
           onChange={(event) => {
-            syncCursor(event.target);
             onChange(event.target.value);
             if (!session) return;
             const next = completionFrom(event.target);
             setMenu(next && next.items.length > 0 ? next : null);
           }}
-          onSelect={(event) => syncCursor(event.currentTarget)}
-          onClick={(event) => syncCursor(event.currentTarget)}
-          onKeyUp={(event) => syncCursor(event.currentTarget)}
           onBlur={() => {
             window.setTimeout(() => {
               if (document.activeElement === inputRef.current) return;
@@ -142,8 +134,12 @@ export function CellSourceEditor({
               onKeyDown(event);
               return;
             }
-            const live = completionFrom(event.currentTarget);
-            if (shown && session) {
+            const node = event.currentTarget;
+            const selectionStart = node.selectionStart ?? node.value.length;
+            const selectionEnd = node.selectionEnd ?? selectionStart;
+            const live = completionFrom(node);
+            const menuOpen = shown && session;
+            if (menuOpen && !event.shiftKey) {
               if (event.key === "Escape") {
                 event.preventDefault();
                 setMenu(null);
@@ -155,14 +151,13 @@ export function CellSourceEditor({
                 setIndex((current) => Math.min(items.length - 1, Math.max(0, Math.min(current, items.length - 1) + delta)));
                 return;
               }
-              if (event.key === "Enter" || event.key === "Tab") {
+              if ((event.key === "Enter" || event.key === "Tab") && !event.ctrlKey && !event.metaKey && !event.altKey) {
                 event.preventDefault();
                 const word = items[active];
-                if (word) accept(word, event.currentTarget, session);
+                if (word) accept(word, node, session);
                 return;
               }
             }
-            const modified = event.ctrlKey || event.metaKey || event.altKey;
             if ((event.ctrlKey || event.metaKey) && event.key === " " && !event.shiftKey && !event.altKey) {
               event.preventDefault();
               if (live && live.items.length > 0) {
@@ -171,19 +166,22 @@ export function CellSourceEditor({
               }
               return;
             }
-            if (event.key === "Tab" && !modified) {
+            if (event.key === "Tab" && !event.ctrlKey && !event.metaKey && !event.altKey) {
               event.preventDefault();
-              const only = live?.items.length === 1 ? live.items[0] : undefined;
-              if (!live || !only) {
-                if (live && live.items.length > 1) {
-                  setIndex(0);
-                  setMenu(live);
+              const decision = tabEdit(language, node.value, selectionStart, selectionEnd, event.shiftKey, scope);
+              if (decision.type === "complete") {
+                const only = decision.completion.items.length === 1 ? decision.completion.items[0] : undefined;
+                if (only) {
+                  accept(only, node, decision.completion);
                   return;
                 }
-                write(indentAt(event.currentTarget.value, event.currentTarget.selectionStart ?? cursor, event.shiftKey));
+                setIndex(0);
+                setMenu(decision.completion);
                 return;
               }
-              accept(only, event.currentTarget, live);
+              if (menuOpen) setMenu(null);
+              const edited = indentAt(node.value, selectionStart, selectionEnd, decision.type === "outdent");
+              write(edited);
               return;
             }
             onKeyDown(event);

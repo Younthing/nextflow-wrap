@@ -215,7 +215,21 @@ export const Completion: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const source = canvas.getByRole("textbox", { name: "单元格 2 源码" });
+
     await userEvent.click(source);
+    await userEvent.keyboard("{Tab}");
+    await expect(source).toHaveValue("    ");
+    await expect(canvas.queryByRole("listbox", { name: "补全" })).toBeNull();
+    await userEvent.keyboard("{Shift>}{Tab}{/Shift}");
+    await expect(source).toHaveValue("");
+
+    await userEvent.keyboard("re");
+    await userEvent.keyboard("{Tab}");
+    await expect(canvas.getByRole("listbox", { name: "补全" })).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    await expect(canvas.queryByRole("listbox", { name: "补全" })).toBeNull();
+    await userEvent.clear(source);
+
     await userEvent.keyboard("pri");
     await userEvent.keyboard("{Control>} {/Control}");
     const list = canvas.getByRole("listbox", { name: "补全" });
