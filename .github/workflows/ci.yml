@@ -52,9 +52,9 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Install Nextflow
         run: bash scripts/install-nextflow.sh
-      - name: Install Jupyter kernel, scanpy and R
+      - name: Install Jupyter kernel, scanpy, docking tools and R
         run: |
-          python3 -m pip install --user --break-system-packages ipykernel matplotlib scanpy igraph leidenalg
+          python3 -m pip install --user --break-system-packages ipykernel matplotlib scanpy igraph leidenalg vina meeko rdkit
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y r-base-core
       - name: Toolchain

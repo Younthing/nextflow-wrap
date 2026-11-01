@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { SAMPLESHEET_ID } from "./builtins";
 import { indexModules } from "./catalog";
-import { demoWorkflow } from "./demo";
+import { demoWorkflow, dockingWorkflow } from "./demo";
 import { EXAMPLE_MODULES, EXAMPLE_TRIM_ID } from "./example-modules";
 import type { ModuleDef, WorkflowNode } from "./types";
 import { validateWorkflow } from "./validate";
@@ -17,6 +17,11 @@ const node = (id: string, moduleId: string, alias: string): WorkflowNode => ({
 describe("validateWorkflow", () => {
   it("accepts the demo workflow", () => {
     const doc = demoWorkflow("wf");
+    expect(validateWorkflow(doc.nodes, doc.edges, doc.params, index)).toEqual([]);
+  });
+
+  it("accepts the docking example", () => {
+    const doc = dockingWorkflow("dock");
     expect(validateWorkflow(doc.nodes, doc.edges, doc.params, index)).toEqual([]);
   });
 

@@ -106,7 +106,7 @@ export async function setupStatus(): Promise<SetupStatus> {
     state: kernels.available && python.length ? "ok" : "missing",
     version: python.map((kernel) => kernel.name).join("、") || undefined,
     detail: kernels.available ? undefined : kernels.message ?? "笔记本需要 ipykernel",
-    install: { label: "创建笔记本环境（ipykernel + scanpy）", version: TOOLCHAIN.micromamba.version },
+    install: { label: "创建笔记本环境（scanpy、RDKit、Vina）", version: TOOLCHAIN.micromamba.version },
   });
 
   const docker = await quiet(process.env.DOCKER_BIN || "docker", ["info", "--format", "{{.ServerVersion}}"], env).then((out) => out.trim()).catch(() => undefined);

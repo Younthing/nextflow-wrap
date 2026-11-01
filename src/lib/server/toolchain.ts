@@ -46,9 +46,9 @@ export const TOOLCHAIN = {
   },
   /** The default notebook environment created with micromamba when no Jupyter is found. */
   notebookEnv: {
-    label: "笔记本环境（ipykernel + scanpy）",
+    label: "笔记本环境（ipykernel、scanpy、RDKit、Vina）",
     name: "nextflow-studio",
-    packages: ["python=3.12", "ipykernel", "matplotlib", "scanpy", "python-igraph", "leidenalg"],
+    packages: ["python=3.12", "ipykernel", "matplotlib", "scanpy", "python-igraph", "leidenalg", "rdkit", "meeko", "vina"],
   },
 } as const;
 
