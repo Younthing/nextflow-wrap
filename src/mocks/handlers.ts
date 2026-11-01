@@ -21,6 +21,7 @@ import { setupHandlers } from "./setup";
 import { fsHandlers } from "./fs";
 import { settingsHandlers } from "./settings";
 import { storageHandlers } from "./storage";
+import { diagnosticsHandlers } from "./diagnostics";
 
 const summarize = (w: WorkflowDoc): WorkflowSummary => ({
   id: w.id,
@@ -38,6 +39,7 @@ export const handlers = [
   ...fsHandlers,
   ...settingsHandlers,
   ...storageHandlers,
+  ...diagnosticsHandlers,
   http.get("/api/health", async () => {
     await delay(150);
     return HttpResponse.json<HealthStatus>({

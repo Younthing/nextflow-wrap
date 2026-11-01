@@ -12,6 +12,7 @@ import { handleSetupApi } from "@/features/setup/server/http";
 import { handleFsApi } from "@/features/files/server/http";
 import { handleSettingsApi } from "@/features/settings/server/http";
 import { handleStorageApi } from "@/features/storage/server/http";
+import { handleDiagnosticsApi } from "@/features/diagnostics/server/http";
 import type { HealthStatus } from "@/lib/api-types";
 import { store } from "@/lib/server/database";
 
@@ -38,6 +39,7 @@ async function handle(request: Request, context: Context): Promise<Response> {
     if (resource === "fs") return handleFsApi(method, path, request);
     if (resource === "settings" && !id) return handleSettingsApi(method, request);
     if (resource === "storage") return handleStorageApi(method, path, request);
+    if (resource === "diagnostics" && !id) return handleDiagnosticsApi(method, request);
     if (resource === "notebooks" || resource === "script-modules" || resource === "kernels") return handleNotebookApi(method, path, request);
     if (resource === "schemas" && id === "samplesheet" && method === "GET") return json(samplesheetSchema);
     if (resource === "workflows") {

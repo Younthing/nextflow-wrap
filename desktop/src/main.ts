@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { execFile } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { createWriteStream, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync, type WriteStream } from "node:fs";
 import { createServer } from "node:net";
 import { join } from "node:path";
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, safeStorage, session, shell, Tray, utilityProcess, type UtilityProcess } from "electron";
@@ -79,22 +79,35 @@ function serviceEnv(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
     NEXTFLOW_STUDIO_DESKTOP: "1",
     NEXTFLOW_STUDIO_APP_VERSION: app.getVersion(),
     NEXTFLOW_STUDIO_BUNDLED_PLUGINS: join(resources, "plugins"),
+    NEXTFLOW_STUDIO_LOG_DIR: app.getPath("logs"),
     NEXT_PUBLIC_API_MOCKING: "disabled",
     NODE_ENV: "production",
     ...extra,
   };
 }
 
+/** `<logs>/<name>.log`, the previous launch kept as `<name>.1.log`. The diagnostics bundle collects both. */
+function serviceLog(name: string): WriteStream {
+  const dir = app.getPath("logs");
+  mkdirSync(dir, { recursive: true });
+  const file = join(dir, `${name}.log`);
+  try { if (statSync(file).size > 0) renameSync(file, join(dir, `${name}.1.log`)); } catch { /* First launch. */ }
+  return createWriteStream(file, { flags: "a" });
+}
+
 /** Start a hosted process and keep it alive: crash → backoff restart, too many → tell the user. */
 function supervise(name: string, modulePath: string, args: string[], env: NodeJS.ProcessEnv, cwd?: string) {
   const restarts = new RestartTracker();
+  const log = serviceLog(name);
   const start = () => {
+    log.write(`--- ${new Date().toISOString()} start ${name} ${app.getVersion()}\n`);
     const child = utilityProcess.fork(modulePath, args, { env, cwd, stdio: "pipe", serviceName: `Nextflow Studio ${name}` });
     children.set(name, child);
-    child.stdout?.on("data", (chunk: Buffer) => process.stdout.write(`[${name}] ${chunk}`));
-    child.stderr?.on("data", (chunk: Buffer) => process.stderr.write(`[${name}] ${chunk}`));
+    child.stdout?.on("data", (chunk: Buffer) => { log.write(chunk); if (dev) process.stdout.write(`[${name}] ${chunk}`); });
+    child.stderr?.on("data", (chunk: Buffer) => { log.write(chunk); if (dev) process.stderr.write(`[${name}] ${chunk}`); });
     const healthyTimer = setTimeout(() => restarts.healthy(), 60_000);
     child.once("exit", (code) => {
+      log.write(`--- ${new Date().toISOString()} ${name} exited with ${code}\n`);
       clearTimeout(healthyTimer);
       children.delete(name);
       if (quitting) return;

@@ -7,6 +7,7 @@ import type { RunDetail } from "@/features/runs/types";
 import { fsHandlers } from "./fs";
 import { settingsHandlers } from "./settings";
 import { storageHandlers } from "./storage";
+import { diagnosticsHandlers } from "./diagnostics";
 import { kernelHandlers } from "./kernels";
 
 export const storyWorkflow = {
@@ -51,6 +52,7 @@ export const storyHandlers = [
   ...fsHandlers,
   ...settingsHandlers,
   ...storageHandlers,
+  ...diagnosticsHandlers,
   http.get("/api/script-modules", () => HttpResponse.json({ modules: EXAMPLE_MODULES, references: {} })),
   http.get("/api/health", () =>
     HttpResponse.json({
