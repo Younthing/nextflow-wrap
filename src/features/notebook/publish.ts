@@ -1,4 +1,5 @@
 import { inputPorts, outputPorts, convertNotebook, moduleSlug } from "./convert";
+import { cleanEnvField } from "./env";
 import type { NotebookDoc, TryRunRecord } from "./types";
 import type { ModuleDef } from "@/features/workflow/types";
 import { versionNumber } from "@/features/workflow/origin";
@@ -22,6 +23,8 @@ export function buildScriptModule(input: {
   name: string;
   description: string;
   changelog?: string;
+  condaYaml?: string;
+  containerImage?: string;
   existing: readonly ModuleDef[];
   receipt: TryRunRecord | undefined;
 }): ModuleDef {
@@ -32,6 +35,8 @@ export function buildScriptModule(input: {
   if (!input.receipt || input.receipt.notebookId !== input.notebook.id || input.receipt.rev !== input.notebook.rev || !input.receipt.passed) {
     throw new Error("试跑通过后才能保存");
   }
+  const condaYaml = cleanEnvField(input.condaYaml, "Conda yaml 路径");
+  const containerImage = cleanEnvField(input.containerImage, "容器地址");
   const version = nextModuleVersion(input.existing, input.notebook.id);
   const slug = moduleSlug(name);
   const folder = `${slug}_${version}`;
@@ -55,6 +60,8 @@ export function buildScriptModule(input: {
     command: `bin/${folder}.${ext}`,
     script: convertNotebook(input.notebook, `bin/${folder}.${ext}`).script,
     kernel: input.notebook.kernel,
+    condaYaml,
+    containerImage,
     changelog: input.changelog?.trim() || undefined,
     label: "process_low",
   };

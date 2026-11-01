@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 
 import { ConvertError } from "@/features/notebook/convert";
+import { patchModuleEnv } from "@/features/notebook/env";
 import { buildScriptModule } from "@/features/notebook/publish";
 import { demoNotebooks, demoRevisions, demoScriptModules } from "@/features/notebook/seed";
 import { executeCells, executeTryRun } from "@/features/notebook/execute";
@@ -23,7 +24,7 @@ const cellSchema = z.object({
 const writeSchema = z.object({
   name: z.string().trim().min(1).max(80),
   description: z.string().max(2000).optional(),
-  kernel: z.string().trim().min(1).max(80),
+  kernel: z.string().trim().min(1).max(80).refine((value) => !/[\u0000-\u001f]/.test(value), "内核名称不能包含换行"),
   cells: z.array(cellSchema).max(80),
 });
 
@@ -36,10 +37,19 @@ const trySchema = z.object({
   sampleId: z.enum(["fastqc-pair", "samplesheet"]).optional(),
 });
 
+const envField = z.string().max(500);
+
 const publishSchema = z.object({
   name: z.string().trim().min(1).max(80),
   description: z.string().max(2000).optional(),
   changelog: z.string().max(2000).optional(),
+  condaYaml: envField.optional(),
+  containerImage: envField.optional(),
+});
+
+const envSchema = z.object({
+  condaYaml: envField.optional(),
+  containerImage: envField.optional(),
 });
 
 export function ensureNotebookDemo(db: StudioStore = store()) {
@@ -76,6 +86,23 @@ export async function handleNotebookApi(method: string, path: string[], request:
       modules: scriptModuleViews(db.scriptModules(), db.notebooks(), revisions, db.workflows()),
       references: referenceCounts(db.workflows()),
     });
+  }
+
+  if (resource === "script-modules" && method === "PUT") {
+    const moduleId = path.slice(1).join("/");
+    if (!/^script\/[\w-]+\/v\d+$/.test(moduleId)) throw new HttpError(400, "无效的模块 id");
+    const current = db.scriptModule(moduleId);
+    if (!current) throw new HttpError(404, "模块不存在");
+    const body = envSchema.parse(await request.json());
+    let next;
+    try {
+      next = patchModuleEnv(current, body);
+    } catch (error) {
+      throw new HttpError(400, error instanceof Error ? error.message : "无法保存环境");
+    }
+    db.saveScriptModule(next);
+    const revisions = allRevisions();
+    return json(scriptModuleViews([next], db.notebooks(), revisions, db.workflows())[0]);
   }
 
   if (resource !== "notebooks") throw new HttpError(404, "接口不存在");
@@ -163,6 +190,8 @@ export async function handleNotebookApi(method: string, path: string[], request:
         name: body.name,
         description: body.description ?? notebook.description,
         changelog: body.changelog,
+        condaYaml: body.condaYaml,
+        containerImage: body.containerImage,
         existing: db.scriptModules(),
         receipt: db.tryRun(notebook.id, notebook.rev),
       });

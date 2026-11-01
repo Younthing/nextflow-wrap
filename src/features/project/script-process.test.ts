@@ -4,6 +4,7 @@ import { indexModules } from "@/features/workflow/catalog";
 import { buildScriptModule } from "@/features/notebook/publish";
 import type { NotebookDoc, TryRunRecord } from "@/features/notebook/types";
 import type { WorkflowDoc } from "@/features/workflow/types";
+import { scriptEnvDirectives, scriptProcessSource } from "./script-process";
 import { generateProject } from "./generate";
 
 const notebook: NotebookDoc = {
@@ -72,5 +73,60 @@ describe("script module project files", () => {
     expect(script).toContain("argparse");
     expect(project.components.some((component) => component.path === def.path)).toBe(false);
     expect(JSON.parse(project.files.find((file) => file.path === "modules.json")!.content).repos["https://github.com/nf-core/modules.git"].modules["nf-core"][def.path]).toBeUndefined();
+    expect(process).not.toContain("conda ");
+    expect(process).not.toContain("container ");
+  });
+
+  it("writes conda and container directives from the module env fields", () => {
+    const def = buildScriptModule({
+      notebook,
+      name: "hello_note",
+      description: notebook.description,
+      condaYaml: "  /envs/py311-pandas.yml  ",
+      containerImage: "ghcr.io/org/py311-pandas:1.2",
+      existing: [],
+      receipt,
+    });
+    expect(def.kernel).toBe("python3.11");
+    expect(def.condaYaml).toBe("/envs/py311-pandas.yml");
+    expect(def.containerImage).toBe("ghcr.io/org/py311-pandas:1.2");
+    const source = scriptProcessSource(def);
+    expect(source).toContain("process HELLO_NOTE {");
+    expect(source).toContain("    conda '/envs/py311-pandas.yml'\n    container 'ghcr.io/org/py311-pandas:1.2'\n    input:");
+    const project = generateProject({
+      id: "wf_env",
+      name: "env flow",
+      version: 1,
+      params: { input: "assets/samplesheet.csv", outdir: "results" },
+      nodes: [
+        { id: "input", position: { x: 0, y: 0 }, data: { moduleId: "builtin/samplesheet", alias: "SAMPLESHEET", widgets: {}, config: {} } },
+        { id: "hello", position: { x: 240, y: 0 }, data: { moduleId: def.id, alias: "HELLO_NOTE", widgets: { title: "hi" }, config: {} } },
+      ],
+      edges: [],
+      updatedAt: notebook.updatedAt,
+    }, indexModules([def]), { modulesSha: "abc" });
+    const process = project.files.find((file) => file.path === `modules/local/${def.path}/main.nf`)!.content;
+    expect(process).toContain("conda '/envs/py311-pandas.yml'");
+    expect(process).toContain("container 'ghcr.io/org/py311-pandas:1.2'");
+  });
+
+  it("emits only the env directive that was filled and escapes quotes", () => {
+    const condaOnly = scriptProcessSource({
+      id: "script/nb/v1",
+      path: "nb_v1",
+      name: "nb",
+      process: "NB",
+      category: "自定义",
+      description: "",
+      keywords: [],
+      tools: [],
+      inputs: [],
+      outputs: [],
+      condaYaml: "/envs/o'brien.yml",
+    });
+    expect(condaOnly).toContain("conda '/envs/o\\'brien.yml'");
+    expect(condaOnly).not.toContain("container ");
+    expect(scriptEnvDirectives({ containerImage: "img:1" })).toEqual(["container 'img:1'"]);
+    expect(scriptEnvDirectives({})).toEqual([]);
   });
 });

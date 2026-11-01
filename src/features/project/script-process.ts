@@ -1,4 +1,4 @@
-import { nf } from "./groovy";
+import { gstr, nf } from "./groovy";
 import type { ModuleDef, PortDef } from "@/features/workflow/types";
 import { moduleOrigin } from "@/features/workflow/origin";
 
@@ -17,6 +17,16 @@ function cliFlag(port: PortDef): string {
   return `--${port.name} @{${port.name}_cli}`;
 }
 
+/** `conda` / `container` lines for a published script. Blank fields are omitted. */
+export function scriptEnvDirectives(env: { condaYaml?: string; containerImage?: string }): string[] {
+  const lines: string[] = [];
+  const conda = env.condaYaml?.trim();
+  const image = env.containerImage?.trim();
+  if (conda) lines.push(`conda ${gstr(conda)}`);
+  if (image) lines.push(`container ${gstr(image)}`);
+  return lines;
+}
+
 /** Local Nextflow process plus the generated CLI. Users never edit this by hand. */
 export function scriptProcessSource(def: ModuleDef): string {
   const inputs = def.inputs.map(inputLine);
@@ -26,8 +36,10 @@ export function scriptProcessSource(def: ModuleDef): string {
     .map((port) => `def ${port.name}_cli = ${port.name} instanceof List ? ${port.name}.join(' ') : ${port.name}`);
   const interpreter = def.command?.endsWith(".R") ? "Rscript" : "python3";
   const flags = def.inputs.map(cliFlag).join(" \\\\\n        ");
+  const directives = scriptEnvDirectives(def);
+  const directiveBlock = directives.length ? `${directives.join("\n    ")}\n    ` : "";
   return nf`process ${def.process} {
-    ${inputs.length ? `input:\n    ${inputs.join("\n    ")}` : ""}
+    ${directiveBlock}${inputs.length ? `input:\n    ${inputs.join("\n    ")}` : ""}
     ${outputs.length ? `output:\n    ${outputs.join("\n    ")}` : ""}
     script:
     ${prep.join("\n    ")}

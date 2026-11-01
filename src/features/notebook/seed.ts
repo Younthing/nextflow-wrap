@@ -255,6 +255,9 @@ function published(notebook: NotebookDoc, version: string, tryRun: "passed" | "f
     command: converted.entry,
     script: converted.script,
     kernel: notebook.kernel,
+    ...(notebook.id === "qc_summary"
+      ? { condaYaml: "/envs/py311-pandas.yml", containerImage: "ghcr.io/org/py311-pandas:1.2" }
+      : {}),
     label: "process_low",
   };
 }
