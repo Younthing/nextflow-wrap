@@ -2,14 +2,13 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 
 import { ConvertError } from "@/features/notebook/convert";
-import { patchModuleEnv } from "@/features/notebook/env";
+import { EnvFieldError, patchModuleEnv } from "@/features/notebook/env";
 import { PercentError } from "@/features/notebook/jupytext";
 import { notebookFromLibrary, storedLibraryCopy } from "@/features/notebook/library-copy";
 import { publishScriptModule } from "@/features/notebook/publish";
 import { demoLibraryCopies, demoNotebooks, demoRevisions, demoScriptModules } from "@/features/notebook/seed";
 import { executeCells, executeTryRun } from "@/features/notebook/execute";
 import { referenceCounts, scriptModuleViews, summarizeNotebook } from "@/features/notebook/library";
-import { withSampleValues } from "@/features/notebook/simulate";
 import { languageForKernel, type NotebookDoc } from "@/features/notebook/types";
 import { HttpError } from "@/features/runs/server/service";
 import type { StudioStore } from "@/lib/server/database";
@@ -34,12 +33,25 @@ const runSchema = z.object({
   cellId: z.string().min(1).max(80).optional(),
 });
 
-const trySchema = z.object({
-  args: z.record(z.string().regex(/^[A-Za-z_][\w]*$/), z.string().max(4000)).optional(),
-  sampleId: z.enum(["fastqc-pair", "samplesheet"]).optional(),
+const envField = z.string().max(500);
+
+const bindingFileSchema = z.object({
+  name: z.string().min(1).max(200),
+  contentBase64: z.string().max(1_400_000),
 });
 
-const envField = z.string().max(500);
+const bindingSchema = z.object({
+  port: z.string().regex(/^[A-Za-z_][\w]*$/),
+  source: z.enum(["upload", "path", "sample"]),
+  value: z.string().max(4000).optional(),
+  files: z.array(bindingFileSchema).max(8).optional(),
+});
+
+const trySchema = z.object({
+  bindings: z.array(bindingSchema).max(40).optional(),
+  condaYaml: envField.optional(),
+  containerImage: envField.optional(),
+});
 
 const publishSchema = z.object({
   name: z.string().trim().min(1).max(80),
@@ -208,13 +220,15 @@ export async function handleNotebookApi(method: string, path: string[], request:
   if (action === "try-run" && method === "POST") {
     const notebook = requireNotebook(db, id);
     const body = trySchema.parse(await request.json().catch(() => ({})));
-    const values = withSampleValues(body.args ?? {}, body.sampleId);
     try {
-      const record = await executeTryRun(notebook, values, body.sampleId);
+      const record = await executeTryRun(notebook, body.bindings ?? [], {
+        condaYaml: body.condaYaml,
+        containerImage: body.containerImage,
+      });
       db.saveTryRun(record);
       return json(record);
     } catch (error) {
-      if (error instanceof ConvertError) throw new HttpError(400, error.message);
+      if (error instanceof ConvertError || error instanceof EnvFieldError) throw new HttpError(400, error.message);
       throw error;
     }
   }

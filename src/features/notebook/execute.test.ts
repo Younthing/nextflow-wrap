@@ -1,3 +1,8 @@
+import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { describe, expect, it } from "vitest";
 
 import { convertNotebook, scriptFileName } from "./convert";
@@ -6,19 +11,22 @@ import { SAMPLE_PDF } from "@/features/output/samples";
 import { planMime } from "./mime";
 import { demoNotebooks } from "./seed";
 import { simulateTryRun } from "./simulate";
+import type { PortBindingRequest } from "./input-bindings";
 import type { CellOutput, NotebookCell, NotebookDoc } from "./types";
 
 const qc = () => demoNotebooks().find((doc) => doc.id === "qc_summary")!;
+
+const qcBindings: PortBindingRequest[] = [
+  { port: "fastq_zip", source: "sample", value: "fastqc-pair" },
+  { port: "min_q", source: "path", value: "30" },
+  { port: "title", source: "path", value: "QC 汇总" },
+];
 
 describe("executeTryRun", () => {
   it("runs the generated qc_summary CLI and checks output files", async () => {
     const notebook = qc();
     const scriptName = scriptFileName(convertNotebook(notebook).entry);
-    const record = await executeTryRun(
-      notebook,
-      { fastq_zip: "S1_fastq.zip,S2_fastq.zip", min_q: "30", title: "QC 汇总" },
-      "fastqc-pair",
-    );
+    const record = await executeTryRun(notebook, qcBindings);
     expect(record.exitCode).toBe(0);
     expect(record.passed).toBe(true);
     expect(record.outputs.map((output) => [output.name, output.ok])).toEqual([
@@ -26,14 +34,172 @@ describe("executeTryRun", () => {
       ["stats", true],
     ]);
     expect(record.log).not.toContain("explore");
-    expect(record.log.startsWith(`$ python3 ${scriptName} `)).toBe(true);
+    expect(record.envVia).toBe("host");
+    expect(record.condaYaml).toBeUndefined();
+    expect(record.containerImage).toBeUndefined();
+    expect(record.log).toContain("未设置 conda / container");
+    expect(record.log).toContain("选用本机 python3");
+    expect(record.log).toContain("输入 fastq_zip · 样例 · 内置样例：2 个 FastQC zip");
+    expect(record.log).toContain("输入 min_q · 路径 · 30");
+    expect(record.log).toContain("输入 title · 路径 · QC 汇总");
+    expect(record.bindings?.map((binding) => [binding.port, binding.source])).toEqual([
+      ["fastq_zip", "sample"],
+      ["min_q", "path"],
+      ["title", "path"],
+    ]);
+    expect(record.log).toContain(`$ python3 ${scriptName} `);
     expect(record.log).not.toContain("main.py");
-    const demo = simulateTryRun(notebook, {
-      fastq_zip: "S1_fastq.zip,S2_fastq.zip",
-      min_q: "30",
-      title: "QC 汇总",
-    });
+    const demo = simulateTryRun(notebook, qcBindings);
+    const commandLine = (log: string) => log.split("\n").find((line) => line.startsWith("$"));
     expect(demo.log.split("\n")[0]).toBe(record.log.split("\n")[0]);
+    expect(commandLine(demo.log)).toBe(commandLine(record.log));
+    expect(demo.envVia).toBe("host");
+  });
+});
+
+const shimPath = fileURLToPath(new URL("../../../scripts/e2e-docker-shim.sh", import.meta.url));
+
+async function fakeConda(dir: string): Promise<{ bin: string; log: string }> {
+  const log = join(dir, "conda.log");
+  const bin = join(dir, "conda");
+  const quoted = log.replaceAll("'", "'\\''");
+  await writeFile(bin, `#!/bin/sh
+printf '%s\\n' "$*" >> '${quoted}'
+if [ "$1" = "env" ] || [ "$1" = "create" ]; then
+  exit 0
+fi
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "python3" ] || [ "$1" = "Rscript" ]; then
+    exec "$@"
+  fi
+  shift
+done
+echo "conda shim: no interpreter" >&2
+exit 1
+`);
+  await chmod(bin, 0o755);
+  return { bin, log };
+}
+
+describe("executeTryRun module environment", () => {
+  it("runs through the container named on the module and keeps the conda path in the log", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "nb-env-"));
+    try {
+      const yaml = join(dir, "py311-pandas.yml");
+      await writeFile(yaml, "name: py311-pandas\ndependencies:\n  - python\n");
+      const conda = await fakeConda(dir);
+      await chmod(shimPath, 0o755);
+      const record = await executeTryRun(qc(), qcBindings, {
+        condaYaml: yaml,
+        containerImage: "python:3.11-slim",
+      }, {
+        cacheDir: join(dir, "cache"),
+        tools: {
+          conda: { bin: conda.bin, kind: "conda" },
+          container: { bin: shimPath, kind: "docker" },
+        },
+      });
+      expect(record.passed).toBe(true);
+      expect(record.envVia).toBe("container");
+      expect(record.condaYaml).toBe(yaml);
+      expect(record.containerImage).toBe("python:3.11-slim");
+      expect(record.log).toContain(`conda '${yaml}'`);
+      expect(record.log).toContain("选用 container 'python:3.11-slim'");
+      expect(record.log).toContain("e2e docker shim: image python:3.11-slim");
+      expect(record.log).toContain("试跑选用容器");
+      expect(record.log).not.toContain("选用本机");
+      await expect(readFile(conda.log, "utf8")).rejects.toThrow();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("uses the conda yaml when no container runtime is available", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "nb-conda-"));
+    try {
+      const yaml = join(dir, "py.yml");
+      await writeFile(yaml, "name: py\n");
+      const conda = await fakeConda(dir);
+      const record = await executeTryRun(qc(), qcBindings, {
+        condaYaml: `  ${yaml}  `,
+        containerImage: "python:3.11-slim",
+      }, {
+        cacheDir: join(dir, "cache"),
+        tools: { conda: { bin: conda.bin, kind: "conda" } },
+      });
+      expect(record.passed).toBe(true);
+      expect(record.envVia).toBe("conda");
+      expect(record.condaYaml).toBe(yaml);
+      expect(record.log).toContain(`选用 conda '${yaml}'`);
+      expect(record.log).toContain("未找到容器运行时");
+      expect(record.log).not.toContain("选用本机");
+      const trace = await readFile(conda.log, "utf8");
+      expect(trace).toContain(yaml);
+      expect(trace).toContain("--no-capture-output");
+      expect(trace).toContain("python3");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not fall back to the host interpreter when the requested runtime is missing", async () => {
+    const notebook = qc();
+    const missing = await executeTryRun(notebook, qcBindings, {
+      containerImage: "python:3.11-slim",
+    }, { tools: {} });
+    expect(missing.passed).toBe(false);
+    expect(missing.envVia).toBeUndefined();
+    expect(missing.log).toContain("未找到容器运行时");
+    expect(missing.log).toContain("container 'python:3.11-slim'");
+    expect(missing.log).not.toContain("选用本机");
+    expect(missing.log).not.toContain("$ python3");
+
+    const absent = await executeTryRun(notebook, qcBindings, {
+      condaYaml: "/tmp/nextflow-wrap-missing-env.yml",
+      containerImage: "python:3.11-slim",
+    }, { tools: { container: { bin: shimPath, kind: "docker" } } });
+    expect(absent.passed).toBe(false);
+    expect(absent.log).toContain("找不到 conda 文件");
+    expect(absent.log).not.toContain("e2e docker shim");
+  });
+});
+
+describe("executeTryRun own data", () => {
+  const hello = () => demoNotebooks().find((doc) => doc.id === "hello_py")!;
+
+  it("runs an uploaded samplesheet and a sample fixture", async () => {
+    const csv = Buffer.from("sample,fastq_1\nUploaded,a.fq\n").toString("base64");
+    const uploaded = await executeTryRun(hello(), [{ port: "samplesheet", source: "upload", files: [{ name: "mine.csv", contentBase64: csv }] }]);
+    expect(uploaded.passed).toBe(true);
+    expect(uploaded.bindings).toEqual([{ port: "samplesheet", source: "upload", label: "mine.csv" }]);
+    expect(uploaded.log).toContain("输入 samplesheet · 上传 · mine.csv");
+    expect(uploaded.log).toContain("--samplesheet mine.csv");
+
+    const sample = await executeTryRun(hello(), [{ port: "samplesheet", source: "sample", value: "samplesheet" }]);
+    expect(sample.passed).toBe(true);
+    expect(sample.log).toContain("输入 samplesheet · 样例 · 内置样例：samplesheet.csv");
+  });
+
+  it("copies a host path into the work directory before the CLI runs", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "nb-own-"));
+    const csvPath = join(dir, "sheet.csv");
+    await writeFile(csvPath, "sample,fastq_1\nHost,a.fq\n");
+    try {
+      const record = await executeTryRun(hello(), [{ port: "samplesheet", source: "path", value: csvPath }]);
+      expect(record.passed).toBe(true);
+      expect(record.log).toContain(`输入 samplesheet · 路径 · ${csvPath} → sheet.csv`);
+      expect(record.log).toContain("--samplesheet sheet.csv");
+      expect(record.bindings?.[0]?.source).toBe("path");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps a missing path string and reports the failure in the log", async () => {
+    const record = await executeTryRun(hello(), [{ port: "samplesheet", source: "path", value: "missing.csv" }]);
+    expect(record.passed).toBe(false);
+    expect(record.log).toContain("输入 samplesheet · 路径 · missing.csv");
+    expect(record.log).toContain("--samplesheet missing.csv");
   });
 });
 

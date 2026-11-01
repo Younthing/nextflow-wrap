@@ -90,6 +90,16 @@ export interface TryRunOutput {
   message?: string;
 }
 
+/** Where a try-run input port got its value. */
+export type TryRunInputSource = "upload" | "path" | "sample";
+
+/** One port's binding, stored on the try-run so the log and the form can name the source. */
+export interface TryRunInputBinding {
+  port: string;
+  source: TryRunInputSource;
+  label: string;
+}
+
 /**
  * MIME types a cell output can carry, best first.
  * HTML, then SVG, then raster images, then PDF, then tables, then markdown, then plain text.
@@ -136,6 +146,14 @@ export interface TryRunRecord {
   log: string;
   outputs: TryRunOutput[];
   ranAt: string;
+  /** Conda yaml the try-run was asked to use. Omitted when the field was blank. */
+  condaYaml?: string;
+  /** Container image the try-run was asked to use. Omitted when the field was blank. */
+  containerImage?: string;
+  /** Engine that actually started the CLI. Omitted when the run was refused. */
+  envVia?: "host" | "conda" | "container";
+  /** Input port bindings used for this try-run. */
+  bindings?: TryRunInputBinding[];
 }
 
 export const KERNELS = {

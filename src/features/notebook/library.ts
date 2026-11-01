@@ -1,5 +1,5 @@
 import { countCellChanges } from "./changes";
-import type { NotebookCell, NotebookDoc, NotebookRevision, NotebookSummary } from "./types";
+import type { NotebookDoc, NotebookRevision, NotebookSummary } from "./types";
 import type { ModuleDef } from "@/features/workflow/types";
 import { versionNumber } from "@/features/workflow/origin";
 
@@ -102,8 +102,4 @@ export function scriptModuleViews(
         referenceCount: counts[mod.id] ?? 0,
       };
     });
-}
-
-export function emptyCodeCell(id: string): NotebookCell {
-  return { id, role: "code", source: "" };
 }

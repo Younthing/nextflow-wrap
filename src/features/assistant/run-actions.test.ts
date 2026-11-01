@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import catalog from "@/data/nf-core-modules.json";
-import { enqueueEditorSave, resetEditorSaveQueueForTests, runEditorSave, type EditorSaveRead } from "@/features/editor/editor-save";
-import { useEditorStore, selectIsDirty } from "@/features/editor/store";
+import { getEditorSaveSession, type EditorSaveRead } from "@/features/editor/editor-save";
+import { createEditorStore, selectIsDirty, type EditorStore } from "@/features/editor/store";
 import { defaultLaunchConfig } from "@/features/project/launch";
 import { indexModules } from "@/features/workflow/catalog";
 import { emptyWorkflow } from "@/features/workflow/document";
 import { qcDemoWorkflow } from "@/features/workflow/qc-demo";
 import type { ModuleCatalog, WorkflowDoc } from "@/features/workflow/types";
-import { ASSISTANT_PROMPT } from "./prompt";
+import { composeAssistantPrompt } from "./modules/compose";
 import {
   CANCEL_RUN_DESCRIPTION,
   RESUME_RUN_DESCRIPTION,
@@ -282,38 +282,39 @@ describe("confirm queue and saving", () => {
     expect(order).toEqual(["first", "first-done", "second"]);
   });
 
+  let store: EditorStore;
   beforeEach(() => {
-    useEditorStore.getState().load(qcDemoWorkflow());
+    store = createEditorStore();
+    store.getState().load(qcDemoWorkflow());
   });
 
   it("saves a dirty workflow once and refuses one that was never saved", async () => {
-    expect(selectIsDirty(useEditorStore.getState())).toBe(false);
+    expect(selectIsDirty(store.getState())).toBe(false);
     const idle = vi.fn(async (doc: WorkflowDoc) => doc);
-    await expect(ensureWorkflowSaved(idle)).resolves.toMatchObject({ doc: { id: "qc-smoke" } });
+    await expect(ensureWorkflowSaved(idle, store)).resolves.toMatchObject({ doc: { id: "qc-smoke" } });
     expect(idle).not.toHaveBeenCalled();
 
-    useEditorStore.getState().setName("改过的名字");
+    store.getState().setName("改过的名字");
     const save = vi.fn(async (doc: WorkflowDoc) => doc);
-    await expect(ensureWorkflowSaved(save)).resolves.toMatchObject({ doc: { name: "改过的名字" } });
+    await expect(ensureWorkflowSaved(save, store)).resolves.toMatchObject({ doc: { name: "改过的名字" } });
     expect(save).toHaveBeenCalledOnce();
-    expect(selectIsDirty(useEditorStore.getState())).toBe(false);
+    expect(selectIsDirty(store.getState())).toBe(false);
 
-    useEditorStore.getState().load(emptyWorkflow(""));
+    store.getState().load(emptyWorkflow(""));
     const again = vi.fn();
-    await expect(ensureWorkflowSaved(again)).resolves.toEqual({ error: "请先保存流程（Ctrl+S）" });
+    await expect(ensureWorkflowSaved(again, store)).resolves.toEqual({ error: "请先保存流程（Ctrl+S）" });
     expect(again).not.toHaveBeenCalled();
   });
 
   it("waits for an in-flight editor save and then uses the revision it stored", async () => {
-    resetEditorSaveQueueForTests();
     const base = qcDemoWorkflow();
     base.updatedAt = "2020-01-01T00:00:00.000Z";
-    useEditorStore.getState().load(base);
-    useEditorStore.getState().setName("autosaved");
+    store.getState().load(base);
+    store.getState().setName("autosaved");
     let release: () => void = () => {};
     const gate = new Promise<void>((resolve) => { release = resolve; });
     const sent: string[] = [];
-    const state = useEditorStore.getState();
+    const state = store.getState();
     const snapshot: EditorSaveRead = {
       docId: state.docId,
       revision: state.revision,
@@ -322,7 +323,8 @@ describe("confirm queue and saving", () => {
       doc: state.toDoc(),
       issues: [],
     };
-    enqueueEditorSave(true, (announce) => runEditorSave({
+    const session = getEditorSaveSession(store);
+    session.enqueueEditorSave(true, (announce) => session.runEditorSave({
       announce,
       snapshot,
       save: async (doc) => {
@@ -330,18 +332,18 @@ describe("confirm queue and saving", () => {
         await gate;
         return { ...doc, updatedAt: "2020-01-02T00:00:00.000Z" };
       },
-      markSaved: (revision, updatedAt) => useEditorStore.getState().markSaved(revision, updatedAt),
+      markSaved: (revision, updatedAt) => store.getState().markSaved(revision, updatedAt),
       stillOpen: () => true,
-      fetchCurrent: async () => useEditorStore.getState().toDoc(),
+      fetchCurrent: async () => store.getState().toDoc(),
       load: () => {},
       toastSaved: () => {},
       toastError: () => {},
     }));
-    useEditorStore.getState().setName("and-then");
+    store.getState().setName("and-then");
     const pending = ensureWorkflowSaved(async (doc) => {
       sent.push(`assistant:${doc.updatedAt}:${doc.name}`);
       return { ...doc, updatedAt: "2020-01-03T00:00:00.000Z" };
-    });
+    }, store);
     await Promise.resolve();
     release();
     const result = await pending;
@@ -354,11 +356,11 @@ describe("confirm queue and saving", () => {
 
 describe("assistant prompt", () => {
   it("tells the model to wait for confirmation", () => {
-    expect(ASSISTANT_PROMPT).toContain("start_run");
-    expect(ASSISTANT_PROMPT).toContain("cancel_run");
-    expect(ASSISTANT_PROMPT).toContain("resume_run");
-    expect(ASSISTANT_PROMPT).toMatch(/确认/);
-    expect(ASSISTANT_PROMPT).not.toContain("你不能启动或停止运行");
+    expect(composeAssistantPrompt()).toContain("start_run");
+    expect(composeAssistantPrompt()).toContain("cancel_run");
+    expect(composeAssistantPrompt()).toContain("resume_run");
+    expect(composeAssistantPrompt()).toMatch(/确认/);
+    expect(composeAssistantPrompt()).not.toContain("你不能启动或停止运行");
     for (const text of [START_RUN_DESCRIPTION, CANCEL_RUN_DESCRIPTION, RESUME_RUN_DESCRIPTION]) {
       expect(text).toMatch(/确认/);
       expect(text).toMatch(/等这个工具返回/);

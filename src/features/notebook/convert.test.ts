@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { convertNotebook, scriptFileName, tryRunArgv, tryRunCommand } from "./convert";
-import { demoNotebooks, qcPinnedCellChanges } from "./seed";
+import { countCellChanges } from "./changes";
+import { demoNotebooks, demoRevisions } from "./seed";
 import type { NotebookDoc } from "./types";
 
 const qc = () => demoNotebooks().find((doc) => doc.id === "qc_summary")!;
@@ -69,6 +70,9 @@ describe("convertNotebook", () => {
 
 describe("seed revisions", () => {
   it("counts three cell edits since the pinned qc_summary publish", () => {
-    expect(qcPinnedCellChanges()).toBe(3);
+    const notebooks = demoNotebooks();
+    const latest = notebooks.find((doc) => doc.id === "qc_summary")!;
+    const pinned = demoRevisions(notebooks).find((rev) => rev.notebookId === "qc_summary" && rev.rev === 12)!;
+    expect(countCellChanges(pinned.cells, latest.cells)).toBe(3);
   });
 });

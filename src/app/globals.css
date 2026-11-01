@@ -55,6 +55,14 @@
   --port-value: oklch(0.62 0.17 255);
   --port-path: oklch(0.65 0.17 310);
   --port-any: oklch(0.6 0.02 260);
+
+  /* Run console. Dark in both themes, like a terminal. */
+  --console: oklch(0.2 0.02 260);
+  --console-foreground: oklch(0.9 0.01 260);
+  --console-error: oklch(0.72 0.18 25);
+  --console-warning: oklch(0.82 0.14 80);
+  --console-success: oklch(0.78 0.15 155);
+  --console-task: oklch(0.8 0.06 230);
 }
 
 .dark {
@@ -133,6 +141,13 @@
   --color-port-value: var(--port-value);
   --color-port-path: var(--port-path);
   --color-port-any: var(--port-any);
+
+  --color-console: var(--console);
+  --color-console-foreground: var(--console-foreground);
+  --color-console-error: var(--console-error);
+  --color-console-warning: var(--console-warning);
+  --color-console-success: var(--console-success);
+  --color-console-task: var(--console-task);
 }
 
 @utility glass {

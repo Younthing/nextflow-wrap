@@ -13,13 +13,12 @@ import { installComponents, materializeProject } from "@/features/project/server
 import { preflight, requireLaunchTools, type RuntimeTools } from "@/features/project/server/preflight";
 import { smokeFastq } from "@/features/project/smoke-data";
 import { NF_SCHEMA_VERSION } from "@/features/project/templates";
+import { executionModuleIndex } from "@/features/runs/server/execution-index";
 import { active } from "@/features/runs/server/service";
 import { ingestEvent, reconcileTrace, refreshProgress } from "@/features/runs/server/tasks";
 import { resultFiles } from "@/features/runs/server/files";
-import { indexModules } from "@/features/workflow/catalog";
 import { hostChainWorkflow, writeHostChainInputs } from "@/features/workflow/host-chain-demo";
 import { qcDemoWorkflow } from "@/features/workflow/qc-demo";
-import type { ModuleCatalog } from "@/features/workflow/types";
 import { dataDirectory, store, type StoredExecution } from "@/lib/server/database";
 
 const db = store();
@@ -99,7 +98,7 @@ async function execute(run: StoredExecution, tools: RuntimeTools, port: number) 
     // Web launches use explicit host paths; the server cannot read a browser's filesystem.
     if (!params.input.startsWith("/")) throw new Error("请输入 runner 主机上的绝对样本表路径；可先使用内置质控示例");
     await access(params.input);
-    const project = generateProject(run.detail.workflow, indexModules((catalog as ModuleCatalog).modules), { modulesSha: catalog.gitSha, registry: launch.registry });
+    const project = generateProject(run.detail.workflow, executionModuleIndex(db.scriptModules()), { modulesSha: catalog.gitSha, registry: launch.registry });
     if (!run.resumeFrom) {
       await materializeProject(project, run.projectDir);
       await installComponents(project, run.projectDir, tools, controller.signal);

@@ -6,7 +6,12 @@ import { emptyWorkflow } from "@/features/workflow/document";
 import type { WorkflowNodeData } from "@/features/workflow/types";
 import { PASTE_GAP } from "./clipboard";
 import { PLACEMENT_CLEAR_X, placeWithoutOverlap } from "./placement";
-import { selectHasSelection, selectIsDirty, useEditorStore, type FlowEdge, type FlowNode } from "./store";
+import { createEditorStore, selectHasSelection, selectIsDirty, type EditorStore, type FlowEdge, type FlowNode } from "./store";
+
+let store: EditorStore = createEditorStore();
+beforeEach(() => {
+  store = createEditorStore();
+});
 
 function node(
   id: string,
@@ -31,8 +36,8 @@ function node(
 }
 
 function seedSelection() {
-  useEditorStore.getState().setIndex(indexModules(BUILTIN_MODULES));
-  useEditorStore.setState({
+  store.getState().setIndex(indexModules(BUILTIN_MODULES));
+  store.setState({
     nodes: [
       node("n1", "SAMPLESHEET", { x: 10, y: 20 }, true, { widgets: { note: "a" } }),
       node("n2", "SAMPLESHEET_2", { x: 300, y: 40 }, true),
@@ -47,94 +52,94 @@ function seedSelection() {
 
 describe("editor store history", () => {
   beforeEach(() => {
-    useEditorStore.getState().load(emptyWorkflow("wf", "原名"));
-    useEditorStore.setState({ clipboard: null, clipboardPastes: 0 });
+    store.getState().load(emptyWorkflow("wf", "原名"));
+    store.setState({ clipboard: null, clipboardPastes: 0 });
   });
 
   it("undoes and redoes a rename", () => {
-    const s = useEditorStore.getState();
+    const s = store.getState();
     s.setName("新名字");
     s.undo();
-    expect(useEditorStore.getState().name).toBe("原名");
-    useEditorStore.getState().redo();
-    expect(useEditorStore.getState().name).toBe("新名字");
+    expect(store.getState().name).toBe("原名");
+    store.getState().redo();
+    expect(store.getState().name).toBe("新名字");
   });
 
   it("bumps the generation on every load", () => {
-    const before = useEditorStore.getState().generation;
-    useEditorStore.getState().load(emptyWorkflow(""));
-    expect(useEditorStore.getState().generation).toBe(before + 1);
+    const before = store.getState().generation;
+    store.getState().load(emptyWorkflow(""));
+    expect(store.getState().generation).toBe(before + 1);
   });
 
   it("sends the loaded server revision until a save adopts the next one", () => {
     const doc = emptyWorkflow("wf", "原名");
     doc.updatedAt = "2026-01-01T00:00:00.000Z";
-    useEditorStore.getState().load(doc);
-    useEditorStore.getState().setName("原名-dirty");
-    expect(useEditorStore.getState().toDoc().updatedAt).toBe("2026-01-01T00:00:00.000Z");
-    const revision = useEditorStore.getState().revision;
-    useEditorStore.getState().markSaved(revision, "2026-01-02T00:00:00.000Z");
-    expect(useEditorStore.getState().toDoc().updatedAt).toBe("2026-01-02T00:00:00.000Z");
-    expect(selectIsDirty(useEditorStore.getState())).toBe(false);
+    store.getState().load(doc);
+    store.getState().setName("原名-dirty");
+    expect(store.getState().toDoc().updatedAt).toBe("2026-01-01T00:00:00.000Z");
+    const revision = store.getState().revision;
+    store.getState().markSaved(revision, "2026-01-02T00:00:00.000Z");
+    expect(store.getState().toDoc().updatedAt).toBe("2026-01-02T00:00:00.000Z");
+    expect(selectIsDirty(store.getState())).toBe(false);
   });
 });
 
 describe("editor clipboard", () => {
   beforeEach(() => {
-    useEditorStore.getState().load(emptyWorkflow("wf", "画布"));
-    useEditorStore.setState({ clipboard: null, clipboardPastes: 0 });
+    store.getState().load(emptyWorkflow("wf", "画布"));
+    store.setState({ clipboard: null, clipboardPastes: 0 });
     seedSelection();
   });
 
   it("copies the selection without marking the workflow dirty", () => {
-    const before = useEditorStore.getState().revision;
-    useEditorStore.getState().clearSelection();
-    useEditorStore.getState().copySelected();
-    useEditorStore.getState().pasteFromClipboard();
-    useEditorStore.getState().duplicateSelected();
-    expect(useEditorStore.getState().clipboard).toBeNull();
-    expect(useEditorStore.getState().nodes).toHaveLength(3);
-    expect(useEditorStore.getState().revision).toBe(before);
+    const before = store.getState().revision;
+    store.getState().clearSelection();
+    store.getState().copySelected();
+    store.getState().pasteFromClipboard();
+    store.getState().duplicateSelected();
+    expect(store.getState().clipboard).toBeNull();
+    expect(store.getState().nodes).toHaveLength(3);
+    expect(store.getState().revision).toBe(before);
 
     seedSelection();
-    useEditorStore.getState().copySelected();
-    const clip = useEditorStore.getState().clipboard;
+    store.getState().copySelected();
+    const clip = store.getState().clipboard;
     expect(clip?.nodes.map((n) => n.id)).toEqual(["n1", "n2"]);
     expect(clip?.edges.map((e) => e.id)).toEqual(["e12"]);
     expect(clip?.params).toEqual({});
-    expect(useEditorStore.getState().revision).toBe(before);
-    expect(useEditorStore.getState().past).toHaveLength(0);
+    expect(store.getState().revision).toBe(before);
+    expect(store.getState().past).toHaveLength(0);
 
-    useEditorStore.getState().setWidget("n1", "note", "changed");
-    expect(useEditorStore.getState().clipboard?.nodes[0]?.data.widgets.note).toBe("a");
+    store.getState().setWidget("n1", "note", "changed");
+    expect(store.getState().clipboard?.nodes[0]?.data.widgets.note).toBe("a");
   });
 
   it("clears a selected edge when pasting or duplicating", () => {
-    useEditorStore.setState({
-      edges: useEditorStore.getState().edges.map((edge) => ({ ...edge, selected: edge.id === "e23" })),
+    store.setState({
+      edges: store.getState().edges.map((edge) => ({ ...edge, selected: edge.id === "e23" })),
     });
-    useEditorStore.getState().duplicateSelected();
-    const duplicated = useEditorStore.getState();
+    store.getState().duplicateSelected();
+    const duplicated = store.getState();
     expect(duplicated.edges.find((edge) => edge.id === "e23")?.selected).toBe(false);
     expect(duplicated.edges.every((edge) => !edge.selected)).toBe(true);
     expect(duplicated.nodes.some((node) => node.selected)).toBe(true);
     expect(duplicated.edges.some((edge) => edge.id === "e23")).toBe(true);
 
-    useEditorStore.getState().undo();
-    expect(useEditorStore.getState().edges.find((edge) => edge.id === "e23")?.selected).toBe(true);
+    store.getState().undo();
+    expect(store.getState().edges.find((edge) => edge.id === "e23")?.selected).toBe(true);
 
-    useEditorStore.getState().copySelected();
-    useEditorStore.getState().pasteFromClipboard();
-    const pasted = useEditorStore.getState();
+    store.getState().copySelected();
+    store.getState().pasteFromClipboard();
+    const pasted = store.getState();
     expect(pasted.edges.find((edge) => edge.id === "e23")?.selected).toBe(false);
     expect(pasted.edges.every((edge) => !edge.selected)).toBe(true);
     expect(pasted.nodes.some((node) => node.selected)).toBe(true);
   });
 
   it("pastes copies with new ids, unique aliases, and only internal links", () => {
-    useEditorStore.getState().copySelected();
-    useEditorStore.getState().pasteFromClipboard();
-    const state = useEditorStore.getState();
+    store.getState().copySelected();
+    store.getState().pasteFromClipboard();
+    const state = store.getState();
     const created = state.nodes.filter((n) => !["n1", "n2", "n3"].includes(n.id));
     expect(created).toHaveLength(2);
     expect(created.every((n) => n.selected)).toBe(true);
@@ -149,36 +154,36 @@ describe("editor clipboard", () => {
     expect(created.map((n) => n.id).sort()).toEqual([link?.source, link?.target].sort());
     expect(state.edges.some((e) => e.source === "n2" && e.target === "n3")).toBe(true);
 
-    useEditorStore.getState().undo();
-    expect(useEditorStore.getState().nodes.map((n) => n.id)).toEqual(["n1", "n2", "n3"]);
-    expect(useEditorStore.getState().clipboard?.nodes).toHaveLength(2);
+    store.getState().undo();
+    expect(store.getState().nodes.map((n) => n.id)).toEqual(["n1", "n2", "n3"]);
+    expect(store.getState().clipboard?.nodes).toHaveLength(2);
   });
 
   it("steps repeated pastes further and keeps the clipboard across a load", () => {
-    useEditorStore.getState().copySelected();
-    useEditorStore.getState().pasteFromClipboard();
-    useEditorStore.getState().pasteFromClipboard();
-    const second = useEditorStore
+    store.getState().copySelected();
+    store.getState().pasteFromClipboard();
+    store.getState().pasteFromClipboard();
+    const second = store
       .getState()
       .nodes.find((n) => n.selected && n.data.widgets.note === "a");
     expect(second?.position).toEqual({ x: 10 + PASTE_GAP * 2, y: 20 + PASTE_GAP * 2 });
 
-    useEditorStore.getState().load(emptyWorkflow("other", "另一个"));
-    expect(useEditorStore.getState().clipboard?.nodes).toHaveLength(2);
-    useEditorStore.getState().pasteFromClipboard();
-    const pasted = useEditorStore.getState().nodes;
+    store.getState().load(emptyWorkflow("other", "另一个"));
+    expect(store.getState().clipboard?.nodes).toHaveLength(2);
+    store.getState().pasteFromClipboard();
+    const pasted = store.getState().nodes;
     expect(pasted).toHaveLength(2);
     expect(pasted.map((n) => n.data.alias).sort()).toEqual(["SAMPLESHEET", "SAMPLESHEET_2"]);
   });
 
   it("duplicates the selection beside the originals without replacing the clipboard", () => {
-    useEditorStore.getState().copySelected();
-    useEditorStore.getState().pasteFromClipboard();
-    const pastes = useEditorStore.getState().clipboardPastes;
-    const before = useEditorStore.getState();
+    store.getState().copySelected();
+    store.getState().pasteFromClipboard();
+    const pastes = store.getState().clipboardPastes;
+    const before = store.getState();
     const sources = before.nodes.filter((n) => n.selected);
-    useEditorStore.getState().duplicateSelected();
-    const duplicated = useEditorStore.getState();
+    store.getState().duplicateSelected();
+    const duplicated = store.getState();
     expect(duplicated.clipboardPastes).toBe(pastes);
     const copies = duplicated.nodes.filter((n) => n.selected);
     expect(copies).toHaveLength(2);
@@ -192,26 +197,26 @@ describe("editor clipboard", () => {
       x: (source?.position.x ?? 0) + PASTE_GAP,
       y: (source?.position.y ?? 0) + PASTE_GAP,
     });
-    useEditorStore.getState().undo();
-    expect(useEditorStore.getState().nodes).toHaveLength(5);
-    expect(useEditorStore.getState().edges).toHaveLength(before.edges.length);
+    store.getState().undo();
+    expect(store.getState().nodes).toHaveLength(5);
+    expect(store.getState().edges).toHaveLength(before.edges.length);
 
-    useEditorStore.setState({ clipboard: null, clipboardPastes: 0 });
-    useEditorStore.getState().clearSelection();
-    useEditorStore.setState({
-      nodes: useEditorStore.getState().nodes.map((n) => ({ ...n, selected: n.id === "n1" })),
+    store.setState({ clipboard: null, clipboardPastes: 0 });
+    store.getState().clearSelection();
+    store.setState({
+      nodes: store.getState().nodes.map((n) => ({ ...n, selected: n.id === "n1" })),
     });
-    useEditorStore.getState().duplicateSelected();
-    expect(useEditorStore.getState().clipboard).toBeNull();
-    const copy = useEditorStore.getState().nodes.find((n) => n.selected);
+    store.getState().duplicateSelected();
+    expect(store.getState().clipboard).toBeNull();
+    const copy = store.getState().nodes.find((n) => n.selected);
     expect(copy?.position).toEqual({ x: 10 + PASTE_GAP, y: 20 + PASTE_GAP });
     expect(copy?.data.alias).toBe("SAMPLESHEET_6");
   });
 
   it("gives a duplicated reference node its own param name and path", () => {
     const fasta = "s3://bucket/genome.fa";
-    useEditorStore.setState({
-      params: { ...useEditorStore.getState().params, fasta },
+    store.setState({
+      params: { ...store.getState().params, fasta },
       nodes: [
         node("r1", "REFERENCE", { x: 0, y: 0 }, true, {
           moduleId: REFERENCE_ID,
@@ -220,20 +225,20 @@ describe("editor clipboard", () => {
       ],
       edges: [],
     });
-    useEditorStore.getState().duplicateSelected();
-    const copy = useEditorStore.getState().nodes.find((n) => n.selected);
+    store.getState().duplicateSelected();
+    const copy = store.getState().nodes.find((n) => n.selected);
     expect(copy?.data.alias).toBe("REFERENCE_2");
     expect(copy?.data.settings).toMatchObject({ param: "fasta_2", format: "fasta" });
-    expect(useEditorStore.getState().params.fasta).toBe(fasta);
-    expect(useEditorStore.getState().params.fasta_2).toBe(fasta);
-    useEditorStore.getState().undo();
-    expect(useEditorStore.getState().params.fasta).toBe(fasta);
-    expect(useEditorStore.getState().params.fasta_2).toBeUndefined();
-    expect(useEditorStore.getState().nodes).toHaveLength(1);
+    expect(store.getState().params.fasta).toBe(fasta);
+    expect(store.getState().params.fasta_2).toBe(fasta);
+    store.getState().undo();
+    expect(store.getState().params.fasta).toBe(fasta);
+    expect(store.getState().params.fasta_2).toBeUndefined();
+    expect(store.getState().nodes).toHaveLength(1);
   });
 
   it("does not invent a path when the reference param was unset", () => {
-    useEditorStore.setState({
+    store.setState({
       params: {},
       nodes: [
         node("r1", "REFERENCE", { x: 0, y: 0 }, true, {
@@ -243,15 +248,15 @@ describe("editor clipboard", () => {
       ],
       edges: [],
     });
-    useEditorStore.getState().duplicateSelected();
-    expect(useEditorStore.getState().nodes.find((n) => n.selected)?.data.settings?.param).toBe("fasta_2");
-    expect(useEditorStore.getState().params).toEqual({});
+    store.getState().duplicateSelected();
+    expect(store.getState().nodes.find((n) => n.selected)?.data.settings?.param).toBe("fasta_2");
+    expect(store.getState().params).toEqual({});
   });
 
   it("keeps params.input when duplicating a reference named input_2", () => {
     const samplesheet = "assets/samplesheet.csv";
     const path = "s3://bucket/extra.fa";
-    useEditorStore.setState({
+    store.setState({
       params: { input: samplesheet, input_2: path, outdir: "results" },
       nodes: [
         node("r1", "REFERENCE", { x: 0, y: 0 }, true, {
@@ -261,22 +266,22 @@ describe("editor clipboard", () => {
       ],
       edges: [],
     });
-    useEditorStore.getState().duplicateSelected();
-    const copy = useEditorStore.getState().nodes.find((n) => n.selected);
+    store.getState().duplicateSelected();
+    const copy = store.getState().nodes.find((n) => n.selected);
     expect(copy?.data.settings).toMatchObject({ param: "input_3", format: "fasta" });
-    expect(useEditorStore.getState().params).toEqual({
+    expect(store.getState().params).toEqual({
       input: samplesheet,
       input_2: path,
       input_3: path,
       outdir: "results",
     });
-    useEditorStore.getState().undo();
-    expect(useEditorStore.getState().params).toEqual({
+    store.getState().undo();
+    expect(store.getState().params).toEqual({
       input: samplesheet,
       input_2: path,
       outdir: "results",
     });
-    expect(useEditorStore.getState().nodes).toHaveLength(1);
+    expect(store.getState().nodes).toHaveLength(1);
   });
 
   it("pastes reference paths into another workflow under the remapped names", () => {
@@ -284,17 +289,17 @@ describe("editor clipboard", () => {
     const gtf = "s3://bucket/genes.gtf";
     const reference = (id: string, alias: string, param: string, format: string, y: number): FlowNode =>
       node(id, alias, { x: 0, y }, true, { moduleId: REFERENCE_ID, settings: { param, format } });
-    useEditorStore.setState({
+    store.setState({
       params: { fasta, gtf, input: "assets/samplesheet.csv" },
       nodes: [reference("r1", "REFERENCE", "fasta", "fasta", 0), reference("r2", "REFERENCE_2", "gtf", "gtf", 200)],
       edges: [],
     });
-    useEditorStore.getState().copySelected();
-    useEditorStore.getState().setParam("fasta", "s3://changed/genome.fa");
-    expect(useEditorStore.getState().clipboard?.params).toEqual({ fasta, gtf });
+    store.getState().copySelected();
+    store.getState().setParam("fasta", "s3://changed/genome.fa");
+    expect(store.getState().clipboard?.params).toEqual({ fasta, gtf });
 
-    useEditorStore.getState().load(emptyWorkflow("other", "另一个"));
-    useEditorStore.setState({
+    store.getState().load(emptyWorkflow("other", "另一个"));
+    store.setState({
       params: { fasta: "s3://destination/genome.fa", input: "other.csv" },
       nodes: [
         node("kept", "REFERENCE", { x: 0, y: 0 }, false, {
@@ -304,27 +309,27 @@ describe("editor clipboard", () => {
       ],
       edges: [],
     });
-    useEditorStore.getState().pasteFromClipboard();
-    const pasted = useEditorStore.getState().nodes.filter((n) => n.selected);
+    store.getState().pasteFromClipboard();
+    const pasted = store.getState().nodes.filter((n) => n.selected);
     expect(pasted.find((n) => n.data.settings?.format === "fasta")?.data.settings?.param).toBe("fasta_2");
     expect(pasted.find((n) => n.data.settings?.format === "gtf")?.data.settings?.param).toBe("gtf");
-    expect(useEditorStore.getState().params).toEqual({
+    expect(store.getState().params).toEqual({
       fasta: "s3://destination/genome.fa",
       fasta_2: fasta,
       gtf,
       input: "other.csv",
     });
-    useEditorStore.getState().undo();
-    expect(useEditorStore.getState().params).toEqual({
+    store.getState().undo();
+    expect(store.getState().params).toEqual({
       fasta: "s3://destination/genome.fa",
       input: "other.csv",
     });
-    expect(useEditorStore.getState().nodes.map((n) => n.id)).toEqual(["kept"]);
+    expect(store.getState().nodes.map((n) => n.id)).toEqual(["kept"]);
   });
 
   it("keeps a destination param key when pasting into another workflow", () => {
     const path = "s3://bucket/extra.fa";
-    useEditorStore.setState({
+    store.setState({
       params: { input: "assets/samplesheet.csv", input_2: path, outdir: "results" },
       nodes: [
         node("r1", "REFERENCE", { x: 0, y: 0 }, true, {
@@ -334,53 +339,53 @@ describe("editor clipboard", () => {
       ],
       edges: [],
     });
-    useEditorStore.getState().copySelected();
+    store.getState().copySelected();
 
-    useEditorStore.getState().load(emptyWorkflow("other", "另一个"));
-    useEditorStore.setState({
+    store.getState().load(emptyWorkflow("other", "另一个"));
+    store.setState({
       params: { input: "other.csv", input_2: "s3://destination/keep.fa", outdir: "elsewhere" },
       nodes: [],
       edges: [],
     });
-    useEditorStore.getState().pasteFromClipboard();
-    const pasted = useEditorStore.getState().nodes.find((n) => n.selected);
+    store.getState().pasteFromClipboard();
+    const pasted = store.getState().nodes.find((n) => n.selected);
     expect(pasted?.data.settings).toMatchObject({ param: "input_3", format: "fasta" });
-    expect(useEditorStore.getState().params).toEqual({
+    expect(store.getState().params).toEqual({
       input: "other.csv",
       input_2: "s3://destination/keep.fa",
       input_3: path,
       outdir: "elsewhere",
     });
-    useEditorStore.getState().undo();
-    expect(useEditorStore.getState().params).toEqual({
+    store.getState().undo();
+    expect(store.getState().params).toEqual({
       input: "other.csv",
       input_2: "s3://destination/keep.fa",
       outdir: "elsewhere",
     });
-    expect(useEditorStore.getState().nodes).toHaveLength(0);
+    expect(store.getState().nodes).toHaveLength(0);
   });
 
   it("selects and clears nodes and edges without a history step", () => {
-    const revision = useEditorStore.getState().revision;
-    useEditorStore.getState().clearSelection();
-    useEditorStore.getState().selectAllNodes();
-    useEditorStore.setState({
-      edges: useEditorStore.getState().edges.map((edge) => ({ ...edge, selected: true })),
+    const revision = store.getState().revision;
+    store.getState().clearSelection();
+    store.getState().selectAllNodes();
+    store.setState({
+      edges: store.getState().edges.map((edge) => ({ ...edge, selected: true })),
     });
-    expect(useEditorStore.getState().nodes.every((n) => n.selected)).toBe(true);
-    expect(selectHasSelection(useEditorStore.getState())).toBe(true);
-    useEditorStore.getState().clearSelection();
-    expect(useEditorStore.getState().nodes.some((n) => n.selected)).toBe(false);
-    expect(useEditorStore.getState().edges.some((e) => e.selected)).toBe(false);
-    expect(useEditorStore.getState().revision).toBe(revision);
-    expect(useEditorStore.getState().past).toHaveLength(0);
+    expect(store.getState().nodes.every((n) => n.selected)).toBe(true);
+    expect(selectHasSelection(store.getState())).toBe(true);
+    store.getState().clearSelection();
+    expect(store.getState().nodes.some((n) => n.selected)).toBe(false);
+    expect(store.getState().edges.some((e) => e.selected)).toBe(false);
+    expect(store.getState().revision).toBe(revision);
+    expect(store.getState().past).toHaveLength(0);
   });
 
   it("deletes selected nodes and every edge that touches them", () => {
-    useEditorStore.getState().copySelected();
-    const revision = useEditorStore.getState().revision;
-    useEditorStore.getState().deleteSelected();
-    const deleted = useEditorStore.getState();
+    store.getState().copySelected();
+    const revision = store.getState().revision;
+    store.getState().deleteSelected();
+    const deleted = store.getState();
     expect(deleted.nodes.map((node) => node.id)).toEqual(["n3"]);
     expect(deleted.edges).toEqual([]);
     expect(deleted.past).toHaveLength(1);
@@ -389,17 +394,17 @@ describe("editor clipboard", () => {
     expect(deleted.clipboard?.nodes.map((node) => node.id)).toEqual(["n1", "n2"]);
 
     deleted.undo();
-    const restored = useEditorStore.getState();
+    const restored = store.getState();
     expect(restored.nodes.map((node) => node.id)).toEqual(["n1", "n2", "n3"]);
     expect(restored.nodes.filter((node) => node.selected).map((node) => node.id)).toEqual(["n1", "n2"]);
     expect(restored.edges.map((edge) => edge.id)).toEqual(["e12", "e23"]);
     restored.redo();
-    expect(useEditorStore.getState().nodes.map((node) => node.id)).toEqual(["n3"]);
-    expect(useEditorStore.getState().edges).toEqual([]);
+    expect(store.getState().nodes.map((node) => node.id)).toEqual(["n3"]);
+    expect(store.getState().edges).toEqual([]);
   });
 
   it("keeps an edge between nodes that stay and drops a selected edge in the same step", () => {
-    useEditorStore.setState({
+    store.setState({
       nodes: [
         node("n1", "A", { x: 0, y: 0 }, true),
         node("n2", "B", { x: 200, y: 0 }, false),
@@ -411,74 +416,74 @@ describe("editor clipboard", () => {
         { id: "e-extra", source: "n2", target: "n3", sourceHandle: "out:reads", targetHandle: "in:reads", selected: true },
       ],
     });
-    useEditorStore.getState().deleteSelected();
-    expect(useEditorStore.getState().nodes.map((n) => n.id)).toEqual(["n2", "n3"]);
-    expect(useEditorStore.getState().edges.map((edge) => edge.id)).toEqual(["e23"]);
-    expect(useEditorStore.getState().past).toHaveLength(1);
-    useEditorStore.getState().undo();
-    expect(useEditorStore.getState().nodes.map((n) => n.id)).toEqual(["n1", "n2", "n3"]);
-    expect(useEditorStore.getState().edges.map((edge) => edge.id)).toEqual(["e12", "e23", "e-extra"]);
-    expect(useEditorStore.getState().edges.find((edge) => edge.id === "e-extra")?.selected).toBe(true);
+    store.getState().deleteSelected();
+    expect(store.getState().nodes.map((n) => n.id)).toEqual(["n2", "n3"]);
+    expect(store.getState().edges.map((edge) => edge.id)).toEqual(["e23"]);
+    expect(store.getState().past).toHaveLength(1);
+    store.getState().undo();
+    expect(store.getState().nodes.map((n) => n.id)).toEqual(["n1", "n2", "n3"]);
+    expect(store.getState().edges.map((edge) => edge.id)).toEqual(["e12", "e23", "e-extra"]);
+    expect(store.getState().edges.find((edge) => edge.id === "e-extra")?.selected).toBe(true);
   });
 
   it("deletes a selected edge whose nodes stay", () => {
-    useEditorStore.getState().clearSelection();
-    useEditorStore.setState({
-      edges: useEditorStore.getState().edges.map((edge) => ({ ...edge, selected: edge.id === "e23" })),
+    store.getState().clearSelection();
+    store.setState({
+      edges: store.getState().edges.map((edge) => ({ ...edge, selected: edge.id === "e23" })),
     });
-    useEditorStore.getState().deleteSelected();
-    expect(useEditorStore.getState().nodes.map((node) => node.id)).toEqual(["n1", "n2", "n3"]);
-    expect(useEditorStore.getState().edges.map((edge) => edge.id)).toEqual(["e12"]);
-    useEditorStore.getState().undo();
-    expect(useEditorStore.getState().edges.map((edge) => edge.id)).toEqual(["e12", "e23"]);
-    expect(useEditorStore.getState().edges.find((edge) => edge.id === "e23")?.selected).toBe(true);
+    store.getState().deleteSelected();
+    expect(store.getState().nodes.map((node) => node.id)).toEqual(["n1", "n2", "n3"]);
+    expect(store.getState().edges.map((edge) => edge.id)).toEqual(["e12"]);
+    store.getState().undo();
+    expect(store.getState().edges.map((edge) => edge.id)).toEqual(["e12", "e23"]);
+    expect(store.getState().edges.find((edge) => edge.id === "e23")?.selected).toBe(true);
   });
 
   it("does not record an undo step when nothing is selected", () => {
-    useEditorStore.getState().clearSelection();
-    const revision = useEditorStore.getState().revision;
-    useEditorStore.getState().deleteSelected();
-    useEditorStore.getState().deleteSelected();
-    expect(useEditorStore.getState().revision).toBe(revision);
-    expect(useEditorStore.getState().past).toHaveLength(0);
-    expect(useEditorStore.getState().nodes).toHaveLength(3);
-    expect(useEditorStore.getState().edges).toHaveLength(2);
+    store.getState().clearSelection();
+    const revision = store.getState().revision;
+    store.getState().deleteSelected();
+    store.getState().deleteSelected();
+    expect(store.getState().revision).toBe(revision);
+    expect(store.getState().past).toHaveLength(0);
+    expect(store.getState().nodes).toHaveLength(3);
+    expect(store.getState().edges).toHaveLength(2);
   });
 
   it("clears a selection that is only edges", () => {
-    useEditorStore.getState().clearSelection();
-    useEditorStore.setState({
-      edges: useEditorStore.getState().edges.map((edge) => ({ ...edge, selected: edge.id === "e23" })),
+    store.getState().clearSelection();
+    store.setState({
+      edges: store.getState().edges.map((edge) => ({ ...edge, selected: edge.id === "e23" })),
     });
-    expect(selectHasSelection(useEditorStore.getState())).toBe(true);
+    expect(selectHasSelection(store.getState())).toBe(true);
     expect(selectHasSelection({ nodes: [{ selected: false }], edges: [{ selected: false }] })).toBe(false);
-    const revision = useEditorStore.getState().revision;
-    useEditorStore.getState().clearSelection();
-    expect(selectHasSelection(useEditorStore.getState())).toBe(false);
-    expect(useEditorStore.getState().edges.every((edge) => !edge.selected)).toBe(true);
-    expect(useEditorStore.getState().revision).toBe(revision);
-    expect(useEditorStore.getState().past).toHaveLength(0);
+    const revision = store.getState().revision;
+    store.getState().clearSelection();
+    expect(selectHasSelection(store.getState())).toBe(false);
+    expect(store.getState().edges.every((edge) => !edge.selected)).toBe(true);
+    expect(store.getState().revision).toBe(revision);
+    expect(store.getState().past).toHaveLength(0);
   });
 });
 
 describe("add node placement", () => {
   beforeEach(() => {
-    useEditorStore.getState().load(emptyWorkflow("wf", "画布"));
-    useEditorStore.getState().setIndex(indexModules(BUILTIN_MODULES));
+    store.getState().load(emptyWorkflow("wf", "画布"));
+    store.getState().setIndex(indexModules(BUILTIN_MODULES));
   });
 
   it("keeps a free spot and shifts a node dropped on an existing card", () => {
     const def = BUILTIN_MODULES[0]!;
     const requested = { x: 40, y: 60 };
-    const first = useEditorStore.getState().addNode(def, requested);
+    const first = store.getState().addNode(def, requested);
     expect(first.position).toEqual(requested);
 
-    const stacked = useEditorStore.getState().addNode(def, requested);
+    const stacked = store.getState().addNode(def, requested);
     expect(stacked.position).toEqual(placeWithoutOverlap(requested, [requested]));
     expect(stacked.position).toEqual({ x: requested.x + PLACEMENT_CLEAR_X, y: requested.y });
-    const stored = useEditorStore.getState().nodes.find((n) => n.id === stacked.id);
+    const stored = store.getState().nodes.find((n) => n.id === stacked.id);
     expect(stored?.position).toEqual(stacked.position);
     expect(stored?.selected).toBe(true);
-    expect(useEditorStore.getState().nodes.find((n) => n.id === first.id)?.selected).toBe(false);
+    expect(store.getState().nodes.find((n) => n.id === first.id)?.selected).toBe(false);
   });
 });

@@ -16,10 +16,10 @@ import {
   type ExecutorId,
   type LaunchConfig,
 } from "@/features/project/launch";
-import { indexModules } from "@/features/workflow/catalog";
 import { parseWorkflowDoc } from "@/features/workflow/document";
-import type { ModuleCatalog, WorkflowDoc } from "@/features/workflow/types";
+import type { WorkflowDoc } from "@/features/workflow/types";
 import { validateWorkflow } from "@/features/workflow/validate";
+import { executionModuleIndex } from "./execution-index";
 import { dataDirectory, store, type StoredExecution } from "@/lib/server/database";
 import type { RunProgress } from "../types";
 
@@ -92,7 +92,7 @@ export function submitRun(body: unknown, idempotency?: string) {
   const workflow = workflowInput(request.workflow);
   if (!store().workflow(workflow.id)) throw new HttpError(400, "请先保存流程");
   workflow.params = request.params;
-  const index = indexModules([...(catalog as ModuleCatalog).modules, ...store().scriptModules()]);
+  const index = executionModuleIndex(store().scriptModules());
   const issues = validateWorkflow(workflow.nodes, workflow.edges, request.params, index).filter((issue) => issue.level === "error");
   if (issues.length) throw new HttpError(400, issues.map((issue) => issue.message).join("；"));
   if (new Set(workflow.nodes.map((node) => node.id)).size !== workflow.nodes.length) throw new HttpError(400, "节点 ID 重复");

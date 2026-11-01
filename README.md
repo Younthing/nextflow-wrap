@@ -10,7 +10,7 @@ ComfyUI 式的 Nextflow 可视化前端：在画布上用 nf-core 模块搭建�
 - lucide-react 图标；next/font 加载思源黑体、思源宋体、JetBrains Mono
 - TanStack Query 取数；本机 API + SQLite 持久化 + 独立 Nextflow runner，另保留 MSW 演示模式
 - Storybook 10（`@storybook/nextjs-vite`）
-- React Flow 画布，TanStack Table 表格，Tiptap 编辑器
+- React Flow 画布，TanStack Table 表格
 - CopilotKit v2 AI 助手（`@copilotkit/react-core/v2` + `@copilotkit/runtime/v2`）
 
 ## 流程编辑器
@@ -92,7 +92,7 @@ ANTHROPIC_API_KEY=sk-ant-...
 COPILOT_MODEL=anthropic/claude-sonnet-5-5
 ```
 
-没有 Codex 登录、也没有对应 key 时，按钮会变灰并提示原因，应用的其他功能不受影响。代码在 `src/features/assistant`。宿主只负责会话和确认；每个能力模块在 `src/features/assistant/modules/` 注册自己的工具和提示词。`prompt.ts` 是没有点名模块时的默认组合。浏览器里的工具仍在浏览器执行。
+没有 Codex 登录、也没有对应 key 时，按钮会变灰并提示原因，应用的其他功能不受影响。代码在 `src/features/assistant`。宿主只负责会话和确认；每个能力模块在 `src/features/assistant/modules/` 注册自己的工具和提示词。`modules/compose.ts` 拼出提示词，没有点名模块时用 `defaultActive` 的模块。浏览器里的工具仍在浏览器执行。
 
 ## 开发
 

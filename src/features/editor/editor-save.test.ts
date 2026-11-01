@@ -4,16 +4,7 @@ import { ApiError } from "@/lib/api";
 import { emptyWorkflow } from "@/features/workflow/document";
 import type { WorkflowDoc } from "@/features/workflow/types";
 
-import {
-  editorConflictIsOwnWrite,
-  editorEchoKeepsLocalEdits,
-  editorSaveSettled,
-  enqueueEditorSave,
-  noteEditorRevision,
-  resetEditorSaveQueueForTests,
-  runEditorSave,
-  type EditorSaveRead,
-} from "./editor-save";
+import { createEditorSaveSession, type EditorSaveRead } from "./editor-save";
 
 function doc(updatedAt: string, name: string): WorkflowDoc {
   return { ...emptyWorkflow("wf", name), updatedAt };
@@ -31,23 +22,26 @@ function read(updatedAt: string, name: string, dirty = true): EditorSaveRead {
 }
 
 describe("editor save queue", () => {
-  beforeEach(() => resetEditorSaveQueueForTests());
+  let session = createEditorSaveSession();
+  beforeEach(() => {
+    session = createEditorSaveSession();
+  });
 
   it("runs a second save only after the first settles", async () => {
     const order: string[] = [];
     let release: () => void = () => {};
     const gate = new Promise<void>((resolve) => { release = resolve; });
-    enqueueEditorSave(true, async () => {
+    session.enqueueEditorSave(true, async () => {
       order.push("first");
       await gate;
     });
-    enqueueEditorSave(true, async () => {
+    session.enqueueEditorSave(true, async () => {
       order.push("second");
     });
     await Promise.resolve();
     expect(order).toEqual(["first"]);
     release();
-    await editorSaveSettled();
+    await session.editorSaveSettled();
     expect(order).toEqual(["first", "second"]);
   });
 
@@ -57,7 +51,7 @@ describe("editor save queue", () => {
       sent.push(workflow);
       return { ...workflow, updatedAt: workflow.updatedAt === "t0" ? "t1" : "t2" };
     });
-    const run = (snapshot: EditorSaveRead) => runEditorSave({
+    const run = (snapshot: EditorSaveRead) => session.runEditorSave({
       announce: false,
       snapshot,
       save,
@@ -68,9 +62,9 @@ describe("editor save queue", () => {
       toastSaved: vi.fn(),
       toastError: vi.fn(),
     });
-    enqueueEditorSave(true, () => run(read("t0", "first")));
-    enqueueEditorSave(true, () => run(read("t0", "second")));
-    await editorSaveSettled();
+    session.enqueueEditorSave(true, () => run(read("t0", "first")));
+    session.enqueueEditorSave(true, () => run(read("t0", "second")));
+    await session.editorSaveSettled();
     expect(sent.map((workflow) => [workflow.name, workflow.updatedAt])).toEqual([
       ["first", "t0"],
       ["second", "t1"],
@@ -83,7 +77,7 @@ describe("editor save queue", () => {
     const gate = new Promise<void>((resolve) => { release = resolve; });
     const sent: WorkflowDoc[] = [];
     const load = vi.fn();
-    const run = (snapshot: EditorSaveRead, wait = false) => runEditorSave({
+    const run = (snapshot: EditorSaveRead, wait = false) => session.runEditorSave({
       announce: false,
       snapshot,
       save: async (workflow) => {
@@ -98,12 +92,12 @@ describe("editor save queue", () => {
       toastSaved: vi.fn(),
       toastError: vi.fn(),
     });
-    enqueueEditorSave(true, () => run(read("t0", "A-inflight"), true));
-    enqueueEditorSave(true, () => run(read("t0", "A-dirty")));
+    session.enqueueEditorSave(true, () => run(read("t0", "A-inflight"), true));
+    session.enqueueEditorSave(true, () => run(read("t0", "A-dirty")));
     await Promise.resolve();
     openId = "b";
     release();
-    await editorSaveSettled();
+    await session.editorSaveSettled();
     expect(sent.map((workflow) => [workflow.name, workflow.updatedAt])).toEqual([
       ["A-inflight", "t0"],
       ["A-dirty", "t1"],
@@ -112,7 +106,7 @@ describe("editor save queue", () => {
   });
 
   it("does not reload the canvas when a 409 is the editor's own preceding save", async () => {
-    noteEditorRevision("wf", "t1");
+    session.noteEditorRevision("wf", "t1");
     const load = vi.fn();
     const markSaved = vi.fn();
     const save = vi.fn(async (workflow: WorkflowDoc) => {
@@ -120,7 +114,7 @@ describe("editor save queue", () => {
       expect(workflow.updatedAt).toBe("t1");
       return { ...workflow, updatedAt: "t2" };
     });
-    await runEditorSave({
+    await session.runEditorSave({
       announce: false,
       snapshot: read("t0", "newer-local"),
       save,
@@ -133,15 +127,15 @@ describe("editor save queue", () => {
     });
     expect(load).not.toHaveBeenCalled();
     expect(markSaved).toHaveBeenCalledWith(2, "t2");
-    expect(editorConflictIsOwnWrite("wf", "t2")).toBe(true);
+    expect(session.editorConflictIsOwnWrite("wf", "t2")).toBe(true);
   });
 
   it("reloads when a 409 is a newer server revision", async () => {
-    noteEditorRevision("wf", "t0");
+    session.noteEditorRevision("wf", "t0");
     const load = vi.fn();
     const server = doc("t1", "壳复验改名");
     const save = vi.fn(async () => { throw new ApiError(409, "流程已在其他地方更新，请重新打开"); });
-    await runEditorSave({
+    await session.runEditorSave({
       announce: false,
       snapshot: read("t0", "name-dirty"),
       save,
@@ -157,9 +151,9 @@ describe("editor save queue", () => {
   });
 
   it("keeps dirty local edits when the cache echoes this editor's own save", () => {
-    noteEditorRevision("wf", "t1");
-    expect(editorEchoKeepsLocalEdits({ docId: "wf", dirty: true }, { id: "wf", updatedAt: "t1" })).toBe(true);
-    expect(editorEchoKeepsLocalEdits({ docId: "wf", dirty: false }, { id: "wf", updatedAt: "t1" })).toBe(false);
-    expect(editorEchoKeepsLocalEdits({ docId: "wf", dirty: true }, { id: "wf", updatedAt: "t2" })).toBe(false);
+    session.noteEditorRevision("wf", "t1");
+    expect(session.editorEchoKeepsLocalEdits({ docId: "wf", dirty: true }, { id: "wf", updatedAt: "t1" })).toBe(true);
+    expect(session.editorEchoKeepsLocalEdits({ docId: "wf", dirty: false }, { id: "wf", updatedAt: "t1" })).toBe(false);
+    expect(session.editorEchoKeepsLocalEdits({ docId: "wf", dirty: true }, { id: "wf", updatedAt: "t2" })).toBe(false);
   });
 });

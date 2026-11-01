@@ -63,12 +63,29 @@ describe("publish", () => {
       condaYaml: "/envs/py311-pandas.yml",
       containerImage: "ghcr.io/org/py311-pandas:1.2",
       existing: [],
-      receipt: passed(notebook.id, notebook.rev),
+      receipt: {
+        ...passed(notebook.id, notebook.rev),
+        condaYaml: "/envs/py311-pandas.yml",
+        containerImage: "ghcr.io/org/py311-pandas:1.2",
+      },
     });
     expect(mod.kernel).toBe("py311-pandas");
     expect(mod.condaYaml).toBe("/envs/py311-pandas.yml");
     expect(mod.containerImage).toBe("ghcr.io/org/py311-pandas:1.2");
     expect(mod.container).toBeUndefined();
+    expect(() => buildScriptModule({
+      notebook,
+      name: "qc_summary",
+      description: notebook.description,
+      condaYaml: "/envs/py311-pandas.yml",
+      containerImage: "ghcr.io/org/other:9",
+      existing: [],
+      receipt: {
+        ...passed(notebook.id, notebook.rev),
+        condaYaml: "/envs/py311-pandas.yml",
+        containerImage: "ghcr.io/org/py311-pandas:1.2",
+      },
+    })).toThrow(/不一致/);
     expect(() => buildScriptModule({
       notebook,
       name: "qc_summary",

@@ -1,5 +1,3 @@
-"use client";
-
 import {
   addEdge,
   applyEdgeChanges,
@@ -501,9 +499,6 @@ export const createEditorStore = () =>
   });
 
 export type EditorStore = ReturnType<typeof createEditorStore>;
-
-/** Standalone store for non-React callers and existing domain tests. UI uses its Provider. */
-export const useEditorStore = createEditorStore();
 
 export const selectIsDirty = (s: EditorState) => s.revision !== s.savedRevision;
 

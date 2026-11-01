@@ -5,7 +5,6 @@ import {
   type EditorSaveRead,
 } from "@/features/editor/editor-save";
 import {
-  useEditorStore,
   selectIsDirty,
   type EditorStore,
 } from "@/features/editor/store";
@@ -25,6 +24,7 @@ import type { ModuleIndex } from "@/features/workflow/catalog";
 import { validateWorkflow } from "@/features/workflow/validate";
 import type { WorkflowDoc } from "@/features/workflow/types";
 import type { LaunchRequest, RunStatus } from "@/features/runs/types";
+import { isRecord } from "@/lib/record";
 
 /**
  * Confirmation for assistant tools that start, stop, or resume a run.
@@ -444,10 +444,9 @@ function infoConfirm(
 /** Saves a dirty, already-saved workflow through the editor queue. A new unsaved canvas is refused. */
 export async function ensureWorkflowSaved(
   save: (doc: WorkflowDoc) => Promise<WorkflowDoc>,
-  owner?: EditorStore,
+  store: EditorStore,
 ): Promise<{ doc: WorkflowDoc } | { error: string }> {
-  const store = owner ?? useEditorStore;
-  const session = getEditorSaveSession(owner);
+  const session = getEditorSaveSession(store);
   if (!store.getState().docId) return { error: "请先保存流程（Ctrl+S）" };
   let failure: string | undefined;
   try {
@@ -507,8 +506,4 @@ function parseJson(text: string): unknown {
   } catch {
     return undefined;
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

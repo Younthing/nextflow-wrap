@@ -18,16 +18,14 @@
     "smoke:nextflow": "tsx scripts/smoke-nextflow.ts",
     "smoke:runner": "tsx scripts/smoke-runner.ts",
     "codex:smoke": "tsx scripts/codex-smoke.ts",
-    "test:storybook": "vitest run --config vitest.storybook.config.mts"
+    "test:storybook": "vitest run --config vitest.storybook.config.mts",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@copilotkit/react-core": "1.83.0",
     "@copilotkit/runtime": "1.83.0",
     "@tanstack/react-query": "^5.105.0",
     "@tanstack/react-table": "^9.3.1",
-    "@tiptap/pm": "^3.32.1",
-    "@tiptap/react": "^3.32.1",
-    "@tiptap/starter-kit": "^3.32.1",
     "@xyflow/react": "^12.12.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -65,7 +63,7 @@
     "tailwindcss": "^4",
     "tsx": "^4.23.15",
     "typescript": "^5",
-    "vite": "latest",
+    "vite": "^8.3.5",
     "vitest": "^5.0.5",
     "yaml": "^2.9.1"
   },

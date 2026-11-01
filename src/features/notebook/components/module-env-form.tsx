@@ -6,7 +6,7 @@ import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
-import { missingEnvLabels } from "@/features/notebook/env";
+import { missingEnvLabels, tryRunEnvSummary } from "@/features/notebook/env";
 import type { ScriptModuleView } from "@/features/notebook/library";
 import { useUpdateScriptModuleEnv } from "@/features/notebook/queries";
 import { scriptEnvDirectives } from "@/features/project/script-process";
@@ -62,7 +62,7 @@ export function ModuleEnvPreview({
   return (
     <div className="grid content-start gap-2 text-xs">
       <p className="rounded-md border border-dashed border-border bg-secondary/50 px-3 py-2 text-muted-foreground">
-        手填两项 → 写入 ModuleDef → 生成 process 的 conda / container
+        手填两项 → 写入 ModuleDef → 生成 process 的 conda / container，试跑使用同一份
       </p>
       <table className="w-full text-left">
         <tbody>
@@ -80,9 +80,7 @@ export function ModuleEnvPreview({
           <tr>
             <th className="py-1.5 align-top font-normal text-muted-foreground">试跑</th>
             <td className="py-1.5 text-muted-foreground" role={missing.length ? "status" : undefined}>
-              {missing.length
-                ? `未填写${missing.join("和")}。可以保存，生成的 process 会省略对应指令。本地试跑仍用笔记本内核。`
-                : "本地试跑仍用笔记本内核。这两项写入 process，供流程按 conda 或容器配置运行。"}
+              {tryRunEnvSummary({ condaYaml, containerImage })}
             </td>
           </tr>
         </tbody>

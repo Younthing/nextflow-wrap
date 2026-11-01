@@ -1,5 +1,4 @@
 import {
-  useEditorStore,
   type FlowNode,
   type EditorStore,
   type EditorState,
@@ -394,15 +393,3 @@ export function createEditorActions(store: EditorStore) {
     setParam,
   };
 }
-
-export const {
-  searchCatalog,
-  findNode,
-  workflowSummary,
-  addModule,
-  connectNodes,
-  disconnect,
-  removeNode,
-  configureNode,
-  setParam,
-} = createEditorActions(useEditorStore);

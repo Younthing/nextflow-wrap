@@ -95,7 +95,7 @@ export function useSaveWorkflow(store?: EditorStore) {
     onSuccess: async (doc) => {
       // Note the revision before the cache update so the open editor can tell
       // this echo from a library rename before its updatedAt effect runs.
-      getEditorSaveSession(store).noteEditorRevision(doc.id, doc.updatedAt);
+      if (store) getEditorSaveSession(store).noteEditorRevision(doc.id, doc.updatedAt);
       await qc.cancelQueries({ queryKey: workflowKeys.detail(doc.id) });
       qc.setQueryData(workflowKeys.detail(doc.id), doc);
       void qc.invalidateQueries({ queryKey: workflowKeys.all, exact: true });
