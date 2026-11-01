@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import type { CodexEvent, CodexHarness, CodexSession } from "@/features/codex-harness";
 import type { SessionPermit } from "./session-limit";
+import { isRecord } from "@/lib/record";
 
 /** AG-UI events this adapter emits. CopilotKit adds run start and run finish. */
 export type CodexAguiEvent =
@@ -408,8 +409,4 @@ function clipName(name: string): string {
   }).join("").replace(/\s+/g, " ").trim();
   if (!flat) return "";
   return flat.length > 80 ? `${flat.slice(0, 80)}…` : flat;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

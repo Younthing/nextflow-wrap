@@ -8,7 +8,7 @@ import { indexModules } from "@/features/workflow/catalog";
 import { emptyWorkflow } from "@/features/workflow/document";
 import { qcDemoWorkflow } from "@/features/workflow/qc-demo";
 import type { ModuleCatalog, WorkflowDoc } from "@/features/workflow/types";
-import { ASSISTANT_PROMPT } from "./prompt";
+import { composeAssistantPrompt } from "./modules/compose";
 import {
   CANCEL_RUN_DESCRIPTION,
   RESUME_RUN_DESCRIPTION,
@@ -353,11 +353,11 @@ describe("confirm queue and saving", () => {
 
 describe("assistant prompt", () => {
   it("tells the model to wait for confirmation", () => {
-    expect(ASSISTANT_PROMPT).toContain("start_run");
-    expect(ASSISTANT_PROMPT).toContain("cancel_run");
-    expect(ASSISTANT_PROMPT).toContain("resume_run");
-    expect(ASSISTANT_PROMPT).toMatch(/确认/);
-    expect(ASSISTANT_PROMPT).not.toContain("你不能启动或停止运行");
+    expect(composeAssistantPrompt()).toContain("start_run");
+    expect(composeAssistantPrompt()).toContain("cancel_run");
+    expect(composeAssistantPrompt()).toContain("resume_run");
+    expect(composeAssistantPrompt()).toMatch(/确认/);
+    expect(composeAssistantPrompt()).not.toContain("你不能启动或停止运行");
     for (const text of [START_RUN_DESCRIPTION, CANCEL_RUN_DESCRIPTION, RESUME_RUN_DESCRIPTION]) {
       expect(text).toMatch(/确认/);
       expect(text).toMatch(/等这个工具返回/);

@@ -1,13 +1,9 @@
 import { ASSISTANT_MODULES_PROP } from "./contract";
 import { composeAssistantPrompt } from "./compose";
+import { isRecord } from "@/lib/record";
 
 const MAX_IDS = 32;
 const MAX_ID_LENGTH = 64;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
-  return true;
-}
 
 /**
  * Module ids from a CopilotKit run body. `undefined` means the field was

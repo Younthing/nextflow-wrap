@@ -152,10 +152,15 @@ export function useRunTasks(id: string, active: boolean) {
   });
 }
 
+export const fetchRunLog = (id: string) => api<{ lines: string[] }>(`/runs/${id}/log`);
+
+export const fetchTaskLog = (id: string, hash: string) =>
+  api<{ text: string }>(`/runs/${id}/task-log?hash=${encodeURIComponent(hash)}`);
+
 export function useRunLog(id: string, active: boolean) {
   return useQuery({
     queryKey: [...runKeys.detail(id), "log"],
-    queryFn: () => api<{ lines: string[] }>(`/runs/${id}/log`),
+    queryFn: () => fetchRunLog(id),
     refetchInterval: pollWhile(active),
   });
 }
@@ -163,10 +168,7 @@ export function useRunLog(id: string, active: boolean) {
 export function useTaskLog(id: string, hash: string | null, active: boolean) {
   return useQuery({
     queryKey: [...runKeys.detail(id), "task-log", hash],
-    queryFn: () =>
-      api<{ text: string }>(
-        `/runs/${id}/task-log?hash=${encodeURIComponent(hash ?? "")}`,
-      ),
+    queryFn: () => fetchTaskLog(id, hash ?? ""),
     enabled: !!hash,
     refetchInterval: pollWhile(active),
   });

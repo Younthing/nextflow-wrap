@@ -24,6 +24,7 @@ import type { ModuleIndex } from "@/features/workflow/catalog";
 import { validateWorkflow } from "@/features/workflow/validate";
 import type { WorkflowDoc } from "@/features/workflow/types";
 import type { LaunchRequest, RunStatus } from "@/features/runs/types";
+import { isRecord } from "@/lib/record";
 
 /**
  * Confirmation for assistant tools that start, stop, or resume a run.
@@ -505,8 +506,4 @@ function parseJson(text: string): unknown {
   } catch {
     return undefined;
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
