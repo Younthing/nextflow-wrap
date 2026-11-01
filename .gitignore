@@ -56,3 +56,9 @@ storybook-static
 /playwright-report/
 /blob-report/
 /e2e-artifacts/
+
+# Desktop build output
+/desktop/node_modules/
+/desktop/dist/
+/desktop/resources/
+/desktop/release/

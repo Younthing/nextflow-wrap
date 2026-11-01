@@ -39,7 +39,7 @@ export async function findJava(env: NodeJS.ProcessEnv = toolEnvironment()): Prom
     try {
       const output = await runCommand(candidate, ["-version"], { quiet: true, timeoutMs: 15_000 });
       const major = Number(output.match(/version "(\d+)/)?.[1]);
-      if (major >= 17 && major <= 26) return { home: dirname(dirname(await realpath(candidate))), version: output.trim().split("\n")[0] };
+      if (major >= 17 && major <= 26) return { home: dirname(dirname(await realpath(candidate))), version: (output.split("\n").find((line) => /version "/.test(line)) ?? output).trim() };
     } catch { /* Check another installed JDK. */ }
   }
   throw new Error("Nextflow needs a supported Java 17–26. Set NEXTFLOW_JAVA_HOME to an installed JDK, or install one from the setup page.");

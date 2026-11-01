@@ -57,8 +57,9 @@ export function useResumeRun() {
   });
 }
 
-export function useRuns(workflowId?: string) {
+export function useRuns(workflowId?: string, options: { enabled?: boolean; idlePollMs?: number } = {}) {
   return useQuery({
+    enabled: options.enabled,
     queryKey: runKeys.list(workflowId),
     queryFn: () =>
       api<RunSummary[]>(
@@ -68,7 +69,7 @@ export function useRuns(workflowId?: string) {
       ),
     // Keep polling while anything is still running.
     refetchInterval: (q) =>
-      q.state.data?.some((r) => isActive(r.status)) ? POLL_MS : false,
+      q.state.data?.some((r) => isActive(r.status)) ? POLL_MS : options.idlePollMs ?? false,
   });
 }
 

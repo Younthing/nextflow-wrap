@@ -1,0 +1,5 @@
+# The desktop shell is its own pnpm root so the web app's install never downloads Electron.
+allowBuilds:
+  electron: true
+  esbuild: true
+  electron-winstaller: false
