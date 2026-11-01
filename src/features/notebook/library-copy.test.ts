@@ -31,7 +31,10 @@ function sampleCells() {
   ];
 }
 
-function passed(notebook: NotebookDoc): TryRunRecord {
+function passed(
+  notebook: NotebookDoc,
+  env: { condaYaml?: string; containerImage?: string } = {},
+): TryRunRecord {
   return {
     notebookId: notebook.id,
     rev: notebook.rev,
@@ -41,6 +44,7 @@ function passed(notebook: NotebookDoc): TryRunRecord {
     log: "ok",
     outputs: [],
     ranAt: now,
+    ...env,
   };
 }
 
@@ -78,7 +82,10 @@ describe("library copies", () => {
       condaYaml: "  /envs/py311-pandas.yml  ",
       containerImage: "ghcr.io/org/py311-pandas:1.2",
       existing: [],
-      receipt: passed(notebook),
+      receipt: passed(notebook, {
+        condaYaml: "/envs/py311-pandas.yml",
+        containerImage: "ghcr.io/org/py311-pandas:1.2",
+      }),
       savedAt: now,
     });
     expect(moduleDef.condaYaml).toBe("/envs/py311-pandas.yml");

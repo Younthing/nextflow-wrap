@@ -86,10 +86,22 @@ export function useRunNotebook() {
 
 export function useTryRunNotebook() {
   return useMutation({
-    mutationFn: ({ id, args, sampleId }: { id: string; args: Record<string, string>; sampleId?: string }) =>
+    mutationFn: ({
+      id,
+      args,
+      sampleId,
+      condaYaml,
+      containerImage,
+    }: {
+      id: string;
+      args: Record<string, string>;
+      sampleId?: string;
+      condaYaml?: string;
+      containerImage?: string;
+    }) =>
       api<TryRunRecord>(`/notebooks/${id}/try-run`, {
         method: "POST",
-        body: JSON.stringify({ args, sampleId }),
+        body: JSON.stringify({ args, sampleId, condaYaml, containerImage }),
       }),
   });
 }

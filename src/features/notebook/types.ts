@@ -136,6 +136,12 @@ export interface TryRunRecord {
   log: string;
   outputs: TryRunOutput[];
   ranAt: string;
+  /** Conda yaml the try-run was asked to use. Omitted when the field was blank. */
+  condaYaml?: string;
+  /** Container image the try-run was asked to use. Omitted when the field was blank. */
+  containerImage?: string;
+  /** Engine that actually started the CLI. Omitted when the run was refused. */
+  envVia?: "host" | "conda" | "container";
 }
 
 export const KERNELS = {

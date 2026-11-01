@@ -1,5 +1,5 @@
 import { inputPorts, outputPorts, convertNotebook, moduleSlug } from "./convert";
-import { cleanEnvField } from "./env";
+import { cleanEnvField, sameModuleEnv } from "./env";
 import { buildLibraryCopy, type ModuleLibraryCopy } from "./library-copy";
 import type { NotebookDoc, TryRunRecord } from "./types";
 import type { ModuleDef } from "@/features/workflow/types";
@@ -38,6 +38,9 @@ export function buildScriptModule(input: {
   }
   const condaYaml = cleanEnvField(input.condaYaml, "Conda yaml 路径");
   const containerImage = cleanEnvField(input.containerImage, "容器地址");
+  if (!sameModuleEnv(input.receipt, { condaYaml, containerImage })) {
+    throw new Error("试跑用的 conda／容器与将保存的不一致，请按当前环境重新试跑");
+  }
   const version = nextModuleVersion(input.existing, input.notebook.id);
   const slug = moduleSlug(name);
   const folder = `${slug}_${version}`;

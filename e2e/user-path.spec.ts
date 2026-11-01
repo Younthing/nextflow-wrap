@@ -9,9 +9,11 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
  * container → try-run → canvas → real Nextflow → results show the figure and
  * table → source-changed hint → publish v2 → resume hits the cache.
  *
- * The launch uses the Shell engine. That is still Nextflow (local executor).
- * The hand-filled conda and container directives are written into the process;
- * Shell does not pull the image, so try-run and the process share python3 / Rscript.
+ * Try-run uses the hand-filled conda yaml and container, the same fields saved on the module.
+ * This job has no container daemon. TRY_RUN_CONTAINER_BIN is a docker-compatible shim that
+ * executes the task command, and the try-run log names that image plus the conda path.
+ * The launch uses the Shell engine (still Nextflow's local executor). Shell does not pull
+ * the image; the process file keeps both directives and runs python3 / Rscript on the host.
  * R cells stay edit-only in the notebook; Rscript runs them at try-run and in Nextflow.
  */
 
@@ -161,6 +163,8 @@ async function publish(page: Page, version: "v1" | "v2", condaYaml: string, imag
   await expect(page.getByRole("button", { name: "下一步：试跑" })).toBeEnabled();
   await page.getByRole("button", { name: "下一步：试跑" }).click();
   await expect(page.locator("#arg-title")).toHaveValue("S1");
+  await page.locator("#publish-env-conda").fill(condaYaml);
+  await page.locator("#publish-env-container").fill(image);
   await page.getByRole("button", { name: "开始试跑" }).click();
   await expect
     .poll(
@@ -174,11 +178,16 @@ async function publish(page: Page, version: "v1" | "v2", condaYaml: string, imag
       { timeout: 60_000, intervals: [500, 1_000, 2_000] },
     )
     .toContain("通过");
+  const tryLog = page.locator("pre").last();
+  await expect(tryLog).toContainText(`conda '${condaYaml}'`);
+  await expect(tryLog).toContainText(`选用 container '${image}'`);
+  await expect(tryLog).toContainText(`e2e docker shim: image ${image}`);
+  await expect(tryLog).not.toContainText("选用本机");
   await expect(page.getByRole("cell", { name: "符合" }).first()).toBeVisible();
   await expect(page.getByRole("button", { name: "下一步：保存" })).toBeEnabled();
   await page.getByRole("button", { name: "下一步：保存" }).click();
-  await page.locator("#publish-env-conda").fill(condaYaml);
-  await page.locator("#publish-env-container").fill(image);
+  await expect(page.locator("#publish-env-conda")).toHaveValue(condaYaml);
+  await expect(page.locator("#publish-env-container")).toHaveValue(image);
   await expect(page.locator("#module-version")).toHaveValue(new RegExp(`^${version}`));
   const condaLine = `conda '${condaYaml}'`;
   await expect(page.getByText(condaLine).first()).toBeVisible();
@@ -334,6 +343,7 @@ async function runLanguage(page: Page, language: "python" | "r") {
       `- module: ${moduleName} (${alias})`,
       `- conda: ${condaYaml}`,
       `- container: ${image}`,
+      "- try-run: container image via TRY_RUN_CONTAINER_BIN; log names that image and the conda yaml",
       "- engine: Shell (real Nextflow local executor; conda and container directives are in the process)",
       `- results: report.html shows ${figure} and ${table}; table.csv renders S1 and ${count}`,
       "- v2 is published after the source-changed hint; the canvas stays on v1, and resume reports 缓存",
