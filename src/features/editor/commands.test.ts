@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 
 import { combosOf, handleShortcutKey, shortcutHint, type KeyEvent } from "@/lib/actions";
-import { ASSISTANT_PROMPT } from "@/features/assistant/prompt";
+import { composeAssistantPrompt } from "@/features/assistant/modules/compose";
 import { EDITOR_ACTIONS, editorActions, type EditorCommandHandlers } from "./commands";
 
 const readme = readFileSync(fileURLToPath(new URL("../../../README.md", import.meta.url)), "utf8");
@@ -118,7 +118,7 @@ describe("editor commands", () => {
     expect(readme).toContain("或 / 打开节点搜索");
     expect(readme).toContain("Esc 取消选择");
     expect(readme).toContain(`F 或 ${shortcutHint(combosOf(EDITOR_ACTIONS.fit)[1]!)}`);
-    expect(ASSISTANT_PROMPT).toContain(shortcutHint(EDITOR_ACTIONS.undo.shortcut));
+    expect(composeAssistantPrompt()).toContain(shortcutHint(EDITOR_ACTIONS.undo.shortcut));
   });
 
   it("runs canvas chords only when the canvas has the keyboard", () => {

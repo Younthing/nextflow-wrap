@@ -30,6 +30,3 @@ export function composeAssistantPrompt(moduleIds?: readonly string[]): string {
   const parts = [HOST_PROMPT, ...selectAssistantModules(moduleIds).map((module) => module.prompt)];
   return parts.map((part) => part.trim()).filter(Boolean).join("\n\n");
 }
-
-/** Default prompt: host plus the modules that were previously one shared prompt. */
-export const ASSISTANT_PROMPT = composeAssistantPrompt();

@@ -4,8 +4,7 @@ import * as React from "react";
 import { useAgentContext, useConfigureSuggestions, useFrontendTool, type JsonSerializable } from "@copilotkit/react-core/v2";
 import { z } from "zod";
 
-import { api } from "@/lib/api";
-import { isActive } from "@/features/runs/queries";
+import { fetchRunLog, fetchTaskLog, isActive } from "@/features/runs/queries";
 import type { RunDetail, TaskRecord } from "@/features/runs/types";
 import { useAssistantStatus } from "./assistant-provider";
 import { useAssistantModule } from "./modules/activation";
@@ -64,7 +63,7 @@ function RunTools({ run, tasks }: { run: RunDetail; tasks: TaskRecord[] }) {
       handler: async ({ task }) => {
         const match = tasks.find((t) => t.id === task || t.hash === task || t.name === task);
         if (!match) return { error: `找不到任务 ${task}` };
-        const { text } = await api<{ text: string }>(`/runs/${run.id}/task-log?hash=${encodeURIComponent(match.id ?? match.hash)}`);
+        const { text } = await fetchTaskLog(run.id, match.id ?? match.hash);
         return { task: match.name, status: match.status, exitStatus: match.exitStatus, log: text };
       },
     },
@@ -77,7 +76,7 @@ function RunTools({ run, tasks }: { run: RunDetail; tasks: TaskRecord[] }) {
       description: moduleTool(runDiagnosticsModule, "get_run_log").description,
       parameters: z.object({}),
       handler: async () => {
-        const { lines } = await api<{ lines: string[] }>(`/runs/${run.id}/log`);
+        const { lines } = await fetchRunLog(run.id);
         return { lines: lines.slice(-RUN_LOG_TAIL) };
       },
     },

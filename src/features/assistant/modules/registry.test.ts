@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { ASSISTANT_PROMPT, HOST_PROMPT, composeAssistantPrompt } from "../prompt";
+import { HOST_PROMPT, composeAssistantPrompt } from "./compose";
 import { canvasEditModule } from "./canvas-edit";
 import { ASSISTANT_MODULES_PROP, moduleTool } from "./contract";
 import { RUN_LOG_TAIL, runDiagnosticsModule } from "./run-diagnostics";
@@ -77,13 +77,12 @@ describe("assistant module registry", () => {
   });
 
   it("composes the host plus only the requested modules", () => {
-    expect(ASSISTANT_PROMPT).toBe(composeAssistantPrompt());
-    expect(ASSISTANT_PROMPT).toBe(composeAssistantPrompt(["run-diagnostics", "canvas-edit"]));
-    expect(ASSISTANT_PROMPT).toContain("start_run");
-    expect(ASSISTANT_PROMPT).toContain("cancel_run");
-    expect(ASSISTANT_PROMPT).toContain("resume_run");
-    expect(ASSISTANT_PROMPT).not.toContain("脚本笔记本");
-    expect(ASSISTANT_PROMPT).not.toContain("你不能启动或停止运行");
+    expect(composeAssistantPrompt()).toBe(composeAssistantPrompt(["run-diagnostics", "canvas-edit"]));
+    expect(composeAssistantPrompt()).toContain("start_run");
+    expect(composeAssistantPrompt()).toContain("cancel_run");
+    expect(composeAssistantPrompt()).toContain("resume_run");
+    expect(composeAssistantPrompt()).not.toContain("脚本笔记本");
+    expect(composeAssistantPrompt()).not.toContain("你不能启动或停止运行");
 
     const canvasOnly = composeAssistantPrompt(["canvas-edit"]);
     expect(canvasOnly).toContain("search_modules");
@@ -133,10 +132,6 @@ describe("assistant module registry", () => {
     const route = source("../copilot-route.ts");
     expect(route).toContain("requestAssistantPrompt");
     expect(route).not.toMatch(/editor-assistant|editor-actions|run-assistant|run-actions|start-run-tool|search_modules|get_task_log|搭建流程/);
-
-    const prompt = source("../prompt.ts");
-    expect(prompt).not.toContain("搭建流程");
-    expect(prompt).toContain("composeAssistantPrompt");
 
     const provider = source("../assistant-provider.tsx");
     expect(provider).toContain("ASSISTANT_MODULES_PROP");

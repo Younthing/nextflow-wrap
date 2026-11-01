@@ -92,7 +92,7 @@ ANTHROPIC_API_KEY=sk-ant-...
 COPILOT_MODEL=anthropic/claude-sonnet-5-5
 ```
 
-没有 Codex 登录、也没有对应 key 时，按钮会变灰并提示原因，应用的其他功能不受影响。代码在 `src/features/assistant`。宿主只负责会话和确认；每个能力模块在 `src/features/assistant/modules/` 注册自己的工具和提示词。`prompt.ts` 是没有点名模块时的默认组合。浏览器里的工具仍在浏览器执行。
+没有 Codex 登录、也没有对应 key 时，按钮会变灰并提示原因，应用的其他功能不受影响。代码在 `src/features/assistant`。宿主只负责会话和确认；每个能力模块在 `src/features/assistant/modules/` 注册自己的工具和提示词。`modules/compose.ts` 拼出提示词，没有点名模块时用 `defaultActive` 的模块。浏览器里的工具仍在浏览器执行。
 
 ## 开发
 
