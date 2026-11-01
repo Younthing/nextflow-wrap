@@ -77,13 +77,6 @@ podman.registry       = '${registry}'
 singularity.registry  = '${registry}'
 charliecloud.registry = '${registry}'
 
-// Keep the user's own Python and R libraries out of tasks
-env {
-    PYTHONNOUSERSITE = 1
-    R_PROFILE_USER   = "/.Rprofile"
-    R_ENVIRON_USER   = "/.Renviron"
-}
-
 process.shell = [ "bash", "-C", "-e", "-u", "-o", "pipefail" ]
 
 nextflow.enable.configProcessNamesValidation = false
