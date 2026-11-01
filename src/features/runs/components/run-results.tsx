@@ -14,6 +14,9 @@ import type { ResultFile } from "../outputs";
 import { firstPreviewable, imageMime, isBinaryPreview } from "../preview";
 import { useHealthStatus, useResultBlob, useResultContent, useRunLog, useRunResults } from "../queries";
 import { staticReportHtml } from "../report-preview";
+import type { TaskRecord } from "../types";
+import type { WorkflowDoc } from "@/features/workflow/types";
+import { ResultSource } from "./result-source";
 
 const MULTIQC = "multiqc/multiqc_report.html";
 
@@ -92,7 +95,7 @@ function groupByDir(files: ResultFile[]) {
   return [...groups.entries()];
 }
 
-export function RunResults({ runId, active, outdir }: { runId: string; active: boolean; outdir: string }) {
+export function RunResults({ runId, active, outdir, workflow, tasks = [] }: { runId: string; active: boolean; outdir: string; workflow?: WorkflowDoc; tasks?: TaskRecord[] }) {
   const health = useHealthStatus();
   const results = useRunResults(runId, active);
   const files = React.useMemo(() => results.data ?? [], [results.data]);
@@ -186,6 +189,7 @@ export function RunResults({ runId, active, outdir }: { runId: string; active: b
             <div className="font-mono text-xs text-muted-foreground">
               {outdir.replace(/\/$/, "")}/{current.path}
             </div>
+            <ResultSource file={current} fullPath={`${outdir.replace(/\/$/, "")}/${current.path}`} workflow={workflow} tasks={tasks} />
             {health.data?.mocked === false && <Button asChild variant="outline" size="sm" className="self-start"><a href={`/api/runs/${runId}/results/content?download=1&path=${encodeURIComponent(current.path)}`}>下载原始文件</a></Button>}
             {current.preview === "html" && <p className="text-xs text-muted-foreground">静态预览；交互图表请下载报告后查看。</p>}
             <Preview key={current.path} runId={runId} file={current} outdir={outdir} />

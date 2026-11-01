@@ -55,7 +55,7 @@ export const runHandlers = [
     const workflowId = new URL(request.url).searchParams.get("workflowId");
     const runs = Object.values(readDb().runs)
       .filter((r) => !workflowId || r.workflowId === workflowId)
-      .map((r) => summarize(materialize(r)))
+      .map((r) => { const summary = summarize(materialize(r)); return { ...summary, resumable: summary.status === "succeeded" || summary.status === "failed" }; })
       .sort((a, b) => b.submittedAt.localeCompare(a.submittedAt));
     return HttpResponse.json(runs);
   }),
@@ -78,6 +78,7 @@ export const runHandlers = [
       runConfig: body.runConfig,
       project: body.project,
       workflow: body.workflow,
+      ...(body.resumeFrom ? { resumeFromRunId: body.resumeFrom } : {}),
     };
     writeDb((db) => {
       db.runs[run.id] = run;

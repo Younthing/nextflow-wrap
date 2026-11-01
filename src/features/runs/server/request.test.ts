@@ -32,3 +32,28 @@ describe("launch validation", () => {
     expect(() => checkedLaunch({ ...base, executor: "aws-batch", engine: "conda", settings: { queue: "q", region: "r" }, workDir: "s3://b/w" })).toThrow("不支持");
   });
 });
+
+describe("resume source", () => {
+  it("accepts a finished run of the same workflow with a session and refuses cleaned or foreign runs", async () => {
+    const { StudioStore } = await import("@/lib/server/database");
+    const { resumableSource, resumable } = await import("./service");
+    const db = new StudioStore(":memory:");
+    (globalThis as { studioStore?: unknown }).studioStore = db;
+    const make = (id: string, extra: Record<string, unknown> = {}) => ({
+      lineageId: id, projectDir: "/p", attemptDir: `/a/${id}`, sessionId: "0a6cd5f5-38a9-4da9-8ea8-bb4ec0f171f7",
+      detail: { id, runName: id, workflowId: "pbmc", workflowName: "PBMC", status: "succeeded", submittedAt: "2026-11-01", launch: { executor: "local", workDir: "/w" }, ...extra },
+    });
+    db.insertRun(make("ok") as never);
+    db.insertRun(make("cleaned", { workCleanedAt: "2026-11-01" }) as never);
+    try {
+      expect(resumableSource("ok", "pbmc").detail.id).toBe("ok");
+      expect(resumable(db.run("ok")!)).toBe(true);
+      expect(() => resumableSource("ok", "docking")).toThrow("同一个流程");
+      expect(() => resumableSource("cleaned", "pbmc")).toThrow("已在磁盘页清理");
+      expect(resumable(db.run("cleaned")!)).toBe(false);
+    } finally {
+      delete (globalThis as { studioStore?: unknown }).studioStore;
+      db.close();
+    }
+  });
+});

@@ -109,6 +109,8 @@ function RunBody({ run: data }: { run: RunDetail }) {
             runId={data.id}
             active={active}
             outdir={String(data.params.outdir ?? "results")}
+            workflow={data.workflow}
+            tasks={tasks.data ?? []}
           />
         </TabsContent>
         <TabsContent

@@ -4,7 +4,7 @@ import { isAbsolute, join } from "node:path";
 import { ZodError } from "zod";
 import samplesheetSchema from "@/data/samplesheet-schema.json";
 import { containedFile, fileResponse, readTail, resultFiles } from "@/features/runs/server/files";
-import { active, assertSameOrigin, cancelRun, HttpError, requireRun, resumeRun, runnerReady, submitRun, workflowInput } from "@/features/runs/server/service";
+import { active, assertSameOrigin, resumable, cancelRun, HttpError, requireRun, resumeRun, runnerReady, submitRun, workflowInput } from "@/features/runs/server/service";
 import { handleNotebookApi } from "@/features/notebook/server/http";
 import { handleSetupApi } from "@/features/setup/server/http";
 import { handleFsApi } from "@/features/files/server/http";
@@ -60,7 +60,10 @@ async function handle(request: Request, context: Context): Promise<Response> {
     if (resource === "runs") {
       if (!id && method === "GET") {
         const workflowId = url.searchParams.get("workflowId");
-        return json(store().runs().map((run) => run.detail).filter((run) => !workflowId || run.workflowId === workflowId).map(({ id, runName, workflowId, workflowName, status, executor, profile, submittedAt, startedAt, completedAt, progress, errorMessage, phase }) => ({ id, runName, workflowId, workflowName, status, executor, profile, submittedAt, startedAt, completedAt, progress, errorMessage, phase })));
+        return json(store().runs().filter((run) => !workflowId || run.detail.workflowId === workflowId).map((run) => {
+          const { id, runName, workflowId, workflowName, status, executor, profile, submittedAt, startedAt, completedAt, progress, errorMessage, phase } = run.detail;
+          return { id, runName, workflowId, workflowName, status, executor, profile, submittedAt, startedAt, completedAt, progress, errorMessage, phase, resumable: resumable(run) };
+        }));
       }
       if (!id && method === "POST") {
         const key = request.headers.get("idempotency-key") ?? undefined;

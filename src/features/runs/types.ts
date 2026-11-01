@@ -24,6 +24,8 @@ export interface RunProgress {
 
 export interface RunSummary {
   phase?: "queued" | "preparing" | "executing" | "finalizing" | "cancelling";
+  /** Finished with a Nextflow session whose cache is still on disk: the canvas can run with `-resume` of it. */
+  resumable?: boolean;
   id: string;
   /** Nextflow run name, e.g. `tender_curie`. */
   runName: string;
@@ -46,6 +48,8 @@ export interface ProjectSnapshot {
 
 /** POST /api/runs */
 export interface LaunchRequest {
+  /** Run the canvas with `-resume` of this earlier run's session. */
+  resumeFrom?: string;
   workflow: WorkflowDoc;
   project: ProjectSnapshot;
   params: PipelineParams;
