@@ -157,6 +157,11 @@ async function waitForSuccess(page: Page) {
     .toBe(true);
 }
 
+/** The try-run panel, not a notebook cell `<pre>` left elsewhere in the document. */
+function tryRunLog(page: Page) {
+  return page.locator("section").filter({ has: page.getByRole("heading", { name: /^日志/ }) }).locator("pre");
+}
+
 async function publish(page: Page, version: "v1" | "v2", condaYaml: string, image: string, shotName: string) {
   await page.getByRole("button", { name: "发布为模块…" }).click();
   await page.waitForURL(/\/publish\?step=1/);
@@ -166,19 +171,19 @@ async function publish(page: Page, version: "v1" | "v2", condaYaml: string, imag
   await page.locator("#publish-env-conda").fill(condaYaml);
   await page.locator("#publish-env-container").fill(image);
   await page.getByRole("button", { name: "开始试跑" }).click();
+  const tryLog = tryRunLog(page);
   await expect
     .poll(
       async () => {
-        const alert = page.locator("main").getByRole("alert");
+        const alert = page.locator("section").filter({ has: page.getByRole("heading", { name: "试跑参数" }) }).getByRole("alert");
         if (await alert.count()) throw new Error(await alert.first().innerText());
-        const heading = await page.getByRole("heading", { name: /日志/ }).innerText();
-        if (heading.includes("失败")) throw new Error(`${heading}\n${await page.locator("pre").last().innerText()}`);
+        const heading = await page.getByRole("heading", { name: /^日志/ }).innerText();
+        if (heading.includes("失败")) throw new Error(`${heading}\n${await tryLog.innerText()}`);
         return heading;
       },
       { timeout: 60_000, intervals: [500, 1_000, 2_000] },
     )
     .toContain("通过");
-  const tryLog = page.locator("pre").last();
   await expect(tryLog).toContainText(`conda '${condaYaml}'`);
   await expect(tryLog).toContainText(`选用 container '${image}'`);
   await expect(tryLog).toContainText(`e2e docker shim: image ${image}`);
