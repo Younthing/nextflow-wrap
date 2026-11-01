@@ -20,6 +20,9 @@ export interface StoredExecution {
   pid?: number;
   pidStart?: string;
   owner?: string;
+  /** Weblog URL parts the Nextflow head was started with; a restarted runner listens there again. */
+  eventPort?: number;
+  eventToken?: string;
   cancelRequested?: boolean;
   resumeFrom?: string;
 }
@@ -105,7 +108,7 @@ export class StudioStore {
   event(runId: string, digest: string, event: unknown): boolean {
     return this.db.prepare("INSERT OR IGNORE INTO events VALUES (?,?,?)").run(runId, digest, JSON.stringify(event)).changes === 1;
   }
-  runtime(): { owner: string; pid: number; heartbeat: number; versions?: Record<string, string>; resources?: { architecture: string; cpus: number; memoryBytes: number }; error?: string } | undefined {
+  runtime(): { owner: string; pid: number; heartbeat: number; eventPort?: number; versions?: Record<string, string>; resources?: { architecture: string; cpus: number; memoryBytes: number }; error?: string } | undefined {
     const row = this.db.prepare("SELECT data FROM runtime WHERE id=1").get();
     return row ? JSON.parse(String(row.data)) : undefined;
   }

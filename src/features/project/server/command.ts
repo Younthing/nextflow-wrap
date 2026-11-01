@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
-import { createWriteStream } from "node:fs";
+import { closeSync, createWriteStream, openSync } from "node:fs";
+import { open } from "node:fs/promises";
 
 export interface CommandOptions {
   cwd?: string;
@@ -79,5 +80,49 @@ export async function runCommand(executable: string, args: string[], options: Co
     process.removeListener("SIGTERM", interrupt);
     options.signal?.removeEventListener("abort", interrupt);
     if (log) await new Promise<void>((resolve) => log.end(resolve));
+  }
+}
+
+export interface DetachedProcess {
+  pid: number;
+  /** Exit code, or null when a signal ended it. Settles only while this process is alive to see it. */
+  exited: Promise<number | null>;
+}
+
+/**
+ * Start a long-lived command in its own process group with output going straight to a file.
+ * No pipe ties it to this process, so it keeps running if this process exits and can be adopted later.
+ */
+export async function spawnDetached(executable: string, args: string[], options: { cwd?: string; env?: NodeJS.ProcessEnv; logPath: string }): Promise<DetachedProcess> {
+  const fd = openSync(options.logPath, "a");
+  try {
+    const child = spawn(executable, args, { cwd: options.cwd, env: options.env, detached: true, stdio: ["ignore", fd, fd] });
+    const exited = new Promise<number | null>((resolve) => child.once("exit", (code) => resolve(code)));
+    await new Promise<void>((resolve, reject) => { child.once("spawn", resolve); child.once("error", reject); });
+    child.unref();
+    return { pid: child.pid!, exited };
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/** Signal a whole process group; a group that is already gone is not an error. */
+export function signalGroup(pid: number, name: NodeJS.Signals) {
+  try { process.kill(-pid, name); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
+}
+
+/** The last bytes of a log, for an error message. */
+export async function logTail(path: string, bytes = 128_000): Promise<string> {
+  const file = await open(path, "r").catch(() => undefined);
+  if (!file) return "";
+  try {
+    const { size } = await file.stat();
+    const length = Math.min(size, bytes);
+    const buffer = Buffer.alloc(length);
+    await file.read(buffer, 0, length, size - length);
+    return buffer.toString("utf8");
+  } finally {
+    await file.close();
   }
 }

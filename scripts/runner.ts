@@ -1,20 +1,21 @@
 import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { createServer } from "node:http";
-import { access, copyFile, mkdir, writeFile } from "node:fs/promises";
+import { access, copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
 import catalog from "@/data/nf-core-modules.json";
 import { generateProject } from "@/features/project/generate";
 import { gstr } from "@/features/project/groovy";
 import { profileList, renderRunConfig } from "@/features/project/launch";
-import { CommandError, runCommand } from "@/features/project/server/command";
+import { CommandError, logTail, runCommand, signalGroup, spawnDetached } from "@/features/project/server/command";
 import { installComponents, materializeProject } from "@/features/project/server/materialize";
 import { preflight, requireLaunchTools, type RuntimeTools } from "@/features/project/server/preflight";
 import { smokeFastq } from "@/features/project/smoke-data";
 import { NF_SCHEMA_VERSION } from "@/features/project/templates";
 import { executionModuleIndex } from "@/features/runs/server/execution-index";
 import { active } from "@/features/runs/server/service";
+import { historyStatus, nextQueued, slotLimits } from "@/features/runs/server/queue";
 import { ingestEvent, reconcileTrace, refreshProgress } from "@/features/runs/server/tasks";
 import { resultFiles } from "@/features/runs/server/files";
 import { hostChainWorkflow, writeHostChainInputs } from "@/features/workflow/host-chain-demo";
@@ -23,14 +24,20 @@ import { dataDirectory, store, type StoredExecution } from "@/lib/server/databas
 
 const db = store();
 const owner = randomUUID();
+const limits = slotLimits();
 let stopping = false;
-let currentController: AbortController | undefined;
+let markStopped = () => {};
+const stopped = new Promise<"stopping">((resolve) => { markStopped = () => resolve("stopping"); });
+/** Runs this runner is working on. Stopping aborts a run that is still preparing and leaves a started Nextflow running. */
+const work = new Map<string, { controller: AbortController; done: Promise<void> }>();
 const eventTokens = new Map<string, string>();
 const pidStart = (pid: number) => {
   try { return execFileSync("ps", ["-p", String(pid), "-o", "lstart="], { encoding: "utf8" }).trim(); }
   catch { return ""; }
 };
 const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+const sameProcess = (run: StoredExecution) => Boolean(run.pid && run.pidStart && alive(run.pid) && pidStart(run.pid) === run.pidStart);
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function cleanupContainers(tools: RuntimeTools, id: string) {
   if (!tools.docker) return;
@@ -74,11 +81,94 @@ async function seedDemo() {
   }
 }
 
-async function execute(run: StoredExecution, tools: RuntimeTools, port: number) {
-  const id = run.detail.id;
+function track(id: string, job: (controller: AbortController) => Promise<void>) {
   const controller = new AbortController();
-  currentController = controller;
-  const cancelTimer = setInterval(() => { if (db.run(id, true)?.cancelRequested || stopping) controller.abort(); }, 300);
+  const cancelTimer = setInterval(() => { if (db.run(id, true)?.cancelRequested) controller.abort(); }, 300);
+  const done = job(controller).catch(console.error).finally(() => {
+    clearInterval(cancelTimer);
+    eventTokens.delete(id);
+    work.delete(id);
+  });
+  work.set(id, { controller, done });
+}
+
+async function failRun(id: string, tools: RuntimeTools, error: unknown) {
+  await cleanupContainers(tools, id).catch(console.error);
+  await reconcileTrace(db, db.run(id, true)!).catch(console.error);
+  await publishDiagnostics(db.run(id, true)!).catch(console.error);
+  db.updateRun(id, (record) => {
+    record.detail.status = record.cancelRequested ? "cancelled" : stopping ? "interrupted" : "failed";
+    record.detail.phase = undefined;
+    record.detail.errorMessage = record.cancelRequested ? undefined : error instanceof Error ? error.message.slice(-6000) : String(error);
+    record.detail.exitCode = error instanceof CommandError ? error.exitCode ?? undefined : undefined;
+    record.detail.completedAt = new Date().toISOString();
+    delete record.pid;
+  });
+  for (const task of db.tasks(id)) {
+    if (["pending", "submitted", "running"].includes(task.status)) db.putTask(id, { ...task, status: "aborted" });
+  }
+  refreshProgress(db, id);
+}
+
+/** Poll a Nextflow head this runner did not start until it exits. */
+async function waitForExit(run: StoredExecution): Promise<undefined | "stopping"> {
+  while (sameProcess(run)) {
+    if (stopping) return "stopping";
+    await sleep(1000);
+  }
+  return undefined;
+}
+
+/**
+ * Watch a started Nextflow head until it exits, then record the outcome.
+ * `exited` is set when this runner spawned the head. A head adopted after a restart has no exit code,
+ * so its outcome comes from `.nextflow/history`. When the runner stops, the head is left running.
+ */
+async function supervise(id: string, tools: RuntimeTools, controller: AbortController, exited?: Promise<number | null>, pollTrace = false) {
+  const run = db.run(id, true)!;
+  // A cluster or cloud head cancels its submitted jobs on SIGTERM, which can take a while.
+  const grace = run.detail.launch.executor === "local" ? 10_000 : 60_000;
+  let killTimer: ReturnType<typeof setTimeout> | undefined;
+  const terminate = () => {
+    if (!run.pid) return;
+    signalGroup(run.pid, "SIGTERM");
+    killTimer = setTimeout(() => { if (sameProcess(run)) signalGroup(run.pid!, "SIGKILL"); }, grace);
+  };
+  controller.signal.addEventListener("abort", terminate, { once: true });
+  if (controller.signal.aborted) terminate();
+  // Weblog events go to the port the head was started with; if this runner could not reuse it, read the trace instead.
+  const traceTimer = pollTrace ? setInterval(() => { reconcileTrace(db, db.run(id, true)!).catch(console.error); }, 10_000) : undefined;
+  let code: number | null | undefined;
+  try {
+    const result = await Promise.race([exited ?? waitForExit(run), stopped]);
+    if (result === "stopping") return;
+    code = result;
+  } finally {
+    controller.signal.removeEventListener("abort", terminate);
+    clearTimeout(killTimer);
+    clearInterval(traceTimer);
+  }
+  const recorded = historyStatus(await readFile(join(run.projectDir, ".nextflow/history"), "utf8").catch(() => ""), run.detail.runName);
+  if (code !== 0 && !(code === undefined && recorded === "OK")) {
+    const reason = code === undefined ? `Nextflow 在 runner 停止期间结束，history 记录为 ${recorded ?? "未完成"}` : `${tools.nextflow} exited with ${code ?? "a signal"}`;
+    const tail = await logTail(join(run.attemptDir, "console.log"));
+    throw new CommandError(`${reason}\n${tail}`, code ?? null, tail);
+  }
+  db.updateRun(id, (record) => { record.detail.phase = "finalizing"; record.detail.exitCode = 0; });
+  await reconcileTrace(db, db.run(id)!);
+  await publishDiagnostics(db.run(id)!);
+  const files = await resultFiles(db.run(id)!);
+  await writeFile(join(run.attemptDir, "artifacts.json"), JSON.stringify(files, null, 2));
+  db.updateRun(id, (record) => {
+    record.detail.status = record.cancelRequested ? "cancelled" : "succeeded";
+    record.detail.phase = undefined;
+    record.detail.completedAt = new Date().toISOString();
+    delete record.pid;
+  });
+}
+
+async function execute(run: StoredExecution, tools: RuntimeTools, port: number, controller: AbortController) {
+  const id = run.detail.id;
   const token = randomUUID();
   eventTokens.set(id, token);
   try {
@@ -129,58 +219,53 @@ async function execute(run: StoredExecution, tools: RuntimeTools, port: number) 
     await writeFile(join(run.attemptDir, "params.json"), JSON.stringify(params, null, 2));
     await writeFile(join(run.attemptDir, "run.config"), runConfig);
     await writeFile(join(run.attemptDir, "manifest.json"), JSON.stringify({ workflow: run.detail.workflow, versions: runtimeState.versions, resources: tools.resources, executable: tools.nextflow, args, modulesSha: catalog.gitSha }, null, 2));
+    if (stopping) throw new Error("Runner 正在停止");
+    const head = await spawnDetached(tools.nextflow, args, { cwd: run.projectDir, env: tools.env, logPath: join(run.attemptDir, "console.log") });
     db.updateRun(id, (record) => {
       record.detail.params = params;
       record.detail.launch = launch;
       record.detail.runConfig = runConfig;
       record.detail.command = [tools.nextflow, ...args.map((arg) => JSON.stringify(arg))].join(" ");
       record.detail.status = "running";
-      record.detail.phase = "executing";
+      if (record.detail.phase === "preparing") record.detail.phase = "executing";
       record.detail.startedAt = new Date().toISOString();
+      record.pid = head.pid;
+      record.pidStart = pidStart(head.pid);
+      record.eventPort = port;
+      record.eventToken = token;
     });
-    await runCommand(tools.nextflow, args, {
-      cwd: run.projectDir, env: tools.env, logPath: join(run.attemptDir, "console.log"), timeoutMs: 24 * 60 * 60_000, signal: controller.signal,
-      onSpawn: (pid) => { db.updateRun(id, (record) => { record.pid = pid; record.pidStart = pidStart(pid); }); },
-    });
-    db.updateRun(id, (record) => { record.detail.phase = "finalizing"; record.detail.exitCode = 0; });
-    await reconcileTrace(db, db.run(id)!);
-    await publishDiagnostics(db.run(id)!);
-    const files = await resultFiles(db.run(id)!);
-    await writeFile(join(run.attemptDir, "artifacts.json"), JSON.stringify(files, null, 2));
-    db.updateRun(id, (record) => {
-      record.detail.status = record.cancelRequested ? "cancelled" : "succeeded";
-      record.detail.phase = undefined;
-      record.detail.completedAt = new Date().toISOString();
-      delete record.pid;
-    });
+    await supervise(id, tools, controller, head.exited);
   } catch (error) {
-    await cleanupContainers(tools, id).catch(console.error);
-    await reconcileTrace(db, db.run(id)!).catch(console.error);
-    await publishDiagnostics(db.run(id)!).catch(console.error);
-    db.updateRun(id, (record) => {
-      record.detail.status = record.cancelRequested ? "cancelled" : stopping ? "interrupted" : "failed";
-      record.detail.phase = undefined;
-      record.detail.errorMessage = record.cancelRequested ? undefined : error instanceof Error ? error.message.slice(-6000) : String(error);
-      record.detail.exitCode = error instanceof CommandError ? error.exitCode ?? undefined : undefined;
-      record.detail.completedAt = new Date().toISOString();
-      delete record.pid;
-    });
-    for (const task of db.tasks(id)) {
-      if (["pending", "submitted", "running"].includes(task.status)) db.putTask(id, { ...task, status: "aborted" });
+    await failRun(id, tools, error);
+  }
+}
+
+/** Take over the active runs of a runner that is gone. A started head is watched again, not killed. */
+function adoptOrphans(tools: RuntimeTools, port: number) {
+  for (const run of db.runs(true).filter((run) => active(run) && run.owner && run.owner !== owner)) {
+    const id = run.detail.id;
+    if (!run.pid) {
+      db.updateRun(id, (record) => {
+        record.detail.status = record.cancelRequested ? "cancelled" : "interrupted";
+        record.detail.phase = undefined;
+        record.detail.completedAt = new Date().toISOString();
+        record.detail.errorMessage = record.cancelRequested ? undefined : "Runner 在准备阶段退出；请检查日志后重新运行";
+      });
+      continue;
     }
-    refreshProgress(db, id);
-  } finally {
-    clearInterval(cancelTimer);
-    eventTokens.delete(id);
-    currentController = undefined;
+    db.updateRun(id, (record) => { record.owner = owner; });
+    if (run.eventToken) eventTokens.set(id, run.eventToken);
+    console.log(`Adopting run ${id} (pid ${run.pid}${sameProcess(run) ? "" : ", already exited"})`);
+    track(id, (controller) => supervise(id, tools, controller, undefined, run.eventPort !== port).catch((error: unknown) => failRun(id, tools, error)));
   }
 }
 
 async function main() {
-  db.transaction(() => {
+  const previousPort = db.transaction(() => {
     const previous = db.runtime();
     if (previous && alive(previous.pid)) throw new Error(`Runner ${previous.pid} 已在运行`);
-    db.setRuntime({ owner, pid: process.pid, heartbeat: Date.now(), error: "正在检查运行环境" });
+    db.setRuntime({ owner, pid: process.pid, heartbeat: Date.now(), eventPort: previous?.eventPort, error: "正在检查运行环境" });
+    return previous?.eventPort;
   });
   const heartbeat = setInterval(() => {
     const state = db.runtime();
@@ -196,31 +281,22 @@ async function main() {
       response.writeHead(200).end("ok");
     } catch (error) { console.error("Nextflow event:", error); response.writeHead(400).end(); }
   });
+  const listen = (port: number) => new Promise<void>((resolve, reject) => {
+    events.once("error", reject);
+    events.listen(port, "127.0.0.1", () => { events.removeListener("error", reject); resolve(); });
+  });
   try {
     const tools = await preflight();
     await seedDemo();
-    await new Promise<void>((resolve, reject) => { events.once("error", reject); events.listen(0, "127.0.0.1", resolve); });
+    // Reuse the last port so heads that outlived the previous runner keep reporting events.
+    await (previousPort ? listen(previousPort).catch(() => listen(0)) : listen(0));
     const port = (events.address() as { port: number }).port;
-    for (const run of db.runs(true).filter((run) => active(run) && run.owner && run.owner !== owner)) {
-      if (run.pid && run.pidStart && pidStart(run.pid) === run.pidStart) {
-        try { process.kill(-run.pid, "SIGTERM"); } catch { /* Already gone. */ }
-        const deadline = Date.now() + 10_000;
-        while (alive(run.pid) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 250));
-        if (alive(run.pid) && pidStart(run.pid) === run.pidStart) process.kill(-run.pid, "SIGKILL");
-      }
-      await cleanupContainers(tools, run.detail.id);
-      await reconcileTrace(db, run);
-      db.updateRun(run.detail.id, (record) => { record.detail.status = "interrupted"; record.detail.phase = undefined; record.detail.completedAt = new Date().toISOString(); record.detail.errorMessage = "Runner 上次异常退出；请检查日志后从此记录恢复"; delete record.pid; });
-      for (const task of db.tasks(run.detail.id)) {
-        if (["pending", "submitted", "running"].includes(task.status)) db.putTask(run.detail.id, { ...task, status: "aborted" });
-      }
-      refreshProgress(db, run.detail.id);
-    }
-    db.setRuntime({ owner, pid: process.pid, heartbeat: Date.now(), versions: tools.versions, resources: tools.resources });
-    console.log(`Runner ready. Data: ${dataDirectory()}; event port: ${port}`);
+    adoptOrphans(tools, port);
+    db.setRuntime({ owner, pid: process.pid, heartbeat: Date.now(), eventPort: port, versions: tools.versions, resources: tools.resources });
+    console.log(`Runner ready. Data: ${dataDirectory()}; event port: ${port}; slots: local ${limits.local}, cluster/cloud ${limits.remote}`);
     while (!stopping) {
       const queued = db.transaction(() => {
-        const next = db.runs().reverse().find((run) => run.detail.status === "submitted" && run.detail.phase === "queued");
+        const next = nextQueued(db.runs(), limits);
         if (!next) return undefined;
         // Claim inside the transaction; use SQL directly to avoid a nested transaction.
         next.owner = owner;
@@ -228,9 +304,12 @@ async function main() {
         db.db.prepare("UPDATE runs SET data=? WHERE id=?").run(JSON.stringify(next), next.detail.id);
         return next;
       });
-      if (queued) await execute(queued, tools, port);
-      else await new Promise((resolve) => setTimeout(resolve, 500));
+      if (queued) track(queued.detail.id, (controller) => execute(queued, tools, port, controller));
+      else await Promise.race([sleep(500), stopped]);
     }
+    await Promise.all([...work.values()].map((job) => job.done));
+    const left = db.runs().filter((run) => active(run) && run.owner === owner && run.pid).length;
+    if (left) console.log(`Runner stopped; ${left} Nextflow run(s) keep running and will be adopted on the next start`);
   } finally {
     clearInterval(heartbeat);
     events.close();
@@ -239,5 +318,11 @@ async function main() {
   }
 }
 
-for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => { stopping = true; currentController?.abort(); });
+for (const signal of ["SIGINT", "SIGTERM"] as const) {
+  process.on(signal, () => {
+    stopping = true;
+    markStopped();
+    for (const [id, job] of work) if (!db.run(id, true)?.pid) job.controller.abort();
+  });
+}
 main().catch((error: unknown) => { console.error(error); const state = db.runtime(); if (state?.owner === owner) db.setRuntime({ ...state, error: error instanceof Error ? error.message : String(error), heartbeat: 0 }); process.exitCode = 1; });
