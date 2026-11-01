@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import type { ModuleDef } from "@/features/workflow/types";
 import type { ScriptModuleView } from "./library";
+import type { PortBindingRequest } from "./input-bindings";
 import type { CellRunResult, NotebookDoc, NotebookRevision, NotebookSummary, TryRunRecord } from "./types";
 
 export const notebookKeys = {
@@ -90,18 +91,26 @@ export function useTryRunNotebook() {
       id,
       args,
       sampleId,
+      bindings,
       condaYaml,
       containerImage,
     }: {
       id: string;
-      args: Record<string, string>;
+      args?: Record<string, string>;
       sampleId?: string;
+      bindings?: PortBindingRequest[];
       condaYaml?: string;
       containerImage?: string;
     }) =>
       api<TryRunRecord>(`/notebooks/${id}/try-run`, {
         method: "POST",
-        body: JSON.stringify({ args, sampleId, condaYaml, containerImage }),
+        body: JSON.stringify({
+          args: bindings?.length ? undefined : args,
+          sampleId: bindings?.length ? undefined : sampleId,
+          bindings,
+          condaYaml,
+          containerImage,
+        }),
       }),
   });
 }

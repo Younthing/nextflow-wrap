@@ -1,6 +1,7 @@
 import { cellsForRun } from "./cells";
 import { convertNotebook, tryRunArgv, tryRunCommand } from "./convert";
 import { readModuleEnv, type ModuleEnvPatch } from "./env";
+import { planTryRunInputs, type InputPlan, type PortBindingRequest } from "./input-bindings";
 import { finalizeCellResult } from "./outputs";
 import { buildTryRunHeader, demoTryRunLines } from "./try-run-env";
 import type { CellRunResult, NotebookDoc, TryRunRecord } from "./types";
@@ -10,19 +11,22 @@ export function simulateTryRun(
   notebook: NotebookDoc,
   values: Record<string, string>,
   envInput?: ModuleEnvPatch,
+  input?: { bindings?: PortBindingRequest[]; sampleId?: string },
 ): TryRunRecord {
   const converted = convertNotebook(notebook);
   const env = readModuleEnv(envInput ?? {});
   let argv: string[] = [];
   let argError = "";
+  let planned: InputPlan | undefined;
   try {
-    argv = tryRunArgv(converted.inputs, values);
+    planned = planTryRunInputs(converted.inputs, values, input?.sampleId, input?.bindings);
+    argv = tryRunArgv(converted.inputs, planned.values);
   } catch (error) {
     argError = error instanceof Error ? error.message : "参数不完整";
   }
   const passed = notebook.language === "python" && converted.outputs.length > 0 && !argError;
   const header = buildTryRunHeader(
-    demoTryRunLines(env, notebook.language),
+    [...demoTryRunLines(env, notebook.language), ...(planned?.lines ?? [])],
     [tryRunCommand(converted.language, converted.entry, argv)],
   );
   const log = passed
@@ -43,6 +47,7 @@ export function simulateTryRun(
       message: passed ? undefined : "未生成",
     })),
     ranAt: new Date().toISOString(),
+    ...(planned?.records.length ? { bindings: planned.records } : {}),
     ...(env.condaYaml ? { condaYaml: env.condaYaml } : {}),
     ...(env.containerImage ? { containerImage: env.containerImage } : {}),
     ...(!env.condaYaml && !env.containerImage ? { envVia: "host" as const } : {}),

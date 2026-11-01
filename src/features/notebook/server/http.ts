@@ -36,9 +36,22 @@ const runSchema = z.object({
 
 const envField = z.string().max(500);
 
+const bindingFileSchema = z.object({
+  name: z.string().min(1).max(200),
+  contentBase64: z.string().max(1_400_000),
+});
+
+const bindingSchema = z.object({
+  port: z.string().regex(/^[A-Za-z_][\w]*$/),
+  source: z.enum(["upload", "path", "sample"]),
+  value: z.string().max(4000).optional(),
+  files: z.array(bindingFileSchema).max(8).optional(),
+});
+
 const trySchema = z.object({
   args: z.record(z.string().regex(/^[A-Za-z_][\w]*$/), z.string().max(4000)).optional(),
   sampleId: z.enum(["fastqc-pair", "samplesheet"]).optional(),
+  bindings: z.array(bindingSchema).max(40).optional(),
   condaYaml: envField.optional(),
   containerImage: envField.optional(),
 });
@@ -210,11 +223,14 @@ export async function handleNotebookApi(method: string, path: string[], request:
   if (action === "try-run" && method === "POST") {
     const notebook = requireNotebook(db, id);
     const body = trySchema.parse(await request.json().catch(() => ({})));
-    const values = withSampleValues(body.args ?? {}, body.sampleId);
+    const useBindings = !!body.bindings?.length;
+    const values = useBindings ? {} : withSampleValues(body.args ?? {}, body.sampleId);
     try {
-      const record = await executeTryRun(notebook, values, body.sampleId, {
+      const record = await executeTryRun(notebook, values, useBindings ? undefined : body.sampleId, {
         condaYaml: body.condaYaml,
         containerImage: body.containerImage,
+      }, {
+        bindings: useBindings ? body.bindings : undefined,
       });
       db.saveTryRun(record);
       return json(record);
