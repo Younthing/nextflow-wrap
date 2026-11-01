@@ -10,8 +10,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NotebookAssistant } from "@/features/assistant/modules/surfaces";
-import { nextCellId } from "@/features/notebook/cells";
 import { convertNotebook, ConvertError } from "@/features/notebook/convert";
+import { dispatchNotebookKey, notebookDraftKey } from "@/features/notebook/edit";
+import { COMMAND_HINT, EDIT_HINT, interpretNotebookKey, toNotebookKeyEvent, type NotebookMode } from "@/features/notebook/keyboard";
 import { latestModuleForNotebook } from "@/features/notebook/library";
 import { useNotebook, useNotebookRevision, useRunNotebook, useSaveNotebook, useScriptModules } from "@/features/notebook/queries";
 import { languageForKernel, type CellRunResult, type NotebookCell, type NotebookCellRole, type NotebookDoc } from "@/features/notebook/types";
@@ -106,12 +107,27 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
   const [prepOverride, setPrepOverride] = React.useState<boolean | null>(null);
   const [outputs, setOutputs] = React.useState<Record<string, CellRunResult>>({});
   const [runningTarget, setRunningTarget] = React.useState<string | "all" | null>(null);
+  const [mode, setMode] = React.useState<NotebookMode>("command");
+  const [deleteArmed, setDeleteArmed] = React.useState(false);
+  const [markdownEditId, setMarkdownEditId] = React.useState<string | null>(null);
+  const [focusTick, setFocusTick] = React.useState<{ id: string; mode: NotebookMode; token: number } | null>(null);
+  const focusSerial = React.useRef(0);
+  const runningRef = React.useRef<string | null>(null);
+  const keyboardRef = React.useRef<{
+    doc: NotebookDoc | null;
+    mode: NotebookMode;
+    deleteArmed: boolean;
+    dirty: boolean;
+  }>({ doc: null, mode: "command", deleteArmed: false, dirty: false });
   const saveNotebook = save.mutate;
   const selectionKey = `${notebookId}:${revParam ?? "latest"}`;
   const selectionCells = revParam ? revision.data?.cells : notebook.data?.cells;
   if (selectionCells && selectionFor !== selectionKey) {
     setSelectionFor(selectionKey);
     setSelected(selectionCells[0]?.id ?? null);
+    setMode("command");
+    setDeleteArmed(false);
+    setMarkdownEditId(null);
   }
 
   const draft = dirty ? override : notebook.data ?? null;
@@ -130,13 +146,13 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
 
   React.useEffect(() => {
     if (!draft || !dirty || readOnly) return;
-    const snapshot = JSON.stringify(draft.cells) + draft.name + draft.description + draft.kernel;
+    const snapshot = notebookDraftKey(draft);
     const handle = window.setTimeout(() => {
       saveNotebook(draft, {
         onSuccess: (saved) => {
           setOverride((current) => {
             if (!current) return null;
-            const same = JSON.stringify(current.cells) + current.name + current.description + current.kernel === snapshot;
+            const same = notebookDraftKey(current) === snapshot;
             if (same) {
               setDirty(false);
               return null;
@@ -150,19 +166,36 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
     return () => window.clearTimeout(handle);
   }, [draft, dirty, readOnly, saveNotebook]);
 
-  const live = readOnly && notebook.data && revision.data
-    ? { ...notebook.data, cells: revision.data.cells, rev: revision.data.rev }
-    : draft;
+  const live = React.useMemo(() => {
+    if (readOnly && notebook.data && revision.data) {
+      return { ...notebook.data, cells: revision.data.cells, rev: revision.data.rev };
+    }
+    return draft;
+  }, [readOnly, notebook.data, revision.data, draft]);
+
+  React.useEffect(() => {
+    if (!live) return;
+    keyboardRef.current = { doc: live, mode, deleteArmed, dirty };
+  }, [live, mode, deleteArmed, dirty]);
 
   const update = (patch: Partial<NotebookDoc>) => {
     if (!notebook.data) return;
-    setOverride((current) => ({ ...(current ?? notebook.data)!, ...patch }));
+    const base = keyboardRef.current.doc ?? override ?? notebook.data;
+    const next = { ...base, ...patch };
+    keyboardRef.current = {
+      doc: next,
+      mode: keyboardRef.current.mode,
+      deleteArmed: keyboardRef.current.deleteArmed,
+      dirty: true,
+    };
+    setOverride(next);
     setDirty(true);
   };
 
   const updateCell = (id: string, patch: Partial<NotebookCell>) => {
-    if (!draft) return;
-    update({ cells: draft.cells.map((cell) => (cell.id === id ? { ...cell, ...patch } : cell)) });
+    const base = keyboardRef.current.doc ?? draft;
+    if (!base) return;
+    update({ cells: base.cells.map((cell) => (cell.id === id ? { ...cell, ...patch } : cell)) });
   };
 
   let ready = false;
@@ -186,9 +219,10 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
   const savedAt = notebook.data.updatedAt;
   const runDisabled = readOnly || dirty || save.isPending || run.isPending || runningTarget !== null;
 
-  const startRun = (cellId?: string) => {
-    if (runDisabled) return;
-    setRunningTarget(cellId ?? "all");
+  const beginRun = (cellId?: string) => {
+    if (readOnly || runningRef.current) return;
+    runningRef.current = cellId ?? "all";
+    setRunningTarget(runningRef.current);
     run.mutate(
       { id: notebookId, cellId },
       {
@@ -199,14 +233,88 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
             return next;
           });
         },
-        onSettled: () => setRunningTarget(null),
+        onSettled: () => {
+          runningRef.current = null;
+          setRunningTarget(null);
+        },
       },
     );
   };
 
-  const runCell = (id: string, advance: boolean) => {
-    setSelected(advance ? nextCellId(live.cells, id) ?? id : id);
-    startRun(id);
+  const persistThenRun = async (doc: NotebookDoc, needsSave: boolean, cellId: string | null) => {
+    if (readOnly || runningRef.current) return;
+    runningRef.current = cellId ?? "save";
+    if (cellId) setRunningTarget(cellId);
+    try {
+      if (needsSave) {
+        const snapshot = notebookDraftKey(doc);
+        await save.mutateAsync(doc);
+        setOverride((current) => {
+          if (!current || notebookDraftKey(current) === snapshot) {
+            setDirty(false);
+            return null;
+          }
+          return current;
+        });
+      }
+      if (!cellId) return;
+      const result = await run.mutateAsync({ id: notebookId, cellId });
+      setOutputs((current) => {
+        const next = { ...current };
+        for (const cell of result.cells) next[cell.id] = cell;
+        return next;
+      });
+    } catch {
+      // save.error / run.error render under the editor.
+    } finally {
+      runningRef.current = null;
+      setRunningTarget(null);
+    }
+  };
+
+  const requestFocus = (id: string, nextMode: NotebookMode) => {
+    focusSerial.current += 1;
+    setFocusTick({ id, mode: nextMode, token: focusSerial.current });
+  };
+
+  const commitKey = (cellId: string, origin: NotebookMode, event: Parameters<typeof toNotebookKeyEvent>[0]) => {
+    const snap = keyboardRef.current;
+    const doc = snap.doc ?? live;
+    const keyEvent = toNotebookKeyEvent(event);
+    if (runningRef.current && interpretNotebookKey(origin, keyEvent, snap.deleteArmed).command?.type === "run") {
+      return true;
+    }
+    const result = dispatchNotebookKey(
+      { cells: doc.cells, selectedId: cellId, mode: snap.mode, deleteArmed: snap.deleteArmed },
+      cellId,
+      origin,
+      keyEvent,
+      () => newCell("code"),
+      readOnly,
+    );
+    const nextDoc = { ...doc, cells: result.surface.cells };
+    const nextDirty = snap.dirty || result.changed;
+    keyboardRef.current = {
+      doc: nextDoc,
+      mode: result.surface.mode,
+      deleteArmed: result.surface.deleteArmed,
+      dirty: nextDirty,
+    };
+    if (result.changed) update({ cells: result.surface.cells });
+    setSelected(result.surface.selectedId);
+    setMode(result.surface.mode);
+    setDeleteArmed(result.surface.deleteArmed);
+    if (result.focus) requestFocus(result.surface.selectedId, result.surface.mode);
+    const markdownTarget = result.surface.cells.find((cell) => cell.id === result.surface.selectedId);
+    if (result.focus && result.surface.mode === "edit" && markdownTarget?.role === "markdown") {
+      setMarkdownEditId(markdownTarget.id);
+    } else if (result.surface.mode === "command") {
+      setMarkdownEditId(null);
+    }
+    if (result.save && (result.run || nextDirty)) {
+      void persistThenRun(nextDoc, nextDirty, result.run?.cellId ?? null);
+    }
+    return result.handled;
   };
 
   return (
@@ -283,7 +391,7 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
       <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(0,1fr)_18rem]">
         <section className="glass flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl">
           <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
-            <Button type="button" size="sm" variant="outline" disabled={runDisabled} onClick={() => startRun()}>
+            <Button type="button" size="sm" variant="outline" disabled={runDisabled} onClick={() => beginRun()}>
               {run.isPending ? <Loader2 className="animate-spin" /> : <Play />}
               运行全部
             </Button>
@@ -310,6 +418,9 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
           <p className="border-b border-border px-3 py-2 text-xs text-muted-foreground">
             内核只决定笔记本里怎么跑；发布页的试跑和模块 conda／容器单独手填，互不覆盖。
           </p>
+          <p className="border-b border-border px-3 py-2 text-xs text-muted-foreground">
+            {mode === "command" ? COMMAND_HINT : EDIT_HINT}
+          </p>
           <div className="min-h-0 flex-1 space-y-3 overflow-auto p-3">
             <Input
               value={live.name}
@@ -331,14 +442,45 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
                 key={cell.id}
                 cell={cell}
                 index={index}
+                language={live.language}
+                completionScope={live.cells
+                  .slice(0, index)
+                  .filter((item) => item.role !== "markdown")
+                  .map((item) => item.source)
+                  .join("\n")}
                 selected={selected === cell.id}
                 running={runningTarget === "all" || runningTarget === cell.id}
                 readOnly={readOnly}
                 runDisabled={runDisabled}
                 canDelete={live.cells.length > 1}
                 output={outputs[cell.id]}
-                onSelect={() => setSelected(cell.id)}
-                onRun={({ advance }) => runCell(cell.id, advance)}
+                deleteArmed={deleteArmed}
+                editFocusToken={focusTick?.id === cell.id && focusTick.mode === "edit" ? focusTick.token : 0}
+                commandFocusToken={focusTick?.id === cell.id && focusTick.mode === "command" ? focusTick.token : 0}
+                markdownOpen={markdownEditId === cell.id}
+                onSelect={() => {
+                  setSelected(cell.id);
+                  setDeleteArmed(false);
+                }}
+                onEnterEdit={() => {
+                  setMode("edit");
+                  setDeleteArmed(false);
+                }}
+                onEnterCommand={() => {
+                  setMode("command");
+                  setDeleteArmed(false);
+                  setMarkdownEditId(null);
+                  requestFocus(cell.id, "command");
+                }}
+                onEditKey={(event) => commitKey(cell.id, "edit", event)}
+                onCommandKey={(event) => commitKey(cell.id, "command", event)}
+                onRun={({ advance }) => {
+                  commitKey(cell.id, "edit", {
+                    key: "Enter",
+                    shiftKey: advance,
+                    ctrlKey: !advance,
+                  });
+                }}
                 onChange={(source) => updateCell(cell.id, { source })}
                 onRole={(role) => updateCell(cell.id, { role })}
                 onDelete={() => {
