@@ -2,6 +2,9 @@
 
 ComfyUI 式的 Nextflow 可视化前端：在笔记本里写分析脚本并发布成模块，在画布上用这些模块和内置节点搭建流程，一键运行，实时追踪任务并查看结果。生成的是不依赖插件的标准 Nextflow 项目，可直接用 `nextflow run` 运行。
 
+- 使用说明：[用户指南](docs/user-guide/README.md)，两节入门课分别是单细胞（PBMC 3k）和分子对接（AutoDock Vina）。
+- 桌面版（macOS / Linux，Electron 托管 web、runner 和内核）：见 [desktop/README.md](desktop/README.md)。
+
 ## 技术栈
 
 - Next.js 16（App Router，Turbopack）+ TypeScript
@@ -149,7 +152,10 @@ pnpm smoke:runner # 幂等提交 → 实时任务 → 成功/下载 → 缓存�
 - `e2e/user-path.spec.ts`：Python 和 R 笔记本出图、发布、画布运行、源改动提示、发布 v2 后从原运行恢复命中缓存。
 - `e2e/single-cell.spec.ts`：两本 scanpy 笔记本（质控、聚类）在常驻 Jupyter 内核里逐格运行，用本机 Python 试跑后发布；画布上把「参考文件」接到质控、再接到聚类，用 Shell 运行时跑真实 Nextflow，结果页显示 UMAP 和 marker 表。数据由 `scripts/make-pbmc-demo.py` 准备：优先 `PBMC3K_H5AD` 指向的文件，其次下载 10x PBMC 3k，都不可用时生成确定性的合成 PBMC 计数。
 
-需要 `python3 -m pip install ipykernel matplotlib scanpy igraph leidenalg`，R 部分另需 `Rscript`。runner 首次运行要从 Nextflow 插件仓库下载 `nf-weblog@1.2.0`；下载不到时进度改为每 3 秒读取 trace 文件。
+- `e2e/docking.spec.ts`：RDKit 笔记本把 SMILES 变成 3D 配体，Vina 笔记本在 CPU 上对接；两个参考文件（配体表、受体）接入画布，真实 Nextflow 运行后结果页显示打分表，最佳构象在 Mol* 里打开。数据由 `scripts/make-docking-demo.py` 准备（默认是离线的合成口袋）。
+- `e2e-desktop/packaged.spec.ts`：打包后的桌面应用（`pnpm --dir desktop dist:linux`）用 Playwright 的 Electron 驱动启动，验证旧版本数据目录自动升级，以及笔记本模块在应用里生成项目并真实运行。命令：`xvfb-run pnpm exec playwright test -c e2e-desktop/playwright.config.ts`。
+
+需要 `python3 -m pip install ipykernel matplotlib h5py scanpy igraph leidenalg vina meeko rdkit`，R 部分另需 `Rscript`。runner 首次运行要从 Nextflow 插件仓库下载 `nf-weblog@1.2.0`；下载不到时进度改为每 3 秒读取 trace 文件。
 
 ### Codex harness
 

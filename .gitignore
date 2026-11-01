@@ -54,6 +54,7 @@ storybook-static
 # Playwright user-path runs
 /test-results/
 /playwright-report/
+/playwright-report-desktop/
 /blob-report/
 /e2e-artifacts/
 
