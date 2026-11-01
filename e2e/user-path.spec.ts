@@ -272,8 +272,9 @@ async function runLanguage(page: Page, language: "python" | "r") {
   await page.getByRole("option", { name: "Shell", exact: true }).click();
   await expect(dialog.getByText("不使用 -profile，进程在本机 shell 里直接执行")).toBeVisible();
   await openLocalProcess(dialog);
-  await expect(dialog.locator("pre")).toContainText(`conda '${condaYaml}'`);
-  await expect(dialog.locator("pre")).toContainText(`container '${image}'`);
+  const processFile = dialog.getByRole("tabpanel", { name: /项目文件/ }).locator("pre");
+  await expect(processFile).toContainText(`conda '${condaYaml}'`);
+  await expect(processFile).toContainText(`container '${image}'`);
   await shot(page, `e2e-${language}-process.png`);
   const start = dialog.getByRole("button", { name: "启动运行" });
   if (!(await start.isEnabled())) {
