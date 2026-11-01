@@ -99,6 +99,10 @@ export async function extend(page: Page, from: Locator, port: string, module: st
 
 /** Drags a wire between two existing handles, e.g. a second reference into a module's other input. */
 export async function connect(page: Page, from: Locator, output: string, to: Locator, input: string) {
+  // Both ends must be on screen; the inspector or a far-right node can otherwise hide the target handle.
+  await page.keyboard.press("Escape");
+  await page.locator(".react-flow__controls-fitview").click();
+  await page.waitForTimeout(400);
   const source = await from.locator(`.react-flow__handle[data-handleid="out:${output}"]`).boundingBox();
   const target = await to.locator(`.react-flow__handle[data-handleid="in:${input}"]`).boundingBox();
   if (!source || !target) throw new Error(`找不到端口 ${output} → ${input}`);
@@ -106,6 +110,8 @@ export async function connect(page: Page, from: Locator, output: string, to: Loc
   await page.mouse.down();
   await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 16 });
   await page.mouse.up();
+  // Dropping beside the handle opens the module search instead of connecting; fail with that, not a later count.
+  await expect(page.getByPlaceholder(/^搜索能连接/)).toHaveCount(0);
 }
 
 /** Adds a reference-file node from the library and points it at `value` under `--param`. */

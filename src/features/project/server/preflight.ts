@@ -55,7 +55,9 @@ export async function preflight() {
   const { home: javaHome, version: javaVersion } = await findJava(base);
   // Conda environments and container images go to the shared cache that the notebook try-run also uses.
   const env: NodeJS.ProcessEnv = { ...base, ...nextflowCacheEnv(base), JAVA_HOME: javaHome, NXF_JAVA_HOME: javaHome, NXF_ANSI_LOG: "false", NXF_VER: TOOLCHAIN.nextflow.version };
-  env.PATH = [join(javaHome, "bin"), dockerCli ? join(dockerCli, "..") : "", base.PATH].filter(Boolean).join(delimiter);
+  // Append, never prepend: JAVA_HOME already picks the JVM, and a directory such as /usr/bin or /opt/homebrew/bin
+  // in front would shadow the python3 or Rscript of the environment the user started the app from.
+  env.PATH = [base.PATH, join(javaHome, "bin"), dockerCli ? join(dockerCli, "..") : ""].filter(Boolean).join(delimiter);
   // Java's Nextflow launcher does not support SOCKS proxy URLs. Explicit HTTP overrides win.
   for (const key of ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"]) {
     if (base.NEXTFLOW_HTTP_PROXY) env[key] = base.NEXTFLOW_HTTP_PROXY;
