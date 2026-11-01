@@ -19,7 +19,7 @@ export const Local: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.getByText(/预览环境不会连接真实的集群或云执行器/)).toBeInTheDocument();
-    expect(canvas.getAllByText("预览").length).toBeGreaterThan(1);
+    expect(canvas.getAllByText("预览")).toHaveLength(1);
   },
 };
 export const RealRunner: Story = {
@@ -27,10 +27,13 @@ export const RealRunner: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     expect(canvas.queryByText(/预览环境不会连接/)).toBeNull();
-    expect(canvas.getByRole("radio", { name: /本机/ })).not.toHaveTextContent("预览");
-    const slurm = canvas.getByRole("radio", { name: /SLURM/i });
-    expect(slurm).toHaveTextContent("预览");
-    expect(slurm).toBeDisabled();
+    expect(canvas.getByLabelText("工作目录（workDir）")).toBeDisabled();
+    const hq = canvas.getByRole("radio", { name: /HyperQueue/ });
+    expect(hq).toBeEnabled();
+    await userEvent.click(hq);
+    await expect(hq).toHaveAttribute("aria-checked", "true");
+    await expect(canvas.getByLabelText("工作目录（workDir）")).toBeEnabled();
+    await expect(canvas.getByText(/计算节点也能访问；/)).toBeInTheDocument();
   },
 };
 export const ChangeExecutor: Story = {

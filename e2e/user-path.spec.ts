@@ -284,7 +284,7 @@ async function runLanguage(page: Page, language: "python" | "r") {
   await page.getByRole("button", { name: "运行", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("容器 / 环境（-profile）").click();
-  await page.getByRole("option", { name: "Shell", exact: true }).click();
+  await page.getByRole("option", { name: /^Shell/ }).click();
   await expect(dialog.getByText("不使用 -profile，进程在本机 shell 里直接执行")).toBeVisible();
   await openLocalProcess(dialog);
   const processFile = dialog.getByRole("tabpanel", { name: /项目文件/ }).locator("pre");

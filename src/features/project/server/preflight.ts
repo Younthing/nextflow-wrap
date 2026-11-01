@@ -2,11 +2,12 @@ import { access, realpath } from "node:fs/promises";
 import { constants } from "node:fs";
 import { arch, cpus, homedir, totalmem } from "node:os";
 import { delimiter, dirname, join } from "node:path";
+import { executorDef, launchTools, type LaunchConfig } from "../launch";
 import { runCommand } from "./command";
 
-async function executable(name: string, override: string | undefined, fallbacks: string[] = []): Promise<string> {
+async function executable(name: string, override: string | undefined, fallbacks: string[] = [], path = process.env.PATH): Promise<string> {
   const candidates = override ? [override] : [
-    ...(process.env.PATH ?? "").split(delimiter).filter(Boolean).map((dir) => join(dir, name)),
+    ...(path ?? "").split(delimiter).filter(Boolean).map((dir) => join(dir, name)),
     ...fallbacks,
   ];
   for (const path of candidates) {
@@ -73,6 +74,19 @@ export async function preflight() {
       ? { architecture: dockerInfo.Architecture, cpus: dockerInfo.NCPU, memoryBytes: dockerInfo.MemTotal }
       : { architecture: hostArch, cpus: cpus().length, memoryBytes: totalmem() },
   };
+}
+
+/** Fails before Nextflow starts when the chosen executor or runtime has no command on PATH. */
+export async function requireLaunchTools(config: LaunchConfig, env: NodeJS.ProcessEnv) {
+  const missing: string[] = [];
+  for (const alternatives of launchTools(config)) {
+    const found = await Promise.any(alternatives.map((name) => executable(name, undefined, [], env.PATH))).catch(() => undefined);
+    if (!found) missing.push(alternatives.join(" 或 "));
+  }
+  if (missing.length) {
+    const what = config.executor === "local" ? `-profile ${config.engine}` : `${executorDef(config.executor).name} 执行器`;
+    throw new Error(`${what} 需要 ${missing.join("、")}，但 runner 的 PATH 里找不到。请先安装，或换一个 profile / 执行器。`);
+  }
 }
 
 export type RuntimeTools = Awaited<ReturnType<typeof preflight>>;

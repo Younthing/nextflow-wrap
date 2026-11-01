@@ -30,7 +30,7 @@ ComfyUI 式的 Nextflow 可视化前端：在画布上用 nf-core 模块搭建�
 
 - 生成的文件：`main.nf`、`workflows/<name>.nf`、`subworkflows/local/utils_nfcore_<name>_pipeline`、`nextflow.config`、`conf/{base,modules,test}.config`、`nextflow_schema.json`、`assets/*`、`modules.json`、`.nf-core.yml`、`README.md`。nf-core 模块和 `utils_*` 子流程不内嵌，按 `modules.json` 里锁定的提交由后端 `nf-core modules install` 安装。
 - 跟随最新 nf-core 模板：Nextflow `>=25.10.4`，nf-schema 2.7.3，版本信息走 topic channel，MultiQC 用新的元组输入。
-- 真实模式支持本机 + Docker，Apple Silicon 自动使用 amd64 模拟；SLURM、云 Batch 和 Kubernetes 在真实模式禁用，演示模式仍可预览配置。执行器设置写进单独的 `run.config`，容器/环境用 `-profile`，参数写进 `params.json`，runner 在独立项目目录里执行：
+- 真实模式按 Nextflow 自己的语义运行：模块里写的 conda / container 只是依据，实际用哪个由 `-profile` 决定。可选本机 shell（默认，不加 profile）以及 conda、mamba、micromamba、docker、podman、singularity、apptainer、charliecloud、shifter、sarus、spack、wave；执行器可选本机、SLURM、HyperQueue、PBS Pro、PBS/Torque、SGE、LSF、Flux、HTCondor、Moab、OAR、NQSII、Bridge，以及 Google/AWS/Azure Batch 和 Kubernetes。runner 启动前检查所选执行器的提交命令（如 `sbatch`、`hq`）和本机运行时的命令（如 `conda`、`apptainer`）是否在 PATH 里。集群和云执行器的工作目录要写计算节点能访问的绝对路径或对象存储地址。Apple Silicon 上用 Docker 时自动加 `emulate_amd64`。执行器设置写进单独的 `run.config`，运行时用 `-profile`，参数写进 `params.json`，runner 在独立项目目录里执行：
 
   ```bash
   nextflow run . -profile docker -c run.config -params-file params.json

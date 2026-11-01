@@ -10,7 +10,7 @@ import { gstr } from "@/features/project/groovy";
 import { profileList, renderRunConfig } from "@/features/project/launch";
 import { CommandError, runCommand } from "@/features/project/server/command";
 import { installComponents, materializeProject } from "@/features/project/server/materialize";
-import { preflight, type RuntimeTools } from "@/features/project/server/preflight";
+import { preflight, requireLaunchTools, type RuntimeTools } from "@/features/project/server/preflight";
 import { smokeFastq } from "@/features/project/smoke-data";
 import { NF_SCHEMA_VERSION } from "@/features/project/templates";
 import { executionModuleIndex } from "@/features/runs/server/execution-index";
@@ -84,11 +84,16 @@ async function execute(run: StoredExecution, tools: RuntimeTools, port: number) 
   try {
     await mkdir(run.attemptDir, { recursive: true });
     const runtimeState = db.runtime()!;
-    const cpus = Math.min(Number(run.detail.launch.settings.cpus ?? 2), tools.resources.cpus);
-    const memory = run.detail.launch.settings.memory ?? "2.GB";
-    const shell = run.detail.launch.engine === "shell";
-    const emulate = !shell && tools.docker && (tools.resources.architecture === "aarch64" || tools.resources.architecture === "arm64");
-    const launch = { ...run.detail.launch, settings: { cpus, memory }, workDir: join(run.projectDir, "../work"), extraProfiles: [...new Set([...run.detail.launch.extraProfiles, ...(emulate ? ["emulate_amd64"] : [])])] };
+    const requested = run.detail.launch;
+    const local = requested.executor === "local";
+    const docker = requested.engine === "docker";
+    const cpus = Math.min(Number(requested.settings.cpus ?? 2), tools.resources.cpus);
+    const memory = requested.settings.memory ?? "2.GB";
+    const emulate = local && docker && tools.docker && (tools.resources.architecture === "aarch64" || tools.resources.architecture === "arm64");
+    // The runner owns a local work directory; a cluster or cloud run keeps the shared path the user chose.
+    const workDir = local || requested.workDir === "work" ? join(run.projectDir, "../work") : requested.workDir;
+    const launch = { ...requested, settings: local ? { ...requested.settings, cpus, memory } : requested.settings, workDir, extraProfiles: [...new Set([...requested.extraProfiles, ...(emulate ? ["emulate_amd64"] : [])])] };
+    await requireLaunchTools(launch, tools.env);
     const params = { ...run.detail.params, input: String(run.detail.params.input), outdir: join(run.attemptDir, "results"), custom_config_base: "", publish_dir_mode: "copy", trace_report_suffix: id };
     // Web launches use explicit host paths; the server cannot read a browser's filesystem.
     if (!params.input.startsWith("/")) throw new Error("请输入 runner 主机上的绝对样本表路径；可先使用内置质控示例");
@@ -99,17 +104,15 @@ async function execute(run: StoredExecution, tools: RuntimeTools, port: number) 
       await installComponents(project, run.projectDir, tools, controller.signal);
     } else {
       await access(join(run.projectDir, ".nextflow/cache", run.sessionId!));
-      await access(join(run.projectDir, "../work"));
+      if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(workDir)) await access(workDir);
       await access(join(run.projectDir, "installed-components.json"));
     }
     controller.signal.throwIfAborted();
     const emulation = launch.extraProfiles.includes("emulate_amd64") ? " --platform=linux/amd64" : "";
     const runConfig = [
       renderRunConfig(launch),
-      `executor.cpus = ${cpus}`,
-      `executor.memory = ${gstr(String(memory))}`,
-      "executor.queueSize = 2",
-      ...(shell ? [] : [`docker.runOptions = ${gstr(`-u ${process.getuid?.() ?? 0}:${process.getgid?.() ?? 0} --label nextflow-studio.run=${id}${emulation}`)}`]),
+      ...(local ? [`executor.cpus = ${cpus}`, `executor.memory = ${gstr(String(memory))}`, "executor.queueSize = 2"] : []),
+      ...(!docker ? [] : [`docker.runOptions = ${gstr(`-u ${process.getuid?.() ?? 0}:${process.getgid?.() ?? 0} --label nextflow-studio.run=${id}${emulation}`)}`]),
       `plugins { id 'nf-schema@${NF_SCHEMA_VERSION}'; id 'nf-weblog@1.2.0' }`,
       `weblog { enabled = true; url = ${gstr(`http://127.0.0.1:${port}/events/${id}/${token}`)} }`,
       "trace.enabled = true", "trace.raw = true",

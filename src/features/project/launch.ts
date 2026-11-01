@@ -1,7 +1,33 @@
 import { gstr } from "./groovy";
 
-export type ExecutorId = "local" | "slurm" | "google-batch" | "aws-batch" | "azure-batch" | "k8s";
-export type ContainerEngine = "shell" | "docker" | "singularity" | "apptainer" | "podman" | "conda" | "wave";
+export type GridExecutorId =
+  | "slurm"
+  | "sge"
+  | "pbs"
+  | "pbspro"
+  | "lsf"
+  | "moab"
+  | "oar"
+  | "nqsii"
+  | "condor"
+  | "hq"
+  | "flux"
+  | "bridge";
+export type ExecutorId = "local" | GridExecutorId | "google-batch" | "aws-batch" | "azure-batch" | "k8s";
+export type ContainerEngine =
+  | "shell"
+  | "conda"
+  | "mamba"
+  | "micromamba"
+  | "docker"
+  | "podman"
+  | "singularity"
+  | "apptainer"
+  | "charliecloud"
+  | "shifter"
+  | "sarus"
+  | "spack"
+  | "wave";
 
 export interface ExecutorField {
   key: string;
@@ -21,38 +47,97 @@ export interface ExecutorDef {
   workDirHint: string;
   fields: ExecutorField[];
   engines: ContainerEngine[];
+  /** Commands that must be on PATH where Nextflow runs. Each entry lists alternatives. */
+  tools: string[][];
 }
+
+/** Every software runtime Nextflow can switch on through `-profile`. Shell means none. */
+export const ENGINES: ContainerEngine[] = [
+  "shell",
+  "conda",
+  "mamba",
+  "micromamba",
+  "docker",
+  "podman",
+  "singularity",
+  "apptainer",
+  "charliecloud",
+  "shifter",
+  "sarus",
+  "spack",
+  "wave",
+];
+
+const CONTAINER_ONLY: ContainerEngine[] = ["docker", "wave"];
+
+interface GridSpec {
+  id: GridExecutorId;
+  name: string;
+  description: string;
+  submit: string;
+  queue: boolean;
+}
+
+const GRID: GridSpec[] = [
+  { id: "slurm", name: "SLURM", description: "把每个任务作为作业提交到 SLURM。", submit: "sbatch", queue: true },
+  { id: "hq", name: "HyperQueue", description: "提交到 HyperQueue 服务器，适合在一个大分配里调度大量小任务。", submit: "hq", queue: false },
+  { id: "pbspro", name: "PBS Pro", description: "提交到 PBS Professional / OpenPBS 队列。", submit: "qsub", queue: true },
+  { id: "pbs", name: "PBS / Torque", description: "提交到 PBS 或 Torque 队列。", submit: "qsub", queue: true },
+  { id: "sge", name: "SGE / UGE", description: "提交到 Sun / Univa Grid Engine 队列。", submit: "qsub", queue: true },
+  { id: "lsf", name: "LSF", description: "提交到 IBM Spectrum LSF 队列。", submit: "bsub", queue: true },
+  { id: "flux", name: "Flux", description: "提交到 Flux 框架。", submit: "flux", queue: true },
+  { id: "condor", name: "HTCondor", description: "提交到 HTCondor 资源池。", submit: "condor_submit", queue: false },
+  { id: "moab", name: "Moab", description: "提交到 Moab 调度器。", submit: "msub", queue: true },
+  { id: "oar", name: "OAR", description: "提交到 OAR 资源管理器。", submit: "oarsub", queue: true },
+  { id: "nqsii", name: "NQSII", description: "提交到 NQSII 队列。", submit: "qsub", queue: true },
+  { id: "bridge", name: "Bridge", description: "提交到 Bridge 批处理系统。", submit: "ccc_msub", queue: true },
+];
+
+/** Nextflow's own name for each executor, as written to `process.executor`. */
+export const NEXTFLOW_EXECUTOR: Record<ExecutorId, string> = {
+  local: "local",
+  ...(Object.fromEntries(GRID.map((g) => [g.id, g.id])) as Record<GridExecutorId, string>),
+  "google-batch": "google-batch",
+  "aws-batch": "awsbatch",
+  "azure-batch": "azurebatch",
+  k8s: "k8s",
+};
+
+const gridDef = (g: GridSpec): ExecutorDef => ({
+  id: g.id,
+  name: g.name,
+  description: `${g.description}Nextflow 在本机提交作业，工作目录需要计算节点也能访问。`,
+  workDirHint: "/shared/scratch/work",
+  engines: ENGINES,
+  tools: [[g.submit]],
+  fields: [
+    ...(g.queue ? [{ key: "queue", label: "队列 / 分区（queue）", type: "text" as const, placeholder: "normal" }] : []),
+    { key: "clusterOptions", label: "额外提交参数（clusterOptions）", type: "text", placeholder: g.id === "slurm" ? "--account=lab --qos=normal" : "" },
+    { key: "queueSize", label: "同时提交的作业数", type: "number", placeholder: "100" },
+  ],
+});
 
 export const EXECUTORS: ExecutorDef[] = [
   {
     id: "local",
     name: "本机",
-    description: "在运行 Nextflow 的机器上直接执行，适合小数据和调试。",
+    description: "在运行 Nextflow 的机器上直接执行。",
     workDirHint: "work",
-    engines: ["shell", "docker", "singularity", "apptainer", "podman", "conda", "wave"],
+    engines: ENGINES,
+    tools: [],
     fields: [
       { key: "cpus", label: "最多 CPU", type: "number", placeholder: "8" },
       { key: "memory", label: "最多内存", type: "text", placeholder: "32.GB" },
     ],
   },
-  {
-    id: "slurm",
-    name: "SLURM 集群",
-    description: "把每个任务作为作业提交到 SLURM 队列。",
-    workDirHint: "/scratch/$USER/work",
-    engines: ["singularity", "apptainer", "conda"],
-    fields: [
-      { key: "queue", label: "分区（queue）", type: "text", placeholder: "normal", required: true },
-      { key: "clusterOptions", label: "额外 sbatch 参数", type: "text", placeholder: "--account=lab --qos=normal" },
-      { key: "queueSize", label: "同时提交的作业数", type: "number", placeholder: "100" },
-    ],
-  },
+  ...GRID.map(gridDef),
   {
     id: "google-batch",
     name: "Google Batch",
     description: "在 Google Cloud Batch 上运行，数据和工作目录放在 GCS。",
     workDirHint: "gs://my-bucket/work",
-    engines: ["docker", "wave"],
+    engines: CONTAINER_ONLY,
+    tools: [],
     fields: [
       { key: "project", label: "GCP 项目 ID", type: "text", placeholder: "my-project", required: true },
       { key: "location", label: "区域", type: "text", placeholder: "us-central1", required: true },
@@ -66,7 +151,8 @@ export const EXECUTORS: ExecutorDef[] = [
     name: "AWS Batch",
     description: "提交到 AWS Batch 作业队列，工作目录放在 S3。",
     workDirHint: "s3://my-bucket/work",
-    engines: ["docker", "wave"],
+    engines: CONTAINER_ONLY,
+    tools: [],
     fields: [
       { key: "queue", label: "作业队列", type: "text", placeholder: "nextflow-queue", required: true },
       { key: "region", label: "区域", type: "text", placeholder: "us-east-1", required: true },
@@ -78,7 +164,8 @@ export const EXECUTORS: ExecutorDef[] = [
     name: "Azure Batch",
     description: "在 Azure Batch 池中运行，工作目录放在 Azure Blob。",
     workDirHint: "az://my-container/work",
-    engines: ["docker", "wave"],
+    engines: CONTAINER_ONLY,
+    tools: [],
     fields: [
       { key: "location", label: "区域", type: "text", placeholder: "eastus", required: true },
       { key: "accountName", label: "Batch 账户", type: "text", required: true },
@@ -91,7 +178,8 @@ export const EXECUTORS: ExecutorDef[] = [
     name: "Kubernetes",
     description: "以 Pod 形式运行任务，需要共享存储卷。",
     workDirHint: "/workspace/work",
-    engines: ["docker", "wave"],
+    engines: CONTAINER_ONLY,
+    tools: [],
     fields: [
       { key: "namespace", label: "命名空间", type: "text", placeholder: "nextflow", required: true },
       { key: "storageClaimName", label: "PVC 名称", type: "text", placeholder: "nextflow-pvc", required: true },
@@ -101,31 +189,84 @@ export const EXECUTORS: ExecutorDef[] = [
 ];
 
 export const ENGINE_LABELS: Record<ContainerEngine, string> = {
-  shell: "Shell",
+  shell: "Shell（不用 -profile）",
+  conda: "Conda",
+  mamba: "Mamba",
+  micromamba: "Micromamba",
   docker: "Docker",
+  podman: "Podman",
   singularity: "Singularity",
   apptainer: "Apptainer",
-  podman: "Podman",
-  conda: "Conda",
+  charliecloud: "Charliecloud",
+  shifter: "Shifter",
+  sarus: "Sarus",
+  spack: "Spack",
   wave: "Wave",
 };
 
-export const REGISTRIES = ["quay.io", "docker.rainbond.cc"] as const;
+/** The command each runtime needs where its tasks run. Wave works through another engine. */
+const ENGINE_TOOLS: Record<ContainerEngine, string[]> = {
+  shell: [],
+  conda: ["conda"],
+  mamba: ["mamba"],
+  micromamba: ["micromamba"],
+  docker: ["docker"],
+  podman: ["podman"],
+  singularity: ["singularity"],
+  apptainer: ["apptainer"],
+  charliecloud: ["ch-run"],
+  shifter: ["shifterimg"],
+  sarus: ["sarus"],
+  spack: ["spack"],
+  wave: [],
+};
 
-/** Engines a real runner on this machine can launch. Shell runs the process script directly. */
-export const REAL_ENGINES = ["shell", "docker"] as const satisfies readonly ContainerEngine[];
-
-export function isRealEngine(engine: ContainerEngine): boolean {
-  return (REAL_ENGINES as readonly ContainerEngine[]).includes(engine);
+/**
+ * Commands the runner must find before it starts Nextflow. Each entry lists alternatives.
+ * Engine commands are only checked for the local executor; on a cluster they live on the compute nodes.
+ */
+export function launchTools(config: LaunchConfig): string[][] {
+  const def = executorDef(config.executor);
+  const engine = config.executor === "local" && ENGINE_TOOLS[config.engine].length ? [ENGINE_TOOLS[config.engine]] : [];
+  return [...def.tools, ...engine];
 }
 
-/** Real launches stay on this machine. Shell is kept; any other engine becomes Docker. */
+/** The runtime switches Nextflow reads. `shell` turns all of them off. */
+const RUNTIME_SWITCHES = ["conda", "docker", "podman", "singularity", "apptainer", "charliecloud", "shifter", "sarus", "spack"] as const;
+
+const ENGINE_EXTRAS: Partial<Record<ContainerEngine, string[]>> = {
+  conda: ["conda.channels = ['conda-forge', 'bioconda']"],
+  mamba: ["conda.useMamba = true", "conda.channels = ['conda-forge', 'bioconda']"],
+  micromamba: ["conda.useMicromamba = true", "conda.channels = ['conda-forge', 'bioconda']"],
+  docker: ["docker.runOptions = '-u $(id -u):$(id -g)'"],
+  singularity: ["singularity.autoMounts = true"],
+  apptainer: ["apptainer.autoMounts = true"],
+};
+
+/** One `-profile` per runtime: it switches that runtime on and every other one off. */
+export function runtimeProfiles(indent = "    "): string {
+  return ENGINES.filter((engine) => engine !== "shell" && engine !== "wave")
+    .map((engine) => {
+      const on = engine === "mamba" || engine === "micromamba" ? "conda" : engine;
+      const lines = [
+        ...RUNTIME_SWITCHES.map((name) => `${name}.enabled = ${name === on}`),
+        ...(ENGINE_EXTRAS[engine] ?? []),
+      ];
+      return [`${indent}${engine} {`, ...lines.map((line) => `${indent}    ${line}`), `${indent}}`].join("\n");
+    })
+    .join("\n");
+}
+
+export const REGISTRIES = ["quay.io", "docker.rainbond.cc"] as const;
+
+/**
+ * A real launch keeps the chosen executor and runtime, as `nextflow run -profile` would.
+ * The local executor gets a modest default budget; new runs never resume implicitly.
+ */
 export function realLaunchConfig(config: LaunchConfig): LaunchConfig {
   return {
     ...config,
-    settings: { cpus: 2, memory: "2.GB", ...config.settings },
-    executor: "local",
-    engine: config.engine === "shell" ? "shell" : "docker",
+    settings: config.executor === "local" ? { cpus: 2, memory: "2.GB", ...config.settings } : config.settings,
     resume: false,
   };
 }
@@ -146,7 +287,7 @@ export function defaultLaunchConfig(): LaunchConfig {
   return {
     executor: "local",
     settings: {},
-    engine: "docker",
+    engine: "shell",
     extraProfiles: [],
     workDir: "work",
     resume: false,
@@ -155,6 +296,8 @@ export function defaultLaunchConfig(): LaunchConfig {
 }
 
 export const executorDef = (id: ExecutorId) => EXECUTORS.find((e) => e.id === id)!;
+
+export const isGridExecutor = (id: ExecutorId): id is GridExecutorId => GRID.some((g) => g.id === id);
 
 /** Missing required settings, as user-facing messages. */
 export function launchProblems(config: LaunchConfig): string[] {
@@ -185,6 +328,12 @@ export function renderRunConfig(config: LaunchConfig): string {
     `workDir = ${gstr(config.workDir || executorDef(config.executor).workDirHint)}`,
     "",
   ];
+  if (isGridExecutor(config.executor)) {
+    lines.push(`process.executor = ${gstr(NEXTFLOW_EXECUTOR[config.executor])}`);
+    if (has("queue")) lines.push(`process.queue = ${val(s.queue)}`);
+    if (has("clusterOptions")) lines.push(`process.clusterOptions = ${val(s.clusterOptions)}`);
+    if (has("queueSize")) lines.push(`executor.queueSize = ${Number(s.queueSize)}`);
+  }
   switch (config.executor) {
     case "local": {
       lines.push("process.executor = 'local'");
@@ -192,11 +341,6 @@ export function renderRunConfig(config: LaunchConfig): string {
       if (limits.length) lines.push(`process.resourceLimits = [ ${limits.join(", ")} ]`);
       break;
     }
-    case "slurm":
-      lines.push("process.executor = 'slurm'", `process.queue = ${val(s.queue)}`);
-      if (has("clusterOptions")) lines.push(`process.clusterOptions = ${val(s.clusterOptions)}`);
-      if (has("queueSize")) lines.push(`executor.queueSize = ${Number(s.queueSize)}`);
-      break;
     case "google-batch":
       lines.push("process.executor = 'google-batch'", "", "google {", `    project  = ${val(s.project)}`, `    location = ${val(s.location)}`);
       if (s.spot) lines.push("    batch.spot = true");
@@ -235,15 +379,7 @@ export function renderRunConfig(config: LaunchConfig): string {
       lines.push("}");
       break;
   }
-  if (config.engine === "shell") {
-    lines.push(
-      "docker.enabled = false",
-      "singularity.enabled = false",
-      "podman.enabled = false",
-      "apptainer.enabled = false",
-      "conda.enabled = false",
-    );
-  }
+  if (config.engine === "shell") lines.push(...RUNTIME_SWITCHES.map((name) => `${name}.enabled = false`));
   return `${lines.join("\n")}\n`;
 }
 

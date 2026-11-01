@@ -3,7 +3,19 @@ import { join } from "node:path";
 import { z } from "zod";
 import catalog from "@/data/nf-core-modules.json";
 import { generateProject } from "@/features/project/generate";
-import { defaultLaunchConfig, launchCommand, profileList, renderRunConfig } from "@/features/project/launch";
+import {
+  defaultLaunchConfig,
+  ENGINES,
+  EXECUTORS,
+  executorDef,
+  launchCommand,
+  launchProblems,
+  profileList,
+  renderRunConfig,
+  type ContainerEngine,
+  type ExecutorId,
+  type LaunchConfig,
+} from "@/features/project/launch";
 import { parseWorkflowDoc } from "@/features/workflow/document";
 import type { WorkflowDoc } from "@/features/workflow/types";
 import { validateWorkflow } from "@/features/workflow/validate";
@@ -27,10 +39,43 @@ const workflowSchema = z.object({
   nodes: z.array(z.object({ id: z.string().min(1).max(100), position: z.object({ x: z.number(), y: z.number() }), data: z.object({ moduleId: z.string(), alias: z.string().regex(/^[A-Z][A-Z0-9_]*$/), widgets: z.record(z.string(), scalar), config: z.object({ args: z.string().optional(), prefix: z.string().optional(), label: z.string().optional(), publish: z.boolean().optional(), errorStrategy: z.string().max(40).optional(), when: z.string().max(500).optional(), whenEmpty: z.boolean().optional(), skip: z.boolean().optional(), memory: z.string().max(500).optional(), cpus: z.string().max(200).optional(), optionalOutputs: z.string().max(500).optional(), publishPath: z.string().max(500).optional(), publishPattern: z.string().max(200).optional(), publishSaveAs: z.string().max(500).optional(), publishDirs: z.array(z.object({ path: z.string().max(500), pattern: z.string().max(200).optional(), saveAs: z.string().max(500).optional() })).max(20).optional() }), settings: z.record(z.string(), scalar).optional(), disabled: z.boolean().optional() }) })).max(500),
   edges: z.array(z.object({ id: z.string(), source: z.string(), target: z.string(), sourceHandle: z.string(), targetHandle: z.string() })).max(2000),
 });
+const plainText = (max: number) => z.string().max(max).regex(/^[^\u0000-\u001f]*$/, "不能包含换行或控制字符");
 const launchSchema = z.object({
-  executor: z.literal("local"), engine: z.enum(["docker", "shell"]), settings: z.object({ cpus: z.preprocess((value) => value === "" ? undefined : value, z.coerce.number().int().min(1).max(64).optional()), memory: z.preprocess((value) => value === "" ? undefined : value, z.string().regex(/^\d+(?:\.\d+)?\s*\.?\s*(?:[KMGT]B)$/i).optional()) }),
-  extraProfiles: z.array(z.enum(["test", "debug", "emulate_amd64"])), workDir: z.string(), resume: z.boolean(), registry: z.enum(["quay.io", "docker.rainbond.cc"]), runName: z.string().regex(/^[A-Za-z][A-Za-z0-9_-]{0,60}$/).optional(),
+  executor: z.enum(EXECUTORS.map((executor) => executor.id) as [ExecutorId, ...ExecutorId[]]),
+  engine: z.enum(ENGINES as [ContainerEngine, ...ContainerEngine[]]),
+  settings: z.record(z.string(), z.union([plainText(500), z.number().finite(), z.boolean()])),
+  extraProfiles: z.array(z.enum(["test", "debug", "gpu", "arm64", "emulate_amd64", "wave"])).max(6),
+  workDir: plainText(1000), resume: z.boolean(), registry: z.enum(["quay.io", "docker.rainbond.cc"]), runName: z.string().regex(/^[A-Za-z][A-Za-z0-9_-]{0,60}$/).optional(),
 });
+
+/** Keeps only the executor's own settings, typed as its form declares them, or explains what is wrong. */
+export function checkedLaunch(input: z.infer<typeof launchSchema>): LaunchConfig {
+  const def = executorDef(input.executor);
+  const settings: LaunchConfig["settings"] = {};
+  for (const [key, raw] of Object.entries(input.settings)) {
+    const field = def.fields.find((candidate) => candidate.key === key);
+    if (!field) throw new HttpError(400, `${def.name} 没有设置项 ${key}`);
+    if (raw === "") continue;
+    if (field.type === "number") {
+      const value = Number(raw);
+      if (!Number.isInteger(value) || value < 1 || value > 100_000) throw new HttpError(400, `${def.name}：「${field.label}」需要正整数`);
+      settings[key] = value;
+    } else if (field.type === "boolean") {
+      if (typeof raw !== "boolean") throw new HttpError(400, `${def.name}：「${field.label}」需要开或关`);
+      settings[key] = raw;
+    } else settings[key] = String(raw);
+  }
+  if (input.executor === "local" && settings.memory !== undefined && !/^\d+(?:\.\d+)?\s*\.?\s*(?:[KMGT]B)$/i.test(String(settings.memory))) {
+    throw new HttpError(400, "本机：「最多内存」写成 16.GB 这样的形式");
+  }
+  const launch: LaunchConfig = { ...defaultLaunchConfig(), ...input, settings, resume: false };
+  if (input.executor !== "local" && launch.workDir !== "work" && !/^(?:\/|[a-z][a-z0-9+.-]*:\/\/)/i.test(launch.workDir)) {
+    throw new HttpError(400, "工作目录需要是绝对路径或对象存储地址");
+  }
+  const problems = launchProblems(launch);
+  if (problems.length) throw new HttpError(400, problems.join("；"));
+  return launch;
+}
 export function workflowInput(value: unknown): WorkflowDoc { return parseWorkflowDoc(workflowSchema.parse(value)); }
 export const emptyProgress = (): RunProgress => ({ total: 0, pending: 0, running: 0, completed: 0, cached: 0, failed: 0, aborted: 0 });
 export const active = (run: StoredExecution) => run.detail.status === "submitted" || run.detail.status === "running";
@@ -52,7 +97,7 @@ export function submitRun(body: unknown, idempotency?: string) {
   if (issues.length) throw new HttpError(400, issues.map((issue) => issue.message).join("；"));
   if (new Set(workflow.nodes.map((node) => node.id)).size !== workflow.nodes.length) throw new HttpError(400, "节点 ID 重复");
   if (request.launch.resume) throw new HttpError(400, "续跑需要从运行详情选择来源记录");
-  const launch = { ...defaultLaunchConfig(), ...request.launch, resume: false };
+  const launch = checkedLaunch(request.launch);
   const project = generateProject(workflow, index, { modulesSha: catalog.gitSha, registry: launch.registry });
   const id = randomUUID();
   const root = join(dataDirectory(), "executions", id);
@@ -61,7 +106,7 @@ export function submitRun(body: unknown, idempotency?: string) {
     lineageId: id, projectDir: join(root, "project"), attemptDir: join(root, "attempts", id),
     detail: {
       id, runName: launch.runName ?? `studio_${id.replaceAll("-", "").slice(0, 12)}`, workflowId: workflow.id, workflowName: workflow.name,
-      executor: "local", profile: profileList(launch), status: "submitted", phase: "queued", submittedAt: now, progress: emptyProgress(),
+      executor: launch.executor, profile: profileList(launch), status: "submitted", phase: "queued", submittedAt: now, progress: emptyProgress(),
       command: launchCommand(launch), launch, params: { ...request.params, outdir: join(root, "attempts", id, "results") }, runConfig: renderRunConfig(launch),
       project: { name: project.meta.name, files: project.files, components: project.components }, workflow,
     },
