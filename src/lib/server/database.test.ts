@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { demoNotebooks, demoScriptModules } from "@/features/notebook/seed";
 import { readsQcWorkflow } from "@/features/workflow/demo";
 import { StudioStore } from "./database";
+import { SCHEMA_VERSION } from "./migrations";
 
 describe("StudioStore", () => {
   it("persists workflow edits across connections and rolls back failed transactions", () => {
@@ -86,7 +87,7 @@ describe("StudioStore", () => {
       legacy.prepare("INSERT INTO notebooks(id, updated, data) VALUES (?,?,?)").run(doc.id, doc.updatedAt, JSON.stringify(doc));
       legacy.close();
       const db = new StudioStore(path);
-      expect(Number(db.db.prepare("PRAGMA user_version").get()?.user_version)).toBe(3);
+      expect(Number(db.db.prepare("PRAGMA user_version").get()?.user_version)).toBe(SCHEMA_VERSION);
       expect(db.notebook(doc.id)?.name).toBe(doc.name);
       expect(db.notebookJson(doc.id)).toBe(JSON.stringify(doc));
       db.saveLibraryCopy({
