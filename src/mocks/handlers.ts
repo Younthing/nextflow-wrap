@@ -18,6 +18,7 @@ import { readDb, writeDb } from "./db";
 import { kernelHandlers } from "./kernels";
 import { runHandlers } from "./runs";
 import { setupHandlers } from "./setup";
+import { fsHandlers } from "./fs";
 
 const summarize = (w: WorkflowDoc): WorkflowSummary => ({
   id: w.id,
@@ -32,6 +33,7 @@ const notFound = () => HttpResponse.json({ message: "流程不存在" }, { statu
 export const handlers = [
   ...kernelHandlers,
   ...setupHandlers,
+  ...fsHandlers,
   http.get("/api/health", async () => {
     await delay(150);
     return HttpResponse.json<HealthStatus>({

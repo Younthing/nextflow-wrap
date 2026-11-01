@@ -4,6 +4,7 @@ import { EXAMPLE_MODULES } from "@/features/workflow/example-modules";
 import { defaultLaunchConfig } from "@/features/project/launch";
 import { NEXTFLOW_VERSION } from "@/features/project/templates";
 import type { RunDetail } from "@/features/runs/types";
+import { fsHandlers } from "./fs";
 import { kernelHandlers } from "./kernels";
 
 export const storyWorkflow = {
@@ -45,6 +46,7 @@ export const storyRun: RunDetail = {
 /** Deterministic, read-only fixtures. Unknown APIs fail here instead of reaching a runner. */
 export const storyHandlers = [
   ...kernelHandlers,
+  ...fsHandlers,
   http.get("/api/script-modules", () => HttpResponse.json({ modules: EXAMPLE_MODULES, references: {} })),
   http.get("/api/health", () =>
     HttpResponse.json({

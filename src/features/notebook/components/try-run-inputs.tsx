@@ -4,7 +4,7 @@ import * as React from "react";
 
 import { Button } from "@/components/ui/button";
 import { FormField } from "@/components/ui/form-field";
-import { Input } from "@/components/ui/input";
+import { PathInput } from "@/features/files/components/path-input";
 import {
   bytesLabel,
   defaultInputDraft,
@@ -165,13 +165,14 @@ function PortBinding({
       )}
 
       {draft.source === "path" && (
-        <Input
+        <PathInput
           id={`arg-${input.name}`}
           aria-label={`${input.name} 路径`}
           value={draft.path}
           placeholder={file ? "/data/input.txt" : undefined}
-          onChange={(event) => onChange({ ...draft, path: event.target.value })}
-          className="h-8 font-mono text-xs"
+          onChange={(path) => onChange({ ...draft, path })}
+          kind={/^(dir|directory|path)(\[\])?$/.test(input.type) ? "directory" : "file"}
+          className="h-8 text-xs"
         />
       )}
 
