@@ -60,6 +60,16 @@ export function moduleLibraryDirectory(input?: PathEnv, data?: string): string {
   return join(data ?? dataDirectory(input), "library", "modules");
 }
 
+/**
+ * The workspace this server opens: one research project folder with `studio.json`, `notebooks/`, `modules/`,
+ * `pipelines/`, `samplesheets/` and `runs/`. Set `NEXTFLOW_STUDIO_WORKSPACE` to open another folder.
+ */
+export function workspaceDirectory(input?: PathEnv, data?: string): string {
+  const { env } = context(input);
+  if (env.NEXTFLOW_STUDIO_WORKSPACE) return resolve(/* turbopackIgnore: true */ env.NEXTFLOW_STUDIO_WORKSPACE);
+  return join(data ?? dataDirectory(input), "workspaces", "default");
+}
+
 /** Shared local work directory. Task hashes do not depend on it, so every workflow can use one. */
 export const workDirectory = (input?: PathEnv) => join(dataDirectory(input), "work");
 
