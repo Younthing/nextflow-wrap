@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { stat } from "node:fs/promises";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { ZodError } from "zod";
 import samplesheetSchema from "@/data/samplesheet-schema.json";
 import { containedFile, fileResponse, readTail, resultFiles } from "@/features/runs/server/files";
@@ -79,7 +79,8 @@ async function handle(request: Request, context: Context): Promise<Response> {
         const task = store().tasks(id).find((task) => (task.id ?? task.hash) === key || task.hash === key);
         if (!task) throw new HttpError(404, "任务不存在");
         if (!task.workdir) return json({ text: "" });
-        const workRoot = join(run.projectDir, "../work");
+        // The runner records the absolute work directory it used; runs from before that kept it beside the project.
+        const workRoot = isAbsolute(run.detail.launch.workDir) ? run.detail.launch.workDir : join(run.projectDir, "../work");
         let text = "";
         for (const name of [".command.log", ".command.err", ".command.out", ".command.sh"]) {
           try { text += `\n--- ${name} ---\n${await readTail(await containedFile(workRoot, join(/* turbopackIgnore: true */ task.workdir, name)), 64_000)}`; }

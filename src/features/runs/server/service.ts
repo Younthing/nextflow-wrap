@@ -20,7 +20,8 @@ import { indexModules } from "@/features/workflow/catalog";
 import { parseWorkflowDoc } from "@/features/workflow/document";
 import type { WorkflowDoc } from "@/features/workflow/types";
 import { validateWorkflow } from "@/features/workflow/validate";
-import { dataDirectory, store, type StoredExecution } from "@/lib/server/database";
+import { store, type StoredExecution } from "@/lib/server/database";
+import { executionDirectory, pipelineDirectory } from "@/lib/server/paths";
 import type { RunProgress } from "../types";
 
 export class HttpError extends Error { constructor(readonly status: number, message: string) { super(message); } }
@@ -99,10 +100,11 @@ export function submitRun(body: unknown, idempotency?: string) {
   const launch = checkedLaunch(request.launch);
   const project = generateProject(workflow, index, { registry: launch.registry });
   const id = randomUUID();
-  const root = join(dataDirectory(), "executions", id);
+  const root = executionDirectory(id);
   const now = new Date().toISOString();
   const run: StoredExecution = {
-    lineageId: id, projectDir: join(root, "project"), attemptDir: join(root, "attempts", id),
+    // Every run of a workflow launches from one directory so `-resume` can reuse any earlier session's tasks.
+    lineageId: id, projectDir: pipelineDirectory(workflow.id), attemptDir: join(root, "attempts", id),
     detail: {
       id, runName: launch.runName ?? `studio_${id.replaceAll("-", "").slice(0, 12)}`, workflowId: workflow.id, workflowName: workflow.name,
       executor: launch.executor, profile: profileList(launch), status: "submitted", phase: "queued", submittedAt: now, progress: emptyProgress(),
@@ -139,7 +141,7 @@ export function resumeRun(id: string) {
     next.detail = { ...source.detail, id: newId, runName: `studio_${newId.replaceAll("-", "").slice(0, 12)}`, status: "submitted", phase: "queued", progress: emptyProgress(), submittedAt: new Date().toISOString(), startedAt: undefined, completedAt: undefined, cancelledAt: undefined, errorMessage: undefined, exitCode: undefined };
     next.detail.launch = { ...source.detail.launch, resume: true };
     next.detail.resumeFromRunId = id;
-    next.attemptDir = join(dataDirectory(), "executions", source.lineageId, "attempts", newId);
+    next.attemptDir = join(executionDirectory(source.lineageId), "attempts", newId);
     next.detail.params = { ...next.detail.params, outdir: join(next.attemptDir, "results") };
     next.resumeFrom = id;
     delete next.pid; delete next.pidStart; delete next.owner; delete next.cancelRequested;

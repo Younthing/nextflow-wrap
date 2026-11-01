@@ -2,12 +2,12 @@ import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { createServer } from "node:http";
 import { access, copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { gzipSync } from "node:zlib";
 import { gstr } from "@/features/project/groovy";
 import { profileList, renderRunConfig } from "@/features/project/launch";
 import { CommandError, logTail, runCommand, signalGroup, spawnDetached } from "@/features/project/server/command";
-import { materializeProject } from "@/features/project/server/materialize";
+import { materializeProject, syncProject } from "@/features/project/server/materialize";
 import { preflight, requireLaunchTools, type RuntimeTools } from "@/features/project/server/preflight";
 import { smokeFastq } from "@/features/project/smoke-data";
 import { usesSamplesheet } from "@/features/project/schema";
@@ -15,9 +15,11 @@ import { active } from "@/features/runs/server/service";
 import { historyStatus, nextQueued, slotLimits } from "@/features/runs/server/queue";
 import { ingestEvent, reconcileTrace, refreshProgress } from "@/features/runs/server/tasks";
 import { resultFiles } from "@/features/runs/server/files";
+import { publishMode } from "@/features/runs/server/publish-mode";
 import { hostChainWorkflow, writeHostChainInputs } from "@/features/workflow/host-chain-demo";
 import type { PipelineParams } from "@/features/workflow/types";
 import { dataDirectory, store, type StoredExecution } from "@/lib/server/database";
+import { workDirectory } from "@/lib/server/paths";
 
 const db = store();
 const owner = randomUUID();
@@ -172,21 +174,26 @@ async function execute(run: StoredExecution, tools: RuntimeTools, port: number, 
     const cpus = Math.min(Number(requested.settings.cpus ?? 2), tools.resources.cpus);
     const memory = requested.settings.memory ?? "2.GB";
     const emulate = local && docker && tools.docker && (tools.resources.architecture === "aarch64" || tools.resources.architecture === "arm64");
-    // The runner owns a local work directory; a cluster or cloud run keeps the shared path the user chose.
-    const workDir = local || requested.workDir === "work" ? join(run.projectDir, "../work") : requested.workDir;
+    // The runner owns one local work directory for every workflow; a cluster or cloud run keeps the shared path
+    // the user chose. A resumed run keeps the work directory its source ran in, so its cached tasks are found.
+    const workDir = run.resumeFrom && isAbsolute(requested.workDir) ? requested.workDir
+      : local || requested.workDir === "work" ? workDirectory() : requested.workDir;
     const launch = { ...requested, settings: local ? { ...requested.settings, cpus, memory } : requested.settings, workDir, extraProfiles: [...new Set([...requested.extraProfiles, ...(emulate ? ["emulate_amd64"] : [])])] };
     await requireLaunchTools(launch, tools.env);
-    const params: PipelineParams = { ...run.detail.params, outdir: join(run.attemptDir, "results"), publish_dir_mode: "copy", trace_report_suffix: id };
+    const outdir = join(run.attemptDir, "results");
+    const params: PipelineParams = { ...run.detail.params, outdir, publish_dir_mode: await publishMode(workDir, outdir), trace_report_suffix: id };
     if (usesSamplesheet(run.detail.workflow)) {
       const input = String(params.input ?? "");
       // Web launches use explicit host paths; the server cannot read a browser's filesystem.
       if (!input.startsWith("/")) throw new Error("请输入 runner 主机上样本表的绝对路径");
       await access(input);
     }
-    if (!run.resumeFrom) {
-      // The project generated at submit time is what runs, even if a module is republished meanwhile.
-      await materializeProject(run.detail.project, run.projectDir);
-    } else {
+    // The project generated at submit time is what runs, even if a module is republished meanwhile.
+    // It is written into the workflow's stable launch directory (unchanged files keep their mtime, so
+    // their tasks stay cached) and copied next to the attempt as a read-only record of what ran.
+    await syncProject(run.detail.project, run.projectDir);
+    await materializeProject(run.detail.project, join(run.attemptDir, "project"));
+    if (run.resumeFrom) {
       await access(join(run.projectDir, ".nextflow/cache", run.sessionId!));
       if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(workDir)) await access(workDir);
     }

@@ -19,14 +19,23 @@ export function slotLimits(env: Partial<Record<string, string>> = process.env): 
 const queued = (run: StoredExecution) => run.detail.status === "submitted" && run.detail.phase === "queued";
 const occupying = (run: StoredExecution) => (run.detail.status === "submitted" || run.detail.status === "running") && !queued(run);
 
-/** The oldest queued run whose slot class has room, or undefined. Each class is FIFO on its own. */
+/**
+ * The oldest queued run whose slot class has room, or undefined. Each class is FIFO on its own.
+ * Runs of one workflow share a project directory that the runner rewrites before each start,
+ * so a run waits while another run of the same project is active.
+ */
 export function nextQueued(runs: readonly StoredExecution[], limits: SlotLimits): StoredExecution | undefined {
   const used: SlotLimits = { local: 0, remote: 0 };
-  for (const run of runs) if (occupying(run)) used[slotClass(run)]++;
+  const busyProjects = new Set<string>();
+  for (const run of runs) {
+    if (!occupying(run)) continue;
+    used[slotClass(run)]++;
+    busyProjects.add(run.projectDir);
+  }
   return [...runs]
     .filter(queued)
     .sort((a, b) => a.detail.submittedAt.localeCompare(b.detail.submittedAt))
-    .find((run) => used[slotClass(run)] < limits[slotClass(run)]);
+    .find((run) => used[slotClass(run)] < limits[slotClass(run)] && !busyProjects.has(run.projectDir));
 }
 
 /**

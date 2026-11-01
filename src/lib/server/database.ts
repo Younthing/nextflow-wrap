@@ -1,15 +1,15 @@
 import { mkdirSync } from "node:fs";
-import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { ModuleLibraryCopy } from "@/features/notebook/library-copy";
 import type { NotebookDoc, NotebookRevision, TryRunRecord } from "@/features/notebook/types";
 import type { RunDetail, TaskRecord } from "@/features/runs/types";
 import { commitWorkflowPut, type WorkflowPutResult } from "@/features/workflow/revision";
 import type { ModuleDef, WorkflowDoc } from "@/features/workflow/types";
+import { dataDirectory } from "./paths";
 
 // Runtime data is intentionally outside the deployable Next.js source tree.
-export const dataDirectory = () => resolve(/* turbopackIgnore: true */ process.env.NEXTFLOW_STUDIO_DATA_DIR ?? join(homedir(), ".local/share/nextflow-studio"));
+export { dataDirectory };
 
 export interface StoredExecution {
   detail: RunDetail;

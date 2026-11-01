@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 import type { StoredExecution } from "@/lib/server/database";
 import { historyStatus, nextQueued, slotLimits } from "./queue";
 
-const run = (id: string, executor: string, status: string, phase: string | undefined, submittedAt: string) => ({
-  detail: { id, status, phase, submittedAt, launch: { executor } },
+const run = (id: string, executor: string, status: string, phase: string | undefined, submittedAt: string, projectDir = `/pipelines/${id}`) => ({
+  projectDir, detail: { id, status, phase, submittedAt, launch: { executor } },
 }) as unknown as StoredExecution;
 const limits = { local: 1, remote: 2 };
 
@@ -12,6 +12,15 @@ describe("nextQueued", () => {
   it("takes the oldest queued run first", () => {
     const runs = [run("b", "local", "submitted", "queued", "2026-01-02"), run("a", "local", "submitted", "queued", "2026-01-01")];
     expect(nextQueued(runs, limits)?.detail.id).toBe("a");
+  });
+
+  it("holds a run while another run of the same project is active", () => {
+    const runs = [
+      run("s1", "slurm", "running", "executing", "2026-01-01", "/pipelines/pbmc"),
+      run("s2", "slurm", "submitted", "queued", "2026-01-02", "/pipelines/pbmc"),
+      run("s3", "slurm", "submitted", "queued", "2026-01-03", "/pipelines/docking"),
+    ];
+    expect(nextQueued(runs, limits)?.detail.id).toBe("s3");
   });
 
   it("keeps local runs serial", () => {
