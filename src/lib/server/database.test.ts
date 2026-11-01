@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { demoNotebooks, demoScriptModules } from "@/features/notebook/seed";
-import { qcDemoWorkflow } from "@/features/workflow/qc-demo";
+import { readsQcWorkflow } from "@/features/workflow/demo";
 import { StudioStore } from "./database";
 
 describe("StudioStore", () => {
@@ -12,11 +12,11 @@ describe("StudioStore", () => {
     const directory = mkdtempSync(join(tmpdir(), "studio-db-"));
     try {
       const first = new StudioStore(join(directory, "studio.sqlite"));
-      first.saveWorkflow(qcDemoWorkflow());
+      first.saveWorkflow(readsQcWorkflow("qc-smoke"));
       expect(() => first.transaction(() => { first.deleteWorkflow("qc-smoke"); throw new Error("rollback"); })).toThrow("rollback");
       first.close();
       const reopened = new StudioStore(join(directory, "studio.sqlite"));
-      expect(reopened.workflow("qc-smoke")?.name).toBe("FastQC and MultiQC");
+      expect(reopened.workflow("qc-smoke")?.name).toBe("测序质控");
       reopened.close();
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
@@ -25,7 +25,7 @@ describe("StudioStore", () => {
     const directory = mkdtempSync(join(tmpdir(), "studio-db-"));
     try {
       const db = new StudioStore(join(directory, "studio.sqlite"));
-      const original = qcDemoWorkflow();
+      const original = readsQcWorkflow("qc-smoke");
       db.saveWorkflow(original);
       const renamed = db.putWorkflow({ ...original, name: "壳复验改名" });
       expect(renamed.status).toBe("ok");

@@ -1,7 +1,7 @@
 import type { JsonSchema } from "@/features/workflow/queries";
 import { declaredParam } from "@/features/workflow/operators";
 import type { WorkflowDoc } from "@/features/workflow/types";
-import { REFERENCE_ID } from "@/features/workflow/builtins";
+import { REFERENCE_ID, SAMPLESHEET_ID } from "@/features/workflow/builtins";
 
 export interface ReferenceParam {
   name: string;
@@ -42,9 +42,9 @@ const bool = (description: string, extra: Partial<JsonSchema> = {}): JsonSchema 
 });
 
 /**
- * nextflow_schema.json for a generated project: the nf-core template groups
- * plus one group for reference files added on the canvas. The editor renders
- * its params form from this same schema.
+ * nextflow_schema.json for a generated project: input/output, reference files
+ * and operator params from the canvas. The editor renders its params form from
+ * this same schema; the app validates params against it before a run.
  */
 export interface ExtraParam {
   name: string;
@@ -84,50 +84,50 @@ export function patternParams(doc: Pick<WorkflowDoc, "nodes">): ExtraParam[] {
   return out;
 }
 
+/** Whether the canvas reads a samplesheet, so the pipeline needs `--input`. */
+export function usesSamplesheet(doc: Pick<WorkflowDoc, "nodes">): boolean {
+  return doc.nodes.some((node) => node.data.moduleId === SAMPLESHEET_ID && !node.data.disabled);
+}
+
 export function buildParamsSchema(
   name: string,
   description: string,
   refs: ReferenceParam[],
   extras: ExtraParam[] = [],
+  opts: { input?: boolean } = {},
 ): JsonSchema & Record<string, unknown> {
+  const io: Record<string, JsonSchema> = {};
+  if (opts.input) {
+    io.input = str("Path to the comma-separated samplesheet: one row per sample.", {
+      format: "file-path",
+      exists: true,
+      schema: "assets/schema_input.json",
+      mimetype: "text/csv",
+      pattern: "^\\S+\\.csv$",
+      fa_icon: "fas fa-file-csv",
+      help_text: "CSV with columns sample, fastq_1 and fastq_2.",
+    });
+  }
+  io.outdir = str("The output directory where the results will be saved. Use absolute paths on cluster or cloud storage.", {
+    format: "directory-path",
+    fa_icon: "fas fa-folder-open",
+  });
   const defs: Record<string, JsonSchema & Record<string, unknown>> = {
     input_output_options: {
       title: "Input/output options",
       type: "object",
       fa_icon: "fas fa-terminal",
       description: "Define where the pipeline should find input data and save output data.",
-      required: ["input", "outdir"],
-      properties: {
-        input: str("Path to comma-separated file containing information about the samples in the experiment.", {
-          format: "file-path",
-          exists: true,
-          schema: "assets/schema_input.json",
-          mimetype: "text/csv",
-          pattern: "^\\S+\\.csv$",
-          fa_icon: "fas fa-file-csv",
-          help_text: "CSV with columns sample, fastq_1 and fastq_2. One row per FastQ pair.",
-        }),
-        outdir: str("The output directory where the results will be saved. You have to use absolute paths to storage on Cloud infrastructure.", {
-          format: "directory-path",
-          fa_icon: "fas fa-folder-open",
-        }),
-        email: str("Email address for completion summary.", {
-          fa_icon: "fas fa-envelope",
-          pattern: "^([a-zA-Z0-9_\\-\\.]+)@([a-zA-Z0-9_\\-\\.]+)\\.([a-zA-Z]{2,5})$",
-        }),
-        multiqc_title: str("MultiQC report title. Printed as page header, used for filename if not otherwise specified.", {
-          fa_icon: "fas fa-file-signature",
-        }),
-      },
+      required: opts.input ? ["input", "outdir"] : ["outdir"],
+      properties: io,
     },
   };
-
   if (refs.length) {
     defs.reference_files = {
       title: "Reference files",
       type: "object",
       fa_icon: "fas fa-dna",
-      description: "Reference files used by the pipeline. Set them here or select an iGenomes key with --genome.",
+      description: "Reference files used by the pipeline.",
       properties: Object.fromEntries(
         refs.map((r) => [
           r.name,
@@ -140,9 +140,7 @@ export function buildParamsSchema(
         ]),
       ),
     };
-    defs.reference_files.properties!.genome = str("Name of iGenomes reference.", { fa_icon: "fas fa-book", hidden: true });
   }
-
   if (extras.length) {
     defs.channel_inputs = {
       title: "Channel inputs",
@@ -158,67 +156,18 @@ export function buildParamsSchema(
       ),
     };
   }
-
-  defs.institutional_config_options = {
-    title: "Institutional config options",
-    type: "object",
-    fa_icon: "fas fa-university",
-    description: "Parameters used to describe centralised config profiles. These should not be edited.",
-    properties: {
-      custom_config_version: str("Git commit id for Institutional configs.", { default: "master", hidden: true }),
-      custom_config_base: str("Base directory for Institutional configs.", {
-        default: "https://raw.githubusercontent.com/nf-core/configs/master",
-        hidden: true,
-      }),
-      config_profile_name: str("Institutional config name.", { hidden: true }),
-      config_profile_description: str("Institutional config description.", { hidden: true }),
-      config_profile_contact: str("Institutional config contact information.", { hidden: true }),
-      config_profile_url: str("Institutional config URL link.", { hidden: true }),
-    },
-  };
-
   defs.generic_options = {
     title: "Generic options",
     type: "object",
     fa_icon: "fas fa-file-import",
     description: "Less common options for the pipeline, typically set in a config file.",
     properties: {
-      version: bool("Display version and exit.", { hidden: true }),
       publish_dir_mode: str("Method used to save pipeline results to output directory.", {
         default: "copy",
         enum: ["symlink", "rellink", "link", "copy", "copyNoFollow", "move"],
         hidden: true,
       }),
-      email_on_fail: str("Email address for completion summary, only when pipeline fails.", { hidden: true }),
-      plaintext_email: bool("Send plain-text email instead of HTML.", { hidden: true }),
-      max_multiqc_email_size: str("File size limit when attaching MultiQC reports to summary emails.", {
-        default: "25.MB",
-        pattern: "^\\d+(\\.\\d+)?\\.?\\s*(K|M|G|T)?B$",
-        hidden: true,
-      }),
-      monochrome_logs: bool("Do not use coloured log outputs.", { hidden: true }),
-      multiqc_config: str("Custom config file to supply to MultiQC.", { format: "file-path", hidden: true }),
-      multiqc_logo: str("Custom logo file to supply to MultiQC. File name must also be set in the MultiQC config file", {
-        format: "file-path",
-        hidden: true,
-      }),
-      multiqc_methods_description: str("Custom MultiQC yaml file containing HTML including a methods description.", {
-        format: "file-path",
-      }),
-      validate_params: bool("Boolean whether to validate parameters against the schema at runtime", {
-        default: true,
-        hidden: true,
-      }),
-      pipelines_testdata_base_path: str("Base URL or local path to location of pipeline test dataset files", {
-        default: "https://raw.githubusercontent.com/nf-core/test-datasets/",
-        hidden: true,
-      }),
-      trace_report_suffix: str("Suffix to add to the trace report filename. Default is the date and time in the format yyyy-MM-dd_HH-mm-ss.", {
-        hidden: true,
-      }),
-      help: { type: ["boolean", "string"], description: "Display the help message.", hidden: true },
-      help_full: bool("Display the full detailed help message.", { hidden: true }),
-      show_hidden: bool("Display hidden parameters in the help message (only works when --help or --help_full are provided).", {
+      trace_report_suffix: str("Suffix for the execution report file names. Defaults to the date and time.", {
         hidden: true,
       }),
     },
@@ -237,7 +186,6 @@ export function buildParamsSchema(
 
 /** Groovy expressions for params whose default is computed at run time. */
 const COMPUTED_DEFAULTS: Record<string, string> = {
-  custom_config_base: '"https://raw.githubusercontent.com/nf-core/configs/${params.custom_config_version}"',
   trace_report_suffix: "new java.util.Date().format( 'yyyy-MM-dd_HH-mm-ss')",
 };
 

@@ -42,12 +42,10 @@ export function RunDialog({
   open,
   onOpenChange,
   issues,
-  modulesSha,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   issues: Issue[];
-  modulesSha: string;
 }) {
   const store = useEditorStoreApi();
   const params = useEditorStore((s) => s.params);
@@ -80,7 +78,6 @@ export function RunDialog({
     try {
       return {
         project: generateProject(store.getState().toDoc(), index, {
-          modulesSha,
           registry: config.registry,
         }),
       };
@@ -90,7 +87,7 @@ export function RunDialog({
     }
     // revision tracks every edit to the document.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, index, modulesSha, config.registry, revision]);
+  }, [open, index, config.registry, revision]);
 
   const runConfig = renderRunConfig(launchConfig);
   const command = launchCommand(launchConfig);
@@ -118,11 +115,9 @@ export function RunDialog({
         project: {
           name: project.meta.name,
           files: project.files.map(({ path, content }) => ({ path, content })),
-          components: project.components,
         },
         params: doc.params,
         launch: launchConfig,
-        modulesSha,
         runConfig,
         command,
       },
@@ -141,7 +136,7 @@ export function RunDialog({
         <DialogHeader>
           <DialogTitle className="font-serif">运行流程</DialogTitle>
           <DialogDescription>
-            画布会生成一个 nf-core 结构的 Nextflow
+            画布会生成一个标准的 Nextflow
             项目，由后端用下面的命令启动。
           </DialogDescription>
         </DialogHeader>
@@ -179,7 +174,6 @@ export function RunDialog({
             {generated?.project ? (
               <ProjectPreview
                 files={generated.project.files}
-                components={generated.project.components}
                 className="min-h-0 flex-1"
               />
             ) : generated && "error" in generated ? (

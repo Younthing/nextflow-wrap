@@ -42,7 +42,7 @@ const receipt: TryRunRecord = {
 };
 
 describe("script module project files", () => {
-  it("emits a hidden local process and keeps the script out of nf-core install", () => {
+  it("emits a hidden local process next to its script", () => {
     const def = buildScriptModule({
       notebook,
       name: "hello_note",
@@ -62,17 +62,15 @@ describe("script module project files", () => {
       edges: [],
       updatedAt: notebook.updatedAt,
     };
-    const project = generateProject(doc, indexModules([def]), { modulesSha: "abc" });
-    const workflow = project.files.find((file) => file.path.startsWith("workflows/"))!.content;
+    const project = generateProject(doc, indexModules([def]), {});
+    const workflow = project.files.find((file) => file.path === "main.nf")!.content;
     const process = project.files.find((file) => file.path === `modules/local/${def.path}/main.nf`)!.content;
     const script = project.files.find((file) => file.path === def.command)!.content;
-    expect(workflow).toContain(`from '../modules/local/${def.path}/main'`);
+    expect(workflow).toContain(`from './modules/local/${def.path}/main'`);
     expect(workflow).toContain("HELLO_NOTE (");
     expect(process).toContain("process HELLO_NOTE");
     expect(process).not.toContain("notebook");
     expect(script).toContain("argparse");
-    expect(project.components.some((component) => component.path === def.path)).toBe(false);
-    expect(JSON.parse(project.files.find((file) => file.path === "modules.json")!.content).repos["https://github.com/nf-core/modules.git"].modules["nf-core"][def.path]).toBeUndefined();
     expect(process).not.toContain("conda ");
     expect(process).not.toContain("container ");
   });
@@ -108,7 +106,7 @@ describe("script module project files", () => {
       ],
       edges: [],
       updatedAt: notebook.updatedAt,
-    }, indexModules([def]), { modulesSha: "abc" });
+    }, indexModules([def]), {});
     const process = project.files.find((file) => file.path === `modules/local/${def.path}/main.nf`)!.content;
     expect(process).toContain("conda '/envs/py311-pandas.yml'");
     expect(process).toContain("container 'ghcr.io/org/py311-pandas:1.2'");

@@ -1,11 +1,19 @@
 import { describe, expect, it } from "vitest";
 
-import catalog from "@/data/nf-core-modules.json";
 import { BUILTIN_MODULES } from "./builtins";
+import {
+  EXAMPLE_CLUSTER_ID,
+  EXAMPLE_DOCK_ID,
+  EXAMPLE_FASTQ_QC_ID,
+  EXAMPLE_MODULES,
+  EXAMPLE_REPORT_ID,
+  EXAMPLE_SCANPY_QC_ID,
+  EXAMPLE_TRIM_ID,
+} from "./example-modules";
 import { modulesForSearch, moduleSearchEmptyLabel, type PendingConnection } from "./module-search";
-import type { ModuleCatalog, ModuleDef, PortDef } from "./types";
+import type { ModuleDef, PortDef } from "./types";
 
-const all: ModuleDef[] = [...BUILTIN_MODULES, ...(catalog as ModuleCatalog).modules];
+const all: ModuleDef[] = [...BUILTIN_MODULES, ...EXAMPLE_MODULES];
 const def = (id: string) => all.find((module) => module.id === id)!;
 const output = (id: string, name: string) => def(id).outputs.find((port) => port.name === name)!;
 const input = (id: string, name: string) => def(id).inputs.find((port) => port.name === name)!;
@@ -19,61 +27,50 @@ const ids = (query: string, pending?: PendingConnection) =>
   modulesForSearch(all, query, pending).map((hit) => hit.def.id);
 
 describe("modulesForSearch", () => {
-  const bam = from("nf-core/samtools/sort", "bam", "source", "out");
+  const adata = from(EXAMPLE_SCANPY_QC_ID, "adata", "source", "out");
 
-  it("lists only modules that can take a dangling BAM output", () => {
-    const hits = modulesForSearch(all, "", bam);
+  it("lists only modules that can take a dangling AnnData output", () => {
+    const hits = modulesForSearch(all, "", adata);
     const listed = hits.map((hit) => hit.def.id);
 
-    expect(listed).not.toContain("nf-core/fastqc");
-    expect(listed).not.toContain("nf-core/fastp");
-    expect(listed).not.toContain("nf-core/trimgalore");
-    expect(listed).not.toContain("nf-core/cutadapt");
-    expect(listed).toContain("nf-core/samtools/flagstat");
-    expect(listed).toContain("nf-core/deeptools/bamcoverage");
-    expect(listed).toContain("nf-core/picard/markduplicates");
-    expect(listed).toContain("nf-core/gatk4/haplotypecaller");
-    expect(hits.find((hit) => hit.def.id === "nf-core/samtools/flagstat")?.port?.name).toBe("bam");
-    expect(hits.find((hit) => hit.def.id === "nf-core/picard/markduplicates")?.port?.name).toBe("reads");
-    expect(hits.find((hit) => hit.def.id === "nf-core/bwa/mem")?.port?.name).toBe("index");
-    expect(hits.find((hit) => hit.def.id === "nf-core/salmon/quant")?.port?.name).toBe("reads");
-    expect(listed.indexOf("nf-core/qualimap/rnaseq")).toBe(0);
-    expect(listed.indexOf("nf-core/samtools/flagstat")).toBeLessThan(listed.indexOf("nf-core/multiqc"));
+    expect(listed).not.toContain(EXAMPLE_FASTQ_QC_ID);
+    expect(listed).not.toContain(EXAMPLE_TRIM_ID);
+    expect(listed).not.toContain(EXAMPLE_DOCK_ID);
+    expect(listed).toContain(EXAMPLE_CLUSTER_ID);
+    expect(listed).toContain(EXAMPLE_REPORT_ID);
+    expect(hits.find((hit) => hit.def.id === EXAMPLE_CLUSTER_ID)?.port?.name).toBe("adata");
+    expect(hits.find((hit) => hit.def.id === EXAMPLE_REPORT_ID)?.port?.name).toBe("files");
+    expect(listed.indexOf(EXAMPLE_CLUSTER_ID)).toBeLessThan(listed.indexOf(EXAMPLE_REPORT_ID));
   });
 
   it("keeps a typed query inside the compatible set", () => {
-    expect(ids("fastqc", bam)).toEqual([]);
-    expect(ids("flagstat", bam)).toContain("nf-core/samtools/flagstat");
-    expect(ids("multiqc", bam)).toEqual(["nf-core/multiqc"]);
+    expect(ids("vina", adata)).toEqual([]);
+    expect(ids("leiden", adata)).toEqual([EXAMPLE_CLUSTER_ID]);
   });
 
-  it("lists read processors for a FastQ output and skips BAM-only inputs", () => {
+  it("lists read processors for a FastQ output and skips AnnData inputs", () => {
     const reads = from("builtin/samplesheet", "reads", "source", "out");
     const hits = modulesForSearch(all, "", reads);
     const listed = hits.map((hit) => hit.def.id);
 
-    expect(listed).toContain("nf-core/fastqc");
-    expect(listed).toContain("nf-core/fastp");
-    expect(listed).toContain("nf-core/star/align");
-    expect(listed).not.toContain("nf-core/samtools/sort");
-    expect(hits.find((hit) => hit.def.id === "nf-core/star/align")?.port?.name).toBe("reads");
-    expect(listed.indexOf("nf-core/fastqc")).toBeLessThan(listed.indexOf("nf-core/gunzip"));
+    expect(listed).toContain(EXAMPLE_FASTQ_QC_ID);
+    expect(listed).toContain(EXAMPLE_TRIM_ID);
+    expect(listed).not.toContain(EXAMPLE_SCANPY_QC_ID);
+    expect(hits.find((hit) => hit.def.id === EXAMPLE_TRIM_ID)?.port?.name).toBe("reads");
+    expect(listed.indexOf(EXAMPLE_FASTQ_QC_ID)).toBeLessThan(listed.indexOf(EXAMPLE_REPORT_ID));
   });
 
   it("finds modules that emit a channel into a dangling input", () => {
-    const sortIn = from("nf-core/samtools/sort", "bam", "target", "in");
-    const hits = modulesForSearch(all, "", sortIn);
+    const clusterIn = from(EXAMPLE_CLUSTER_ID, "adata", "target", "in");
+    const hits = modulesForSearch(all, "", clusterIn);
 
-    expect(hits.map((hit) => hit.def.id)).not.toContain("nf-core/fastqc");
-    expect(hits.map((hit) => hit.def.id)).toContain("nf-core/star/align");
-    expect(hits.find((hit) => hit.def.id === "nf-core/star/align")?.port?.elements.some((el) => el.format === "bam")).toBe(
-      true,
-    );
+    expect(hits.map((hit) => hit.def.id)).not.toContain(EXAMPLE_FASTQ_QC_ID);
+    expect(hits.find((hit) => hit.def.id === EXAMPLE_SCANPY_QC_ID)?.port?.elements.some((el) => el.format === "h5ad")).toBe(true);
   });
 
   it("searches the whole catalog when no link is pending", () => {
     expect(ids("")).toEqual(all.map((module) => module.id));
-    expect(ids("fastqc")).toContain("nf-core/fastqc");
+    expect(ids("scanpy")).toContain(EXAMPLE_SCANPY_QC_ID);
   });
 
   it("returns nothing when no port agrees, including after the query is cleared", () => {
@@ -84,10 +81,10 @@ describe("modulesForSearch", () => {
     };
     const pending: PendingConnection = { port: count, side: "source" };
     expect(modulesForSearch(all, "", pending)).toEqual([]);
-    expect(modulesForSearch(all, "fastqc", pending)).toEqual([]);
+    expect(modulesForSearch(all, "scanpy", pending)).toEqual([]);
     expect(moduleSearchEmptyLabel(pending, "")).toBe("没有能连接 count [integer] 的模块");
-    expect(moduleSearchEmptyLabel(pending, "fastqc")).toBe("没有能连接 count [integer] 的匹配模块");
-    expect(moduleSearchEmptyLabel(undefined, "fastqc")).toBe("没有匹配的模块");
+    expect(moduleSearchEmptyLabel(pending, "scanpy")).toBe("没有能连接 count [integer] 的匹配模块");
+    expect(moduleSearchEmptyLabel(undefined, "scanpy")).toBe("没有匹配的模块");
   });
 
   it("fills a missing FastQ type from the port description", () => {

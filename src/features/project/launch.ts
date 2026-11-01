@@ -234,6 +234,12 @@ export function launchTools(config: LaunchConfig): string[][] {
 /** The runtime switches Nextflow reads. `shell` turns all of them off. */
 const RUNTIME_SWITCHES = ["conda", "docker", "podman", "singularity", "apptainer", "charliecloud", "shifter", "sarus", "spack"] as const;
 
+/**
+ * A runtime that brings its own software keeps the user's Python and R libraries out of tasks.
+ * Shell runs keep them, because there the host's own packages are the software.
+ */
+const RUNTIME_ISOLATION = ["env.PYTHONNOUSERSITE = 1", 'env.R_PROFILE_USER = "/.Rprofile"', 'env.R_ENVIRON_USER = "/.Renviron"'];
+
 const ENGINE_EXTRAS: Partial<Record<ContainerEngine, string[]>> = {
   conda: ["conda.channels = ['conda-forge', 'bioconda']"],
   mamba: ["conda.useMamba = true", "conda.channels = ['conda-forge', 'bioconda']"],
@@ -243,6 +249,10 @@ const ENGINE_EXTRAS: Partial<Record<ContainerEngine, string[]>> = {
   apptainer: ["apptainer.autoMounts = true"],
 };
 
+/** Profiles a generated project defines besides the runtimes, usable as extra `-profile` entries. */
+export const EXTRA_PROFILES = ["debug", "gpu", "arm64", "emulate_amd64", "wave"] as const;
+export type ExtraProfile = (typeof EXTRA_PROFILES)[number];
+
 /** One `-profile` per runtime: it switches that runtime on and every other one off. */
 export function runtimeProfiles(indent = "    "): string {
   return ENGINES.filter((engine) => engine !== "shell" && engine !== "wave")
@@ -251,6 +261,7 @@ export function runtimeProfiles(indent = "    "): string {
       const lines = [
         ...RUNTIME_SWITCHES.map((name) => `${name}.enabled = ${name === on}`),
         ...(ENGINE_EXTRAS[engine] ?? []),
+        ...RUNTIME_ISOLATION,
       ];
       return [`${indent}${engine} {`, ...lines.map((line) => `${indent}    ${line}`), `${indent}}`].join("\n");
     })

@@ -2,6 +2,7 @@ import * as React from "react";
 import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { expect, userEvent, within } from "storybook/test";
 
+import { KernelControls } from "../components/kernel-controls";
 import { KernelPicker } from "../components/kernel-picker";
 import { ModuleEnvFields, ModuleEnvPreview } from "../components/module-env-form";
 
@@ -70,5 +71,32 @@ export const EnvFields: Story = {
     await expect(canvas.getByText(/试跑与 process 使用同一份/)).toHaveTextContent("/envs/py311-pandas.yml");
     await expect(canvas.getByText(/试跑与 process 使用同一份/)).toHaveTextContent("ghcr.io/org/py311-pandas:1.2");
     await expect(canvas.queryByRole("status")).toBeNull();
+  },
+};
+
+export const JupyterKernels: Story = {
+  render: () => <KernelDemo />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const body = within(canvasElement.ownerDocument.body);
+    await userEvent.click(canvas.getByRole("button", { name: /py311-pandas/ }));
+    await expect(await body.findByText("本机 Jupyter 内核")).toBeInTheDocument();
+    await userEvent.click(body.getByRole("option", { name: "Python (scanpy) · scanpy" }));
+    await expect(canvas.getByRole("button", { name: /scanpy/ })).toBeInTheDocument();
+  },
+};
+
+export const KernelToolbar: Story = {
+  render: () => (
+    <div className="glass flex items-center gap-2 rounded-xl px-3 py-2">
+      <KernelControls notebookId="nb_story_kernel" running={false} />
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByText("内核未启动")).toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "中断" })).toBeDisabled();
+    await userEvent.click(canvas.getByRole("button", { name: "重启内核" }));
+    await expect(await canvas.findByText("内核空闲")).toBeInTheDocument();
   },
 };

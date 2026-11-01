@@ -2,10 +2,8 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import catalog from "@/data/nf-core-modules.json";
 import { indexModules } from "@/features/workflow/catalog";
-import { qcDemoWorkflow } from "@/features/workflow/qc-demo";
-import type { ModuleCatalog } from "@/features/workflow/types";
+import { hostChainWorkflow } from "@/features/workflow/host-chain-demo";
 import { generateProject } from "../generate";
 import { materializeProject, projectPath } from "./materialize";
 
@@ -15,16 +13,14 @@ afterEach(async () => {
 });
 
 describe("materializeProject", () => {
-  it("writes an execution project without claiming remote components are installed", async () => {
+  it("writes every project file once", async () => {
     const parent = await mkdtemp(join(tmpdir(), "nf-studio-"));
     temporaryDirectories.push(parent);
     const directory = join(parent, "project");
-    const typed = catalog as ModuleCatalog;
-    const project = generateProject(qcDemoWorkflow(), indexModules(typed.modules), { modulesSha: typed.gitSha });
+    const project = generateProject(hostChainWorkflow("/tmp/inputs"), indexModules([]));
     await materializeProject(project, directory);
     expect(await readFile(join(directory, "main.nf"), "utf8")).toContain("workflow {");
-    expect(JSON.parse(await readFile(join(directory, "components.lock.json"), "utf8")).repos).toBeDefined();
-    await expect(readFile(join(directory, "modules.json"))).rejects.toMatchObject({ code: "ENOENT" });
+    expect(await readFile(join(directory, "nextflow.config"), "utf8")).toContain("profiles {");
     await expect(materializeProject(project, directory)).rejects.toMatchObject({ code: "EEXIST" });
   });
 

@@ -42,12 +42,10 @@ export interface RunSummary {
 export interface ProjectSnapshot {
   name: string;
   files: { path: string; content: string }[];
-  components: { kind: "module" | "subworkflow"; path: string; gitSha: string }[];
 }
 
 /** POST /api/runs */
 export interface LaunchRequest {
-  modulesSha?: string;
   workflow: WorkflowDoc;
   project: ProjectSnapshot;
   params: PipelineParams;

@@ -1,4 +1,4 @@
-import type { PortDef } from "@/features/workflow/types";
+import type { PortDef, WidgetValue } from "@/features/workflow/types";
 import type {
   CellRef,
   ConvertedNotebook,
@@ -120,14 +120,27 @@ function widgetFor(type: string): string {
   return "string";
 }
 
+/** A declared default as the widget value a new canvas node starts with. */
+function widgetDefault(widget: string, value: string | undefined): WidgetValue | undefined {
+  if (value === undefined) return undefined;
+  if (widget === "boolean") return value === "true";
+  if (widget === "integer" || widget === "number") {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : undefined;
+  }
+  return value;
+}
+
 export function inputPorts(inputs: MarkerInput[]): PortDef[] {
   return inputs.map((input) => {
     if (isValueType(input.type)) {
       const widget = widgetFor(input.type);
+      const initial = widgetDefault(widget, input.defaultValue);
       return {
         name: input.name,
         description: input.defaultValue !== undefined ? `默认 ${input.defaultValue}` : "参数",
         widget,
+        ...(initial !== undefined ? { default: initial } : {}),
         elements: [
           {
             name: input.name,

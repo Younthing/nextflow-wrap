@@ -16,7 +16,7 @@ describe("local API origin validation", () => {
 });
 
 describe("launch validation", () => {
-  const base = { ...defaultLaunchConfig(), extraProfiles: [] as ("test" | "debug")[], registry: "quay.io" as const };
+  const base = { ...defaultLaunchConfig(), extraProfiles: [] as ("gpu" | "debug")[], registry: "quay.io" as const };
 
   it("keeps any Nextflow executor and runtime the form offers", () => {
     expect(checkedLaunch({ ...base, engine: "conda" })).toMatchObject({ executor: "local", engine: "conda" });

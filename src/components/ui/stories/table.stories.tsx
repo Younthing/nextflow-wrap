@@ -161,14 +161,14 @@ export const LongContent: Story = {
       <TableBody>
         <TableRow>
           <TableCell className="align-top">
-            <div className="truncate font-medium">nf-core/rnaseq</div>
+            <div className="truncate font-medium">studio/scrna</div>
             <div className="text-xs text-muted-foreground">
               使用 STAR、Salmon 或 HISAT2 做比对和定量，并输出基因计数、转录本计数和
               MultiQC 报告。这条说明故意写得很长，用来确认单元格在固定表格宽度里换行。
             </div>
           </TableCell>
           <TableCell className="align-top break-all font-mono text-xs text-muted-foreground">
-            /data/projects/nf-core/rnaseq/results/star_salmon/multiqc/star_salmon/multiqc_report.html
+            /data/projects/studio/scrna/results/summary_report/summary_report.html
           </TableCell>
         </TableRow>
       </TableBody>

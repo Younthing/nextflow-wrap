@@ -187,7 +187,8 @@ export function NotebookCellCard({
             }}
             onKeyDown={handleCommandKeyDown}
           >
-            {showRunning ? "[*]" : `[${number}]`}
+            {/* A persistent kernel numbers executions the way Jupyter does; otherwise show the position. */}
+            {showRunning ? "[*]" : `[${executable && output?.executionCount !== undefined ? output.executionCount : number}]`}
           </button>
         </div>
         <div className="min-w-0 flex-1">

@@ -1,11 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { FileCode2, FileJson, FileText, Folder, Package } from "lucide-react";
+import { FileCode2, FileJson, FileText, Folder } from "lucide-react";
 
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
-import type { ProjectFile, RemoteComponent } from "../generate";
+import type { ProjectFile } from "../generate";
 import { CodeViewer } from "./code-viewer";
 
 const languageOf = (path: string): ProjectFile["language"] => {
@@ -52,7 +52,6 @@ function treeRows(files: { path: string }[]) {
 
 export function ProjectPreview({
   files,
-  components = [],
   initialPath = "main.nf",
   className,
 }: {
@@ -61,7 +60,6 @@ export function ProjectPreview({
     content: string;
     language?: ProjectFile["language"];
   }[];
-  components?: RemoteComponent[];
   initialPath?: string;
   className?: string;
 }) {
@@ -103,27 +101,6 @@ export function ProjectPreview({
             ),
           )}
         </ul>
-        {components.length > 0 && (
-          <div className="border-t border-border/60 p-3 text-xs">
-            <div className="mb-1.5 font-semibold text-muted-foreground">
-              安装时从 nf-core 拉取
-            </div>
-            <ul className="grid gap-1">
-              {components.map((c) => (
-                <li
-                  key={`${c.kind}:${c.path}`}
-                  className="flex items-center gap-1.5 font-mono"
-                >
-                  <Package className="size-3 shrink-0 text-muted-foreground" />
-                  <span className="truncate">
-                    {c.kind === "module" ? "modules" : "subworkflows"}/nf-core/
-                    {c.path}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
       </ScrollArea>
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
         {file && (

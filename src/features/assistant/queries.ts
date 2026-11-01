@@ -3,7 +3,6 @@
 import { type QueryClient, useQuery } from "@tanstack/react-query";
 import type { HealthStatus } from "@/lib/api-types";
 import { indexModules, type ModuleIndex } from "@/features/workflow/catalog";
-import type { ModuleCatalog } from "@/features/workflow/types";
 import { moduleCatalogQueryOptions } from "@/features/workflow/queries";
 import { healthQueryOptions } from "@/features/runs/queries";
 import type { AssistantStatus } from "./assistant-provider";
@@ -54,23 +53,16 @@ export async function loadHealth(
 export async function loadCatalog(
   qc: QueryClient,
   stored: ModuleIndex,
-): Promise<{ index: ModuleIndex; gitSha: string; error?: string }> {
-  const cached = qc.getQueryData<ModuleCatalog>(["modules"]);
-  if (stored.size && cached?.gitSha)
-    return { index: stored, gitSha: cached.gitSha };
+): Promise<{ index: ModuleIndex; error?: string }> {
+  const options = moduleCatalogQueryOptions();
+  const cached = qc.getQueryData(options.queryKey);
+  // The editor indexes the published modules once they load; before that it only knows the builtins.
+  if (stored.size && cached) return { index: stored };
   try {
-    const raw = cached ?? (await qc.fetchQuery(moduleCatalogQueryOptions()));
-    if (!raw) return { index: new Map(), gitSha: "", error: "模块库加载失败" };
-    return {
-      index: stored.size ? stored : indexModules(raw.modules),
-      gitSha: raw.gitSha,
-    };
+    const raw = cached ?? (await qc.fetchQuery(options));
+    return { index: indexModules(raw.modules) };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return {
-      index: new Map(),
-      gitSha: "",
-      error: `模块库加载失败：${message}`,
-    };
+    return { index: new Map(), error: `模块库加载失败：${message}` };
   }
 }

@@ -3,7 +3,6 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync, writeFileS
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import catalog from "@/data/nf-core-modules.json";
 import { indexModules } from "@/features/workflow/catalog";
 import { REFERENCE_ID, SAMPLESHEET_ID } from "@/features/workflow/builtins";
 import {
@@ -21,11 +20,10 @@ import {
   JOIN_ID,
   SPLIT_TEXT_ID,
 } from "@/features/workflow/operators";
-import type { ChannelElement, ModuleCatalog, ModuleDef, PortDef, WorkflowDoc, WorkflowEdge, WorkflowNode } from "@/features/workflow/types";
+import type { ChannelElement, ModuleDef, PortDef, WorkflowDoc, WorkflowEdge, WorkflowNode } from "@/features/workflow/types";
 import { generateProject } from "./generate";
 import { standaloneScript } from "./standalone";
 
-const typed = catalog as ModuleCatalog;
 const VERIFY = "/tmp/nf-patterns/.nf-verify";
 const INPUTS = join(VERIFY, "inputs");
 
@@ -36,8 +34,9 @@ const port = (name: string, elements: ChannelElement[]): PortDef => ({ name, des
 
 function moduleOf(id: string, process: string, inputs: PortDef[], outputs: PortDef[] = [port("out", [fileEl("out")])]): ModuleDef {
   return {
-    id: `nf-core/${id}`,
+    id: `script/${id}/v1`,
     path: id,
+    origin: "script",
     name: process,
     process,
     category: "工具",
@@ -112,10 +111,10 @@ function workflow(nodes: WorkflowNode[], edges: WorkflowEdge[], params: Workflow
 
 function generated(doc: WorkflowDoc, modules: ModuleDef[]) {
   const index = indexModules(modules);
-  const project = generateProject(doc, index, { modulesSha: typed.gitSha });
+  const project = generateProject(doc, index);
   return {
     index,
-    wf: project.files.find((file) => file.path === "workflows/patterns.nf")!.content,
+    wf: project.files.find((file) => file.path === "main.nf")!.content,
     cfg: project.files.find((file) => file.path === "conf/modules.config")!.content,
     config: project.files.find((file) => file.path === "nextflow.config")!.content,
   };
