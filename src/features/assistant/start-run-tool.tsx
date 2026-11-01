@@ -20,10 +20,11 @@ import {
 import { useSaveWorkflow } from "@/features/workflow/queries";
 import { loadHealth, loadCatalog } from "./queries";
 import { useAssistantPanel } from "./assistant-provider";
+import { canvasEditModule } from "./modules/canvas-edit";
+import { moduleTool } from "./modules/contract";
 import { RunConfirmDialog, subscribeAbort, useRunConfirm } from "./run-confirm";
 import { RunToolCard } from "./run-tool-card";
 import {
-  START_RUN_DESCRIPTION,
   clipReason,
   confirmThenRun,
   createConfirmQueue,
@@ -63,8 +64,8 @@ export function StartRunTool() {
   });
 
   useFrontendTool({
-    name: "start_run",
-    description: START_RUN_DESCRIPTION,
+    name: moduleTool(canvasEditModule, "start_run").name,
+    description: moduleTool(canvasEditModule, "start_run").description,
     parameters: runToolParameters,
     handler: (args, context) =>
       queue.current(() => startRun(args.reason, context, live)),

@@ -4,7 +4,7 @@ import type { CodexHarness, ProbeResult } from "@/features/codex-harness";
 import { createAssistantResolver, type AssistantChoice, type EnvLike } from "./backend";
 import { createCodexAgent } from "./codex-agent";
 import { ASSISTANT_MAX_STEPS } from "./codex-turn";
-import { ASSISTANT_PROMPT } from "./prompt";
+import { requestAssistantPrompt } from "./modules/request";
 import { allowedCopilotHosts, copilotAccessResponse } from "./request-guard";
 import {
   codexBusyResponse,
@@ -43,6 +43,8 @@ export interface CopilotRouteHandlers {
 
 /**
  * CopilotKit handlers for `/api/copilotkit`. Tools stay in the browser.
+ * The prompt is the host preamble plus whichever modules the request names.
+ * This route does not register tools or contain a scenario's instructions.
  *
  * COPILOT_BACKEND=auto (default) uses a local `codex` CLI when `codex login`
  * has already succeeded, and otherwise the BuiltInAgent selected by
@@ -65,29 +67,36 @@ export function createCopilotRoute(deps: CopilotRouteDeps): CopilotRouteHandlers
     probe: () => probeWithDeadline(deps.harness, probeTimeoutMs),
   });
   const codexSessions = createSessionLimiter(readCodexSessionLimit(deps.env.CODEX_MAX_SESSIONS));
-  let builtinHandler: ((request: Request) => Promise<Response>) | undefined;
+  const builtinHandlers = new Map<string, (request: Request) => Promise<Response>>();
 
   function denied(request: Request) {
     return copilotAccessResponse(request, { allowedHosts: allowedCopilotHosts(deps.env) });
   }
 
-  function builtinCopilotHandler(choice: Extract<AssistantChoice, { enabled: true; backend: "builtin" }>) {
-    if (builtinHandler) return builtinHandler;
-    const agent = new BuiltInAgent({ model: choice.model, prompt: ASSISTANT_PROMPT, maxSteps: ASSISTANT_MAX_STEPS });
-    builtinHandler = createCopilotRuntimeHandler({
+  function builtinCopilotHandler(
+    choice: Extract<AssistantChoice, { enabled: true; backend: "builtin" }>,
+    prompt: string,
+  ) {
+    const key = `${choice.model}\0${prompt}`;
+    const existing = builtinHandlers.get(key);
+    if (existing) return existing;
+    const agent = new BuiltInAgent({ model: choice.model, prompt, maxSteps: ASSISTANT_MAX_STEPS });
+    const handler = createCopilotRuntimeHandler({
       runtime: new CopilotRuntime({ agents: { default: agent } }),
       basePath: "/api/copilotkit",
     });
-    return builtinHandler;
+    builtinHandlers.set(key, handler);
+    return handler;
   }
 
   function codexCopilotHandler(
     choice: Extract<AssistantChoice, { enabled: true; backend: "codex" }>,
     permit: SessionPermit,
+    prompt: string,
   ) {
     const agent = createCodexAgent({
       harness: deps.harness,
-      prompt: ASSISTANT_PROMPT,
+      prompt,
       model: choice.model,
       maxSteps: ASSISTANT_MAX_STEPS,
       permit,
@@ -120,13 +129,14 @@ export function createCopilotRoute(deps: CopilotRouteDeps): CopilotRouteHandlers
         { status: 503 },
       );
     }
-    if (choice.backend !== "codex") return builtinCopilotHandler(choice)(request);
+    const prepared = await requestAssistantPrompt(request);
+    if (choice.backend !== "codex") return builtinCopilotHandler(choice, prepared.prompt)(prepared.request);
 
     const release = codexSessions.tryAcquire();
     if (!release) return codexBusyResponse();
     const permit = createSessionPermit(release);
     try {
-      const response = await codexCopilotHandler(choice, permit)(request);
+      const response = await codexCopilotHandler(choice, permit, prepared.prompt)(prepared.request);
       return holdSession(response, () => permit.releaseIfUnclaimed());
     } catch (error) {
       permit.releaseIfUnclaimed();

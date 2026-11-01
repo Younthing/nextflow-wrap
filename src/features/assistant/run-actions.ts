@@ -27,20 +27,15 @@ import type { WorkflowDoc } from "@/features/workflow/types";
 import type { LaunchRequest, RunStatus } from "@/features/runs/types";
 
 /**
- * Assistant tools that start, stop, or resume a run. The handler waits on a
- * confirm dialog and only then calls the run API. These stay ordinary
- * frontend tools: CopilotKit replays unanswered human-in-the-loop calls after
- * a refresh, which could submit a second run.
+ * Confirmation for assistant tools that start, stop, or resume a run.
+ * The handler waits on the host dialog and only then calls the run API.
+ * Tool descriptions live on the owning module. These stay ordinary frontend
+ * tools: CopilotKit replays unanswered human-in-the-loop calls after a
+ * refresh, which could submit a second run.
  */
 
-export const START_RUN_DESCRIPTION =
-  "启动编辑器里当前已保存的流程。调用后会弹出确认对话框，只有用户接受才会提交运行；拒绝、关闭或中断都不会启动。使用运行对话框里保存的执行器、profile 和工作目录。你必须等这个工具返回后再说运行已启动。";
-
-export const CANCEL_RUN_DESCRIPTION =
-  "停止用户正在查看的这次运行。调用后会弹出确认对话框，只有用户接受才会调用取消接口。已经结束的运行不能停止。你必须等这个工具返回后再说运行已停止。";
-
-export const RESUME_RUN_DESCRIPTION =
-  "从用户正在查看的、已结束且有 Nextflow session 的运行恢复（-resume）。调用后会弹出确认对话框，只有用户接受才会提交恢复。你必须等这个工具返回后再说已经恢复。";
+export { START_RUN_DESCRIPTION } from "./modules/canvas-edit";
+export { CANCEL_RUN_DESCRIPTION, RESUME_RUN_DESCRIPTION } from "./modules/run-diagnostics";
 
 export const runToolParameters = z.object({
   reason: z

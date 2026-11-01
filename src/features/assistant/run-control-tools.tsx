@@ -7,11 +7,11 @@ import { useFrontendTool, type FrontendToolHandlerContext } from "@copilotkit/re
 import { useCancelRun, useResumeRun } from "@/features/runs/queries";
 import type { RunDetail } from "@/features/runs/types";
 import { useAssistantPanel } from "./assistant-provider";
+import { moduleTool } from "./modules/contract";
+import { runDiagnosticsModule } from "./modules/run-diagnostics";
 import { RunConfirmDialog, subscribeAbort, useRunConfirm } from "./run-confirm";
 import { RunToolCard } from "./run-tool-card";
 import {
-  CANCEL_RUN_DESCRIPTION,
-  RESUME_RUN_DESCRIPTION,
   cancelBlockers,
   cancelConfirmView,
   clipReason,
@@ -41,16 +41,16 @@ export function RunControlTools({ run }: { run: RunDetail }) {
   });
 
   useFrontendTool({
-    name: "cancel_run",
-    description: CANCEL_RUN_DESCRIPTION,
+    name: moduleTool(runDiagnosticsModule, "cancel_run").name,
+    description: moduleTool(runDiagnosticsModule, "cancel_run").description,
     parameters: runToolParameters,
     handler: (args, context) => queue.current(() => cancelRun(args.reason, context, live)),
     render: RunToolCard,
   });
 
   useFrontendTool({
-    name: "resume_run",
-    description: RESUME_RUN_DESCRIPTION,
+    name: moduleTool(runDiagnosticsModule, "resume_run").name,
+    description: moduleTool(runDiagnosticsModule, "resume_run").description,
     parameters: runToolParameters,
     handler: (args, context) => queue.current(() => resumeRun(args.reason, context, live)),
     render: RunToolCard,

@@ -14,8 +14,11 @@ import {
   useEditorStoreApi,
 } from "@/features/editor/editor-provider";
 import { useAssistantStatus } from "./assistant-provider";
-import { StartRunTool } from "./start-run-tool";
 import { createEditorActions } from "./editor-actions";
+import { useAssistantModule } from "./modules/activation";
+import { canvasEditModule } from "./modules/canvas-edit";
+import { moduleTool } from "./modules/contract";
+import { StartRunTool } from "./start-run-tool";
 
 const widgetValue = z.union([z.string(), z.number(), z.boolean()]);
 
@@ -69,9 +72,8 @@ function EditorTools({ onCanvasChange }: { onCanvasChange: () => void }) {
   });
 
   useFrontendTool({
-    name: "search_modules",
-    description:
-      "按关键词搜索模块库（nf-core 模块和内置输入节点），返回模块 id、说明和输入输出端口。",
+    name: moduleTool(canvasEditModule, "search_modules").name,
+    description: moduleTool(canvasEditModule, "search_modules").description,
     parameters: z.object({
       query: z
         .string()
@@ -84,9 +86,8 @@ function EditorTools({ onCanvasChange }: { onCanvasChange: () => void }) {
 
   useFrontendTool(
     {
-      name: "add_module",
-      description:
-        "在画布上添加一个模块节点，返回节点 id、别名和端口。after 可以指定放在哪个节点右边。",
+      name: moduleTool(canvasEditModule, "add_module").name,
+      description: moduleTool(canvasEditModule, "add_module").description,
       parameters: z.object({
         moduleId: z
           .string()
@@ -105,9 +106,8 @@ function EditorTools({ onCanvasChange }: { onCanvasChange: () => void }) {
   );
 
   useFrontendTool({
-    name: "connect_nodes",
-    description:
-      "把一个节点的输出端口连到另一个节点的输入端口。节点只有一个对应端口时可以省略端口名。",
+    name: moduleTool(canvasEditModule, "connect_nodes").name,
+    description: moduleTool(canvasEditModule, "connect_nodes").description,
     parameters: z.object({
       source: z.string().describe("上游节点 id 或别名"),
       sourcePort: z.string().optional(),
@@ -118,23 +118,22 @@ function EditorTools({ onCanvasChange }: { onCanvasChange: () => void }) {
   });
 
   useFrontendTool({
-    name: "disconnect_nodes",
-    description: "删除两个节点之间的所有连线。",
+    name: moduleTool(canvasEditModule, "disconnect_nodes").name,
+    description: moduleTool(canvasEditModule, "disconnect_nodes").description,
     parameters: z.object({ source: z.string(), target: z.string() }),
     handler: async (args) => attempt(() => disconnect(args)),
   });
 
   useFrontendTool({
-    name: "remove_node",
-    description: "删除一个节点和它的连线。",
+    name: moduleTool(canvasEditModule, "remove_node").name,
+    description: moduleTool(canvasEditModule, "remove_node").description,
     parameters: z.object({ node: z.string().describe("节点 id 或别名") }),
     handler: async ({ node }) => attempt(() => removeNode(node)),
   });
 
   useFrontendTool({
-    name: "configure_node",
-    description:
-      "修改节点：别名、模块参数（widgets）、conf/modules.config 设置（ext.args、ext.prefix、是否发布结果、资源标签）、停用，以及参考文件节点的参数名和格式。只传要改的字段。",
+    name: moduleTool(canvasEditModule, "configure_node").name,
+    description: moduleTool(canvasEditModule, "configure_node").description,
     parameters: z.object({
       node: z.string().describe("节点 id 或别名"),
       alias: z.string().optional(),
@@ -177,9 +176,8 @@ function EditorTools({ onCanvasChange }: { onCanvasChange: () => void }) {
   });
 
   useFrontendTool({
-    name: "set_pipeline_param",
-    description:
-      "设置流程参数（nextflow.config 里的 params），例如 input、outdir、fasta。value 传 null 删除参数。",
+    name: moduleTool(canvasEditModule, "set_pipeline_param").name,
+    description: moduleTool(canvasEditModule, "set_pipeline_param").description,
     parameters: z.object({ key: z.string(), value: widgetValue.nullable() }),
     handler: async ({ key, value }) => attempt(() => setParam(key, value)),
   });
@@ -187,12 +185,13 @@ function EditorTools({ onCanvasChange }: { onCanvasChange: () => void }) {
   return null;
 }
 
-/** Lets the assistant read and edit the open workflow, and start it after a confirmation. */
+/** Canvas-edit module: read and edit the open workflow, then start it after confirmation. */
 export function EditorAssistant({
   onCanvasChange,
 }: {
   onCanvasChange: () => void;
 }) {
+  useAssistantModule(canvasEditModule.id);
   if (!useAssistantStatus().enabled) return null;
   return (
     <>

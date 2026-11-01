@@ -4,6 +4,8 @@ import * as React from "react";
 import { useAssistantStatusQuery } from "./queries";
 import { CopilotKitProvider, CopilotSidebar } from "@copilotkit/react-core/v2";
 import "@copilotkit/react-core/v2/styles.css";
+import { AssistantModuleHost } from "./modules/activation";
+import { ASSISTANT_MODULES_PROP } from "./modules/contract";
 
 const RUNTIME_URL = "/api/copilotkit";
 
@@ -52,9 +54,21 @@ const HIDDEN_TOGGLE = { style: { display: "none" } };
  * settled before children render, so the tree (and editor state) never
  * remounts when the provider appears.
  */
+function sameStringList(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((item, index) => item === right[index]);
+}
+
 export function AssistantProvider({ children }: { children: React.ReactNode }) {
   const { data: status } = useAssistantStatusQuery();
   const [open, setOpen] = React.useState(false);
+  const [modules, setModules] = React.useState<readonly string[]>([]);
+  const onModules = React.useCallback((ids: readonly string[]) => {
+    setModules((current) => (sameStringList(current, ids) ? current : ids));
+  }, []);
+  const properties = React.useMemo(
+    () => ({ [ASSISTANT_MODULES_PROP]: [...modules] }),
+    [modules],
+  );
 
   const value = React.useMemo(
     () => status && { status, open, setOpen },
@@ -62,21 +76,24 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
   );
 
   if (!value) return null;
-  if (!value.status.enabled)
-    return <AssistantContext value={value}>{children}</AssistantContext>;
+  const chat = !value.status.enabled ? (
+    children
+  ) : (
+    <CopilotKitProvider runtimeUrl={RUNTIME_URL} properties={properties}>
+      {children}
+      <CopilotSidebar
+        labels={LABELS}
+        open={open}
+        onOpenChange={setOpen}
+        toggleButton={HIDDEN_TOGGLE}
+        width={380}
+        className="assistant-chat"
+      />
+    </CopilotKitProvider>
+  );
   return (
-    <AssistantContext value={value}>
-      <CopilotKitProvider runtimeUrl={RUNTIME_URL}>
-        {children}
-        <CopilotSidebar
-          labels={LABELS}
-          open={open}
-          onOpenChange={setOpen}
-          toggleButton={HIDDEN_TOGGLE}
-          width={380}
-          className="assistant-chat"
-        />
-      </CopilotKitProvider>
-    </AssistantContext>
+    <AssistantModuleHost onChange={onModules}>
+      <AssistantContext value={value}>{chat}</AssistantContext>
+    </AssistantModuleHost>
   );
 }

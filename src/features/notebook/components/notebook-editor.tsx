@@ -9,6 +9,7 @@ import { AsyncPlaceholder } from "@/components/ui/async-placeholder";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { NotebookAssistant } from "@/features/assistant/modules/surfaces";
 import { nextCellId } from "@/features/notebook/cells";
 import { convertNotebook, ConvertError } from "@/features/notebook/convert";
 import { latestModuleForNotebook } from "@/features/notebook/library";
@@ -80,6 +81,15 @@ function PrepPanel({
 }
 
 export function NotebookEditor({ notebookId }: { notebookId: string }) {
+  return (
+    <>
+      <NotebookAssistant />
+      <NotebookEditorScreen notebookId={notebookId} />
+    </>
+  );
+}
+
+function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
   const router = useRouter();
   const revParam = useSearchParams().get("rev");
   const notebook = useNotebook(notebookId);
