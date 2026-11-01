@@ -23,14 +23,7 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm lint
       - name: Install Nextflow
-        env:
-          NXF_VER: "26.10.4"
-          NXF_DISABLE_CHECK_LATEST: "true"
-          NXF_ANSI_LOG: "false"
-        run: |
-          curl -fsSL -o "$RUNNER_TEMP/nextflow" https://github.com/nextflow-io/nextflow/releases/download/v26.10.4/nextflow
-          sudo install -m 755 "$RUNNER_TEMP/nextflow" /usr/local/bin/nextflow
-          nextflow -version
+        run: bash scripts/install-nextflow.sh
       - run: pnpm test
         env:
           NXF_DISABLE_CHECK_LATEST: "true"
