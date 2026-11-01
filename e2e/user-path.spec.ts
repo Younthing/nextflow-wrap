@@ -198,7 +198,7 @@ async function runLanguage(page: Page, language: "python" | "r") {
   const image = language === "python" ? "python:3.11-slim" : "r-base:4.3.3";
   const figure = language === "python" ? "py-figure" : "r-figure";
   const table = language === "python" ? "py-table" : "r-table";
-  const csvRow = language === "python" ? "S1,3" : "S1,4";
+  const count = language === "python" ? "3" : "4";
 
   await page.goto("/workflows");
   const nav = page.getByRole("navigation", { name: "主导航" });
@@ -294,7 +294,9 @@ async function runLanguage(page: Page, language: "python" | "r") {
   await expect(frame.getByText(table)).toBeVisible();
   await shot(page, `e2e-${language}-figure.png`);
   await published.getByRole("button", { name: /^table\.csv/ }).click();
-  await expect(page.getByRole("tabpanel", { name: "结果" }).locator("pre")).toContainText(csvRow);
+  const csv = page.getByRole("tabpanel", { name: "结果" }).getByRole("table");
+  await expect(csv.getByRole("cell", { name: "S1", exact: true })).toBeVisible();
+  await expect(csv.getByRole("cell", { name: count, exact: true })).toBeVisible();
   await shot(page, `e2e-${language}-results.png`);
 
   await page.goto(notebookUrl);
@@ -333,7 +335,7 @@ async function runLanguage(page: Page, language: "python" | "r") {
       `- conda: ${condaYaml}`,
       `- container: ${image}`,
       "- engine: Shell (real Nextflow local executor; conda and container directives are in the process)",
-      `- results: report.html shows ${figure} and ${table}; table.csv contains ${csvRow}`,
+      `- results: report.html shows ${figure} and ${table}; table.csv renders S1 and ${count}`,
       "- v2 is published after the source-changed hint; the canvas stays on v1, and resume reports 缓存",
       "",
     ].join("\n"),
