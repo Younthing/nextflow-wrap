@@ -288,7 +288,8 @@ async function runLanguage(page: Page, language: "python" | "r") {
   await expect(dialog.getByText("不使用 -profile，进程在本机 shell 里直接执行")).toBeVisible();
   await openLocalProcess(dialog);
   const processFile = dialog.getByRole("tabpanel", { name: /项目文件/ }).locator("pre");
-  await expect(processFile).toContainText(`conda '${condaYaml}'`);
+  // The published module carries a copy of the conda file and points at it.
+  await expect(processFile).toContainText('conda "${moduleDir}/environment.yml"');
   await expect(processFile).toContainText(`container '${image}'`);
   await shot(page, `e2e-${language}-process.png`);
   const start = dialog.getByRole("button", { name: "启动运行" });
