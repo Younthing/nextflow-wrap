@@ -2,9 +2,11 @@ import { delay, http, HttpResponse } from "msw";
 
 import catalog from "@/data/nf-core-modules.json";
 import samplesheetSchema from "@/data/samplesheet-schema.json";
-import { referenceCounts, scriptModuleViews, summarizeNotebook } from "@/features/notebook/library";
 import { patchModuleEnv } from "@/features/notebook/env";
-import { buildScriptModule } from "@/features/notebook/publish";
+import { PercentError } from "@/features/notebook/jupytext";
+import { referenceCounts, scriptModuleViews, summarizeNotebook } from "@/features/notebook/library";
+import { notebookFromLibrary, storedLibraryCopy } from "@/features/notebook/library-copy";
+import { publishScriptModule } from "@/features/notebook/publish";
 import { simulateCells, simulateTryRun, withSampleValues } from "@/features/notebook/simulate";
 import { languageForKernel, type NotebookDoc } from "@/features/notebook/types";
 import { newId } from "@/features/workflow/nodes";
@@ -37,6 +39,31 @@ export const handlers = [
   http.get("/api/modules", async () => {
     await delay(200);
     return HttpResponse.json(catalog as ModuleCatalog);
+  }),
+
+  http.post("/api/script-modules/reopen", async ({ request }) => {
+    const body = (await request.json()) as { moduleId?: string };
+    const moduleId = body.moduleId ?? "";
+    const db = readDb();
+    const moduleDef = db.scriptModules[moduleId];
+    const notebook = moduleDef?.sourceNotebookId ? db.notebooks[moduleDef.sourceNotebookId] : undefined;
+    const revision = notebook && moduleDef?.sourceNotebookRev !== undefined
+      ? db.revisions[`${notebook.id}:${moduleDef.sourceNotebookRev}`]
+      : undefined;
+    const copy = storedLibraryCopy(moduleId, db.libraryCopies[moduleId], moduleDef, notebook, revision);
+    if (!copy) return HttpResponse.json({ message: "这个模块没有可重建的库副本" }, { status: 404 });
+    try {
+      const doc = notebookFromLibrary(copy, newId("nb"));
+      writeDb((next) => {
+        next.libraryCopies[copy.moduleId] = copy;
+        next.notebooks[doc.id] = doc;
+        next.revisions[`${doc.id}:1`] = { notebookId: doc.id, rev: 1, cells: doc.cells, savedAt: doc.updatedAt };
+      });
+      return HttpResponse.json(doc, { status: 201 });
+    } catch (error) {
+      const message = error instanceof PercentError || error instanceof Error ? error.message : "无法重建";
+      return HttpResponse.json({ message }, { status: 400 });
+    }
   }),
 
   http.get("/api/script-modules", async () => {
@@ -167,7 +194,7 @@ export const handlers = [
     if (!doc) return HttpResponse.json({ message: "笔记本不存在" }, { status: 404 });
     const body = (await request.json()) as { name?: string; description?: string; changelog?: string; condaYaml?: string; containerImage?: string };
     try {
-      const moduleDef = buildScriptModule({
+      const published = publishScriptModule({
         notebook: doc,
         name: body.name || doc.name,
         description: body.description || doc.description,
@@ -178,10 +205,11 @@ export const handlers = [
         receipt: readDb().tryRuns[`${id}:${doc.rev}`],
       });
       writeDb((db) => {
-        db.scriptModules[moduleDef.id] = moduleDef;
+        db.scriptModules[published.module.id] = published.module;
+        db.libraryCopies[published.library.moduleId] = published.library;
       });
       const db = readDb();
-      const view = scriptModuleViews([moduleDef], Object.values(db.notebooks), Object.values(db.revisions), Object.values(db.workflows))[0];
+      const view = scriptModuleViews([published.module], Object.values(db.notebooks), Object.values(db.revisions), Object.values(db.workflows))[0];
       return HttpResponse.json(view, { status: 201 });
     } catch (error) {
       return HttpResponse.json({ message: error instanceof Error ? error.message : "无法发布" }, { status: 400 });

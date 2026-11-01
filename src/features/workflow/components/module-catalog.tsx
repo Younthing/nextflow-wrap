@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ChevronRight, NotebookText } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ChevronRight, Loader2, NotebookText } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { AsyncPlaceholder } from "@/components/ui/async-placeholder";
 import { ModuleEnvEditor } from "@/features/notebook/components/module-env-form";
 import { SourceDriftBanner } from "@/features/notebook/components/source-drift-banner";
-import { useScriptModules } from "@/features/notebook/queries";
+import { useReopenLibraryNotebook, useScriptModules } from "@/features/notebook/queries";
 import type { ScriptModuleView } from "@/features/notebook/library";
 import { BUILTIN_MODULES } from "@/features/workflow/builtins";
 import { useModuleCatalog } from "@/features/workflow/queries";
@@ -52,8 +53,11 @@ function matches(def: ModuleDef, query: string): boolean {
 }
 
 export function ModuleCatalog() {
+  const router = useRouter();
   const scripts = useScriptModules();
+  const reopen = useReopenLibraryNotebook();
   const nfcore = useModuleCatalog();
+  const [reopenError, setReopenError] = React.useState<string | null>(null);
   const [filter, setFilter] = React.useState<CatalogFilter>("both");
   const [query, setQuery] = React.useState("");
   const [showNfCore, setShowNfCore] = React.useState(false);
@@ -183,11 +187,31 @@ export function ModuleCatalog() {
                       {script ? (script.referenceCount ? `${script.referenceCount} 个流程` : "—") : ((scripts.data?.references[def.id] ?? 0) ? `${scripts.data?.references[def.id]} 个流程` : "—")}
                     </TableCell>
                     <TableCell>
-                      <div className="flex justify-end">
+                      <div className="flex flex-wrap justify-end gap-1">
                         {script?.sourceNotebookId ? (
-                          <Button asChild variant="outline" size="sm" onClick={(event) => event.stopPropagation()}>
-                            <Link href={`/notebooks/${script.sourceNotebookId}`}>在笔记本中打开源</Link>
-                          </Button>
+                          <>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              aria-label={`从库重建 ${script.name} ${script.version ?? ""}`.trim()}
+                              disabled={reopen.isPending}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setReopenError(null);
+                                reopen.mutate(script.id, {
+                                  onSuccess: (doc) => router.push(`/notebooks/${doc.id}`),
+                                  onError: (error) => setReopenError(error instanceof Error ? error.message : "无法从库重建"),
+                                });
+                              }}
+                            >
+                              {reopen.isPending && reopen.variables === script.id ? <Loader2 className="animate-spin" /> : null}
+                              从库重建
+                            </Button>
+                            <Button asChild variant="outline" size="sm" onClick={(event) => event.stopPropagation()}>
+                              <Link href={`/notebooks/${script.sourceNotebookId}`}>在笔记本中打开源</Link>
+                            </Button>
+                          </>
                         ) : (
                           <Button type="button" variant="outline" size="sm" onClick={() => setContract(def)}>查看契约</Button>
                         )}
@@ -229,6 +253,17 @@ export function ModuleCatalog() {
         </div>
       </div>
 
+      {selectedId && selected && (
+        <div className="rounded-lg border border-border px-3 py-2 text-sm">
+          <span className="font-medium">{selected.name} · {selected.version}</span>
+          <span className="text-muted-foreground">
+            {" "}的库副本可以重建成一本新的可编辑笔记本。源笔记本「{selected.sourceNotebookName}」保持原路径，不会被改写。
+          </span>
+        </div>
+      )}
+
+      {reopenError && <p role="alert" className="text-sm text-destructive">{reopenError}</p>}
+
       {selected?.sourceChanged && selected.sourceNotebookId && selected.sourceNotebookRev !== undefined && selected.sourceNotebookRevCurrent !== undefined && (
         <SourceDriftBanner
           notebookId={selected.sourceNotebookId}
@@ -241,7 +276,7 @@ export function ModuleCatalog() {
       )}
 
       <p className="text-xs text-muted-foreground">
-        每个自定义模块记录 sourceNotebookId 与 sourceNotebookRev。试跑不通过的版本留在这里，标成「不可拖入画布」，不会出现在画布抽屉。内置节点随产品提供。nf-core 打开「显示 nf-core」后才列出，只读。
+        每个自定义模块记录 sourceNotebookId 与 sourceNotebookRev，并保存一份 jupytext 库副本。「从库重建」按那一版新建可编辑笔记本，不改源笔记本。试跑不通过的版本留在这里，标成「不可拖入画布」，不会出现在画布抽屉。内置节点随产品提供。nf-core 打开「显示 nf-core」后才列出，只读。
       </p>
 
       <Dialog open={!!contract} onOpenChange={(open) => !open && setContract(null)}>

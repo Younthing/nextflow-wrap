@@ -21,6 +21,10 @@ export interface NotebookDoc {
   rev: number;
   createdAt: string;
   updatedAt: string;
+  /** Set when this notebook was rebuilt from a module library copy. */
+  libraryModuleId?: string;
+  librarySourceNotebookId?: string;
+  librarySourceNotebookRev?: number;
 }
 
 export interface NotebookRevision {
@@ -43,6 +47,8 @@ export interface NotebookSummary {
   tryRun?: "passed" | "failed";
   moduleName?: string;
   moduleId?: string;
+  /** Rebuilt from a module library copy, not the original analysis notebook. */
+  fromLibrary?: boolean;
 }
 
 export interface MarkerInput {

@@ -118,6 +118,7 @@ export function NotebookList() {
                       ) : (
                         <Badge variant={row.tryRun === "failed" ? "outline" : "success"}>已发布为模块 · {row.publishedVersion}</Badge>
                       )}
+                      {row.fromLibrary && <Badge variant="outline">库重建</Badge>}
                       {row.tryRun === "failed" && <Badge variant="destructive">试跑失败</Badge>}
                     </div>
                   </TableCell>

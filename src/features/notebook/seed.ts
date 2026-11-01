@@ -1,6 +1,7 @@
 import type { ModuleDef } from "@/features/workflow/types";
 import { countCellChanges } from "./changes";
 import { convertNotebook, inputPorts, outputPorts } from "./convert";
+import { buildLibraryCopy, type ModuleLibraryCopy } from "./library-copy";
 import { processName } from "./publish";
 import type { NotebookCell, NotebookDoc, NotebookRevision } from "./types";
 
@@ -234,8 +235,8 @@ export function demoRevisions(notebooks = demoNotebooks()): NotebookRevision[] {
   return revisions;
 }
 
-function published(notebook: NotebookDoc, version: string, tryRun: "passed" | "failed", rev: number): ModuleDef {
-  const converted = convertNotebook({ ...notebook, rev }, `bin/${notebook.id}_${version}.${notebook.language === "r" ? "R" : "py"}`);
+function published(notebook: NotebookDoc, version: string, tryRun: "passed" | "failed", rev: number, cells: NotebookCell[] = notebook.cells): ModuleDef {
+  const converted = convertNotebook({ ...notebook, cells, rev }, `bin/${notebook.id}_${version}.${notebook.language === "r" ? "R" : "py"}`);
   return {
     id: `script/${notebook.id}/${version}`,
     path: `${notebook.id}_${version}`,
@@ -262,13 +263,38 @@ function published(notebook: NotebookDoc, version: string, tryRun: "passed" | "f
   };
 }
 
-export function demoScriptModules(notebooks = demoNotebooks()): ModuleDef[] {
+export function demoScriptModules(notebooks = demoNotebooks(), revisions = demoRevisions(notebooks)): ModuleDef[] {
   const byId = new Map(notebooks.map((doc) => [doc.id, doc]));
+  const pinned = (id: string, rev: number, fallback: NotebookCell[]) =>
+    revisions.find((item) => item.notebookId === id && item.rev === rev)?.cells ?? fallback;
+  const qc = byId.get("qc_summary")!;
+  const hello = byId.get("hello_py")!;
+  const deseq = byId.get("deseq2_plot")!;
   return [
-    published(byId.get("qc_summary")!, "v1", "passed", 12),
-    published(byId.get("hello_py")!, "v2", "passed", byId.get("hello_py")!.rev),
-    published(byId.get("deseq2_plot")!, "v1", "failed", byId.get("deseq2_plot")!.rev),
+    published(qc, "v1", "passed", 12, pinned(qc.id, 12, qc.cells)),
+    published(hello, "v2", "passed", hello.rev, pinned(hello.id, hello.rev, hello.cells)),
+    published(deseq, "v1", "failed", deseq.rev, pinned(deseq.id, deseq.rev, deseq.cells)),
   ];
+}
+
+/** Library pairs for the seeded modules, taken from the revision each module pins. */
+export function demoLibraryCopies(
+  notebooks = demoNotebooks(),
+  revisions = demoRevisions(notebooks),
+  modules = demoScriptModules(notebooks, revisions),
+): ModuleLibraryCopy[] {
+  const notes = new Map(notebooks.map((doc) => [doc.id, doc]));
+  return modules.flatMap((mod) => {
+    if (!mod.sourceNotebookId || mod.sourceNotebookRev === undefined) return [];
+    const notebook = notes.get(mod.sourceNotebookId);
+    if (!notebook) return [];
+    const revision = revisions.find((item) => item.notebookId === mod.sourceNotebookId && item.rev === mod.sourceNotebookRev);
+    return [buildLibraryCopy({
+      notebook: { ...notebook, cells: revision?.cells ?? notebook.cells, rev: mod.sourceNotebookRev },
+      module: mod,
+      savedAt: revision?.savedAt ?? notebook.updatedAt,
+    })];
+  });
 }
 
 export function qcPinnedCellChanges(notebooks = demoNotebooks(), revisions = demoRevisions(notebooks)): number {

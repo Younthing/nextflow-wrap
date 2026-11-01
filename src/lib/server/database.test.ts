@@ -1,4 +1,5 @@
 import { mkdtempSync, rmSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -72,6 +73,40 @@ describe("StudioStore", () => {
       expect(loaded?.containerImage).toBe("ghcr.io/org/py311-pandas:1.2");
       expect(loaded?.kernel).toBe(mod.kernel);
       reopened.close();
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("opens a version 2 database, adds the module library table, and keeps the notebook row", () => {
+    const directory = mkdtempSync(join(tmpdir(), "studio-db-"));
+    try {
+      const path = join(directory, "studio.sqlite");
+      const legacy = new DatabaseSync(path);
+      const doc = demoNotebooks().find((item) => item.id === "sample_clean")!;
+      legacy.exec("PRAGMA user_version=2; CREATE TABLE notebooks (id TEXT PRIMARY KEY, updated TEXT NOT NULL, data TEXT NOT NULL);");
+      legacy.prepare("INSERT INTO notebooks(id, updated, data) VALUES (?,?,?)").run(doc.id, doc.updatedAt, JSON.stringify(doc));
+      legacy.close();
+      const db = new StudioStore(path);
+      expect(Number(db.db.prepare("PRAGMA user_version").get()?.user_version)).toBe(3);
+      expect(db.notebook(doc.id)?.name).toBe(doc.name);
+      expect(db.notebookJson(doc.id)).toBe(JSON.stringify(doc));
+      db.saveLibraryCopy({
+        moduleId: "script/sample_clean/v1",
+        version: "v1",
+        format: "jupytext-percent",
+        formatVersion: "1.3",
+        percent: "# %%\nprint(1)\n",
+        script: "print(1)\n",
+        command: "bin/sample_clean_v1.py",
+        sourceNotebookId: doc.id,
+        sourceNotebookRev: doc.rev,
+        savedAt: doc.updatedAt,
+      });
+      expect(db.notebookJson(doc.id)).toBe(JSON.stringify(doc));
+      db.close();
+      const again = new StudioStore(path);
+      expect(again.libraryCopy("script/sample_clean/v1")?.command).toBe("bin/sample_clean_v1.py");
+      expect(again.notebookJson(doc.id)).toBe(JSON.stringify(doc));
+      again.close();
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 });

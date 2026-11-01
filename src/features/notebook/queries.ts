@@ -94,6 +94,18 @@ export function useTryRunNotebook() {
   });
 }
 
+export function useReopenLibraryNotebook() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (moduleId: string) =>
+      api<NotebookDoc>("/script-modules/reopen", {
+        method: "POST",
+        body: JSON.stringify({ moduleId }),
+      }),
+    onSuccess: (doc) => refreshNotebooks(qc, doc),
+  });
+}
+
 export function usePublishNotebook() {
   const qc = useQueryClient();
   return useMutation({
