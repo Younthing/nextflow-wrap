@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ExternalLink, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 
 import { SourceDriftBanner } from "@/features/notebook/components/source-drift-banner";
 import { useScriptModules } from "@/features/notebook/queries";
@@ -32,7 +32,12 @@ import { portSignature, socketInputs } from "@/features/workflow/ports";
 import { projectMeta } from "@/features/project/generate";
 import { scriptEnvDirectives } from "@/features/project/script-process";
 import { formatPublishRules, parsePublishRules } from "@/features/project/publish-rules";
-import { buildParamsSchema, referenceParams } from "@/features/project/schema";
+import {
+  buildParamsSchema,
+  patternParams,
+  referenceParams,
+  usesSamplesheet,
+} from "@/features/project/schema";
 import { operatorFields } from "@/features/workflow/operators";
 import samplesheetSchema from "@/data/samplesheet-schema.json";
 import type { ModuleDef, PortDef } from "@/features/workflow/types";
@@ -279,16 +284,6 @@ function NodeInspector({ node }: { node: FlowNode }) {
             style={{ background: categoryColor(def.category) }}
           />
           <span className="text-xs text-muted-foreground">{def.category}</span>
-          {origin === "nf-core" && (
-            <a
-              href={`https://nf-co.re/modules/${def.path.replace("/", "_")}`}
-              target="_blank"
-              rel="noreferrer"
-              className="ml-auto flex items-center gap-1 text-xs text-primary hover:underline"
-            >
-              nf-core 文档 <ExternalLink className="size-3" />
-            </a>
-          )}
           {origin === "script" && def.sourceNotebookId && (
             <Link
               href={`/notebooks/${def.sourceNotebookId}`}
@@ -299,7 +294,7 @@ function NodeInspector({ node }: { node: FlowNode }) {
           )}
         </div>
         <div className="font-serif text-lg font-semibold">
-          {origin === "nf-core" ? def.process : def.name}
+          {def.name}
           {def.version ? <span className="ml-2 font-mono text-xs text-muted-foreground">{def.version}</span> : null}
         </div>
         <p className="text-sm text-muted-foreground">{def.description}</p>
@@ -611,6 +606,8 @@ function PipelineInspector() {
       meta.name,
       meta.description,
       referenceParams({ nodes }),
+      patternParams({ nodes }),
+      { input: usesSamplesheet({ nodes }) },
     );
   }, [nodes, name, description, project]);
 

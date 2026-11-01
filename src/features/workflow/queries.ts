@@ -10,26 +10,33 @@ import {
 import type { EditorStore } from "@/features/editor/store";
 import { getEditorSaveSession } from "@/features/editor/editor-save";
 import { api, ApiError } from "@/lib/api";
+import { scriptModuleKey, type ScriptModuleList } from "@/features/notebook/queries";
 import { indexModules } from "./catalog";
 import { duplicateWorkflowName, WORKFLOW_NAME_MAX } from "./library";
-import type { ModuleCatalog, WorkflowDoc, WorkflowSummary } from "./types";
+import type { ModuleDef, WorkflowDoc, WorkflowSummary } from "./types";
 
 export const workflowKeys = {
   all: ["workflows"] as const,
   detail: (id: string) => ["workflows", id] as const,
 };
 
+export interface ModuleCatalog {
+  /** Published modules. Builtins are added by `indexModules`. */
+  modules: ModuleDef[];
+  index: ReturnType<typeof indexModules>;
+}
+
 // Defined once so React Query can memoise the derived index by data identity.
-const withIndex = (catalog: ModuleCatalog) => ({
-  ...catalog,
-  index: indexModules(catalog.modules),
+const withIndex = (list: ScriptModuleList): ModuleCatalog => ({
+  modules: list.modules,
+  index: indexModules(list.modules),
 });
 
+/** The published modules a canvas can use. Shares its cache with the notebook library, so a publish refreshes it. */
 export const moduleCatalogQueryOptions = () =>
   queryOptions({
-    queryKey: ["modules"],
-    queryFn: () => api<ModuleCatalog>("/modules"),
-    staleTime: Infinity,
+    queryKey: scriptModuleKey,
+    queryFn: () => api<ScriptModuleList>("/script-modules"),
   });
 
 export function useModuleCatalog() {

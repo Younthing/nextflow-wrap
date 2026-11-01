@@ -36,7 +36,7 @@ export function createNode(
   existing: WorkflowNode[],
 ): WorkflowNode {
   const widgets = Object.fromEntries(
-    widgetInputs(def).map((p) => [p.name, defaultWidgetValue(p.widget!)]),
+    widgetInputs(def).map((p) => [p.name, p.default ?? defaultWidgetValue(p.widget!)]),
   );
   const alias = uniqueAlias(
     def.process,

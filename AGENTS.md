@@ -2,9 +2,9 @@
 
 ## Project Structure & Module Organization
 
-This is a Next.js 16 App Router application for composing and running nf-core/Nextflow workflows. Routes and global styling live in `src/app/`; run history is in `src/app/runs/`. Keep product code in `src/features/<domain>/` (such as `workflow`, `editor`, `project`, and `runs`). Put primitives in `src/components/ui/`, shell components in `src/components/layout/`, and shared helpers in `src/lib/`.
+This is a Next.js 16 App Router application for composing and running Nextflow workflows from notebook-published modules. Routes and global styling live in `src/app/`; run history is in `src/app/runs/`. Keep product code in `src/features/<domain>/` (such as `workflow`, `editor`, `project`, and `runs`). Put primitives in `src/components/ui/`, shell components in `src/components/layout/`, and shared helpers in `src/lib/`.
 
-Mock API behavior belongs in `src/mocks/`. Generated nf-core module metadata is committed at `src/data/nf-core-modules.json`; regenerate it with the provided script instead of editing it manually. Component examples belong beside their area in `stories/` directories.
+Mock API behavior belongs in `src/mocks/`; tests, stories and mocks share the example modules in `src/features/workflow/example-modules.ts`. Component examples belong beside their area in `stories/` directories.
 
 ## Build, Test, and Development Commands
 
@@ -17,7 +17,6 @@ pnpm lint                    # run ESLint and Next.js rules
 pnpm test                    # run Vitest unit tests
 pnpm build                   # create a production build
 pnpm build-storybook         # verify Storybook production output
-pnpm sync:modules            # refresh committed nf-core module metadata (network required)
 ```
 
 Before a PR, run `pnpm typecheck && pnpm lint && pnpm test && pnpm build && pnpm build-storybook`.
@@ -35,6 +34,8 @@ Use theme variables and `glass` utility classes from `src/app/globals.css`; do n
 Vitest runs `src/**/*.test.ts` in Node. Name tests next to the logic they cover (for example, `ports.test.ts` for `ports.ts`) and keep the simulator deterministic. Run one file with `pnpm vitest run src/features/workflow/ports.test.ts` or filter with `-t "description"`. Add or update a Storybook story for reusable UI changes.
 
 `src/features/project/patterns.test.ts` and `src/features/project/host-chain.test.ts` spawn a real `nextflow` binary. They are not skipped when it is missing; the run fails. Install the pinned official release with `bash scripts/install-nextflow.sh` (Java 17–26 must already be on `PATH`; the script does not install a JDK). GitHub Actions runs that script after Temurin 21. This Cloud Agent environment is dashboard-managed (`environment.json` is not in the repo) and its image already has OpenJDK 21. Its `install` command must run the same script, or keep the equivalent launcher from `https://github.com/nextflow-io/nextflow/releases/download/v26.10.4/nextflow` on `PATH`, so later agents do not lose the binary. `~/.nextflow` is filled on the first `nextflow -version`.
+
+`src/features/notebook/server/kernels.test.ts` starts a real Jupyter kernel through `python3`. It needs `python3 -m pip install ipykernel matplotlib` and fails when they are missing. CI installs both; this Cloud Agent environment's `install` command should do the same. The notebook editor runs Python cells in one persistent kernel per notebook (`src/features/notebook/server/kernels.ts`); without `jupyter_client` it falls back to a fresh process from the top. `NEXTFLOW_STUDIO_JUPYTER_PYTHON` picks another interpreter.
 
 ## Commit & Pull Request Guidelines
 

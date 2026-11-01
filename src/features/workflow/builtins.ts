@@ -8,7 +8,7 @@ export const REFERENCE_ID = "builtin/reference";
 
 export const REFERENCE_FORMATS = ["fasta", "gtf", "fai", "bed", "vcf", "index", "other"] as const;
 
-/** Nodes that are not nf-core modules but turn pipeline params into channels. */
+/** Nodes that ship with the product: inputs that turn pipeline params into channels, operators and helpers. */
 export const BUILTIN_MODULES: ModuleDef[] = [
   {
     id: SAMPLESHEET_ID,

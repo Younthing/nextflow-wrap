@@ -12,6 +12,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { resolveNodeDef } from "@/features/workflow/catalog";
+import { moduleOrigin } from "@/features/workflow/origin";
 import {
   inHandle,
   outHandle,
@@ -226,7 +227,7 @@ export function ModuleNode({ id, data, selected }: NodeProps<FlowNode>) {
   }
 
   const accent = categoryColor(def.category);
-  const origin = def.origin ?? (def.builtin ? "builtin" : def.id.startsWith("script/") ? "script" : "nf-core");
+  const origin = moduleOrigin(def);
   const subtitle = origin === "script"
     ? `${def.name}${def.version ? ` · ${def.version}` : ""}`
     : def.builtin

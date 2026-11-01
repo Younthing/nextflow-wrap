@@ -44,13 +44,13 @@ export const Error: Story = {
 export const Search: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await canvas.findByRole("link", { name: /RNA/i });
+    await canvas.findByRole("link", { name: /单细胞/ });
     await userEvent.type(
       canvas.getByRole("textbox", { name: "搜索流程" }),
       "no-matching-workflow",
     );
     await expect(
-      canvas.queryByRole("link", { name: /RNA/i }),
+      canvas.queryByRole("link", { name: /单细胞/ }),
     ).not.toBeInTheDocument();
   },
 };

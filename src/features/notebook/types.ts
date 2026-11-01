@@ -135,6 +135,51 @@ export interface CellRunResult {
   error?: string;
   /** Ordered stream, display, and error segments. */
   outputs?: CellOutput[];
+  /** Jupyter execution count, set when the cell ran in a persistent kernel. */
+  executionCount?: number;
+}
+
+/** How a notebook run executed its cells. */
+export interface NotebookRunKernel {
+  /** `jupyter`: a persistent kernel keeps state between runs. `oneshot`: a fresh Python process from the top. */
+  mode: "jupyter" | "oneshot";
+  /** Kernelspec that ran the cells, for `jupyter`. */
+  kernel?: string;
+  /** Why the run did not use the requested kernel, or why it fell back to one-shot. */
+  note?: string;
+}
+
+export interface NotebookRunResult {
+  cells: CellRunResult[];
+  kernel?: NotebookRunKernel;
+}
+
+export type KernelState = "stopped" | "starting" | "idle" | "busy" | "dead";
+
+export interface KernelInfo {
+  notebookId: string;
+  state: KernelState;
+  /** Kernel name stored on the notebook. */
+  requested?: string;
+  /** Jupyter kernelspec actually running. */
+  kernel?: string;
+  note?: string;
+  python?: string;
+  startedAt?: string;
+}
+
+export interface KernelSpec {
+  name: string;
+  displayName: string;
+  language: string;
+}
+
+export interface KernelSpecList {
+  /** False when the bridge interpreter has no jupyter_client. */
+  available: boolean;
+  python?: string;
+  kernels: KernelSpec[];
+  message?: string;
 }
 
 export interface TryRunRecord {

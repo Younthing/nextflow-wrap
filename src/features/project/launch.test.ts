@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
 
+import { indexModules } from "@/features/workflow/catalog";
+import { demoWorkflow } from "@/features/workflow/demo";
+import { EXAMPLE_MODULES } from "@/features/workflow/example-modules";
+import { generateProject } from "./generate";
+
 import {
   defaultLaunchConfig,
   launchCommand,
@@ -24,9 +29,9 @@ describe("shell launch", () => {
   });
 
   it("keeps an extra profile without naming shell", () => {
-    const config = { ...defaultLaunchConfig(), engine: "shell" as const, extraProfiles: ["test", "debug"] };
-    expect(profileList(config)).toBe("test,debug");
-    expect(launchCommand(config)).toContain("-profile test,debug");
+    const config = { ...defaultLaunchConfig(), engine: "shell" as const, extraProfiles: ["gpu", "debug"] };
+    expect(profileList(config)).toBe("gpu,debug");
+    expect(launchCommand(config)).toContain("-profile gpu,debug");
     expect(launchCommand(config)).not.toContain("shell");
   });
 
@@ -77,5 +82,16 @@ describe("runtime profiles", () => {
     expect(apptainer).toContain("apptainer.enabled = true");
     expect(apptainer).toContain("docker.enabled = false");
     expect(apptainer).toContain("conda.enabled = false");
+  });
+
+  it("isolates user Python and R libraries only under a runtime profile", () => {
+    const profiles = runtimeProfiles();
+    const conda = profiles.slice(profiles.indexOf("    conda {"), profiles.indexOf("    mamba {"));
+    expect(conda).toContain("env.PYTHONNOUSERSITE = 1");
+    expect(conda).toContain('env.R_ENVIRON_USER = "/.Renviron"');
+    // Shell has no profile, so host runs still see packages installed with pip --user.
+    const config = generateProject(demoWorkflow("wf"), indexModules(EXAMPLE_MODULES)).files.find((file) => file.path === "nextflow.config")!.content;
+    expect(config.replace(/\n {4}\w+ \{[\s\S]*?\n {4}\}/g, "")).not.toContain("PYTHONNOUSERSITE");
+    expect(config).toContain("env.PYTHONNOUSERSITE = 1");
   });
 });

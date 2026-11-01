@@ -9,11 +9,8 @@ export interface Issue {
   message: string;
 }
 
-/** Tuple files that modules accept as `[]` although meta.yml doesn't say so. */
-const KNOWN_OPTIONAL = new Set(["nf-core/fastp:adapter_fasta"]);
-
-const isOptional = (moduleId: string, el: { name: string; description: string }) =>
-  KNOWN_OPTIONAL.has(`${moduleId}:${el.name}`) || /optional/i.test(el.description);
+/** A tuple file whose description says it may be left out. */
+const isOptional = (el: { description: string }) => /optional|可选/i.test(el.description);
 
 const ALIAS_RE = /^[A-Z][A-Z0-9_]*$/;
 const PARAM_RE = /^[a-z][a-z0-9_]*$/;
@@ -76,7 +73,7 @@ export function validateWorkflow(
     });
   }
 
-  // meta.yml rarely says which tuple files are optional, so padded files are flagged for review.
+  // Padded tuple files not described as optional are flagged for review.
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const flagged = new Set<string>();
   for (const edge of edges) {
@@ -89,7 +86,7 @@ export function validateWorkflow(
     if (!out || !inp || inp.collect || dst.data.disabled || flagged.has(`${dst.id}:${inp.name}`)) continue;
     const padded = checkCompatibility(out, inp).padded?.filter((name) => {
       const el = inp.elements.find((e) => e.name === name);
-      return !el || !isOptional(dstDef.id, el);
+      return !el || !isOptional(el);
     });
     if (padded?.length) {
       flagged.add(`${dst.id}:${inp.name}`);

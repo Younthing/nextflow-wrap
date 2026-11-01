@@ -3,14 +3,11 @@ import { mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync } from 
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import catalog from "@/data/nf-core-modules.json";
 import { indexModules } from "@/features/workflow/catalog";
 import { hostChainWorkflow, writeHostChainInputs } from "@/features/workflow/host-chain-demo";
-import type { ModuleCatalog } from "@/features/workflow/types";
 import { generateProject } from "./generate";
 import { standaloneScript } from "./standalone";
 
-const typed = catalog as ModuleCatalog;
 const ROOT = "/tmp/nf-patterns/.nf-verify/host-chain";
 const COLORS = "blue\ngreen\nred\n";
 const ALPHA_SORTED = "apple\napple\nbanana\nbanana\ncherry\n";
@@ -29,13 +26,13 @@ describe("temporary host-command workflow", () => {
   it("chains patterns through real shell commands and checks their output", () => {
     writeHostChainInputs(ROOT);
     const doc = hostChainWorkflow(ROOT);
-    const project = generateProject(doc, indexModules([]), { modulesSha: typed.gitSha });
-    const wf = project.files.find((file) => file.path === "workflows/hostchain.nf")!.content;
+    const project = generateProject(doc, indexModules([]));
+    const wf = project.files.find((file) => file.path === "main.nf")!.content;
     const cfg = project.files.find((file) => file.path === "conf/modules.config")!.content;
 
-    expect(wf).toContain("TEMPORARY TEST MODULES — not nf-core");
-    expect(wf).toContain("TEMPORARY TEST MODULE: CAT (builtin/test/cat) — not nf-core");
-    expect(wf).not.toContain("modules/nf-core/test");
+    expect(wf).toContain("TEMPORARY TEST MODULES");
+    expect(wf).toContain("TEMPORARY TEST MODULE: CAT (builtin/test/cat)");
+    expect(wf).not.toContain("include {");
     for (const command of ["cat $infile", "sort $infile", "uniq ", "head -n ${lines}", "tail -n ${lines}", "cut -f ${fields}", "grep -F", "tr 'a-z' 'A-Z'", "awk '{print \\$3}'", "paste ", "wc -l", "split -l ${lines}", "tee out.txt"]) {
       expect(wf).toContain(command);
     }

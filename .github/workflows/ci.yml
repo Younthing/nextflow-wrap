@@ -24,6 +24,8 @@ jobs:
       - run: pnpm lint
       - name: Install Nextflow
         run: bash scripts/install-nextflow.sh
+      - name: Install Jupyter kernel
+        run: python3 -m pip install --user --break-system-packages ipykernel matplotlib
       - run: pnpm test
         env:
           NXF_DISABLE_CHECK_LATEST: "true"
@@ -50,18 +52,17 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Install Nextflow
         run: bash scripts/install-nextflow.sh
-      - name: Install nf-core and R
+      - name: Install Jupyter kernel, scanpy and R
         run: |
-          python3 -m pip install --user --break-system-packages "nf-core==4.2.1"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          python3 -m pip install --user --break-system-packages ipykernel matplotlib scanpy igraph leidenalg
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y r-base-core
       - name: Toolchain
         run: |
           java -version
           nextflow -version
-          nf-core --version
           python3 --version
+          python3 -c "import ipykernel, jupyter_client; print('ipykernel', ipykernel.__version__, 'jupyter_client', jupyter_client.__version__)"
           Rscript --version
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm build:real

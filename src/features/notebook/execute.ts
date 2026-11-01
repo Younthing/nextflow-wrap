@@ -4,12 +4,13 @@ import { dirname, join } from "node:path";
 
 import { CommandError, runCommand } from "@/features/project/server/command";
 import { CELL_DRIVER } from "./cell-driver";
-import { cellsForRun } from "./cells";
+import { cellsForKernelRun, cellsForRun } from "./cells";
 import { ConvertError, convertNotebook, scriptFileName, scriptInterpreter, tryRunArgv } from "./convert";
 import { readModuleEnv, type ModuleEnvPatch } from "./env";
 import { planTryRunInputs, type InputPlan, type PortBindingRequest } from "./input-bindings";
 import { stageInputPlan, type StagedInputs } from "./input-bindings-stage";
 import { finalizeCellResult } from "./outputs";
+import { kernelFor, KernelUnavailableError, shutdownKernel } from "./server/kernels";
 import {
   buildTryRunHeader,
   clipTryRunLog,
@@ -24,9 +25,10 @@ import {
   type TryRunVia,
 } from "./try-run-env";
 import { condaCachePrefix, condaFileProblem, discoverTryRunTools } from "./try-run-tools";
-import type { CellRunResult, ConvertedNotebook, NotebookDoc, TryRunOutput, TryRunRecord } from "./types";
+import type { CellRunResult, ConvertedNotebook, NotebookDoc, NotebookRunResult, TryRunOutput, TryRunRecord } from "./types";
 
-const HOST_TIMEOUT_MS = 20_000;
+// Single-cell steps such as clustering take minutes on real data; a few seconds is too short.
+const HOST_TIMEOUT_MS = 10 * 60_000;
 const ENV_TIMEOUT_MS = 10 * 60_000;
 
 const inDir = (dir: string, name: string) => join(/* turbopackIgnore: true */ dir, name);
@@ -287,13 +289,58 @@ async function readCellResults(dir: string, cells: { id: string }[], fallback: s
   }
 }
 
+const R_EDIT_ONLY = "R 单元格在笔记本里只作编辑；发布后的试跑会调用 Rscript。";
+const ONESHOT_HINT = "单元格每次从头在新进程里运行。安装 ipykernel 后改用常驻 Jupyter 内核：python3 -m pip install ipykernel";
+
+/**
+ * Runs notebook cells the Jupyter way. A cell id runs just that cell in the notebook's persistent kernel,
+ * so variables and files from earlier runs stay. No cell id restarts the kernel and runs every cell,
+ * stopping at the first error. Without Jupyter it falls back to a fresh process from the top.
+ */
+export async function runNotebookCells(notebook: NotebookDoc, cellId?: string): Promise<NotebookRunResult> {
+  const cells = cellsForKernelRun(notebook, cellId);
+  if (cells.length === 0) return { cells: [] };
+  if (notebook.language !== "python") {
+    return { cells: cells.map((cell) => finalizeCellResult(cell.id, { error: R_EDIT_ONLY })) };
+  }
+  const oneshot = async (note: string): Promise<NotebookRunResult> => ({
+    cells: await executeCells(notebook, cellId),
+    kernel: { mode: "oneshot", note },
+  });
+  if (process.env.NEXTFLOW_STUDIO_KERNEL === "oneshot") return oneshot(ONESHOT_HINT);
+
+  if (!cellId) shutdownKernel(notebook.id);
+  let session: Awaited<ReturnType<typeof kernelFor>>;
+  try {
+    session = await kernelFor(notebook.id, notebook.kernel);
+    await session.whenReady();
+  } catch (error) {
+    if (error instanceof KernelUnavailableError) return oneshot(`${error.message}。${ONESHOT_HINT}`);
+    const message = `内核启动失败：${failureText(error)}`;
+    return { cells: cells.map((cell) => finalizeCellResult(cell.id, { error: message })) };
+  }
+
+  const results: CellRunResult[] = [];
+  for (const cell of cells) {
+    try {
+      const reply = await session.execute(cell.source);
+      const result = finalizeCellResult(cell.id, { outputs: reply.outputs });
+      results.push(reply.executionCount === null ? result : { ...result, executionCount: reply.executionCount });
+      if (reply.status !== "ok") break;
+    } catch (error) {
+      results.push(finalizeCellResult(cell.id, { error: failureText(error) }));
+      break;
+    }
+  }
+  return { cells: results, kernel: { mode: "jupyter", kernel: session.kernel, ...(session.note ? { note: session.note } : {}) } };
+}
+
 /** Runs notebook cells in one Python process. A cell id runs from the top through that cell. Markdown is skipped. */
 export async function executeCells(notebook: NotebookDoc, cellId?: string): Promise<CellRunResult[]> {
   const cells = cellsForRun(notebook, cellId);
   if (cells.length === 0) return [];
   if (notebook.language !== "python") {
-    const message = "R 单元格在笔记本里只作编辑；发布后的试跑会调用 Rscript。";
-    return cells.map((cell) => finalizeCellResult(cell.id, { error: message }));
+    return cells.map((cell) => finalizeCellResult(cell.id, { error: R_EDIT_ONLY }));
   }
   const dir = await mkdtemp(join(/* turbopackIgnore: true */ tmpdir(), "nb-run-"));
   try {
@@ -301,7 +348,7 @@ export async function executeCells(notebook: NotebookDoc, cellId?: string): Prom
     await writeFile(inDir(dir, "driver.py"), CELL_DRIVER);
     let failure = "";
     try {
-      await runCommand("python3", ["driver.py"], { cwd: dir, timeoutMs: 20_000, quiet: true });
+      await runCommand("python3", ["driver.py"], { cwd: dir, timeoutMs: HOST_TIMEOUT_MS, quiet: true });
     } catch (error) {
       failure = failureText(error);
     }

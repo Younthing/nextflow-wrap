@@ -7,9 +7,9 @@ export const START_RUN_DESCRIPTION =
   "启动编辑器里当前已保存的流程。调用后会弹出确认对话框，只有用户接受才会提交运行；拒绝、关闭或中断都不会启动。使用运行对话框里保存的执行器、profile 和工作目录。你必须等这个工具返回后再说运行已启动。";
 
 const prompt = `## 搭建流程
-- 画布上每个节点是一个 nf-core 模块（moduleId 形如 nf-core/fastqc）或内置输入节点：builtin/samplesheet（样本表，输出每个样本的 [meta, reads]）、builtin/reference（参考文件，把 --fasta 这类参数变成通道，有 with_meta 和 file 两个输出）。
-- 端口携带的是通道元组，例如 "meta, fastq" 或 "meta, bam, bai"。连线前确认上下游的元组形状和文件格式对得上；不确定的模块先用 search_modules 查端口。
-- 流程通常从一个样本表节点开始。需要参考基因组的模块要接参考文件节点。
+- 画布上每个节点是一个从笔记本发布的模块（moduleId 形如 script/scanpy_qc/v1）或内置节点，例如输入节点：builtin/samplesheet（样本表，输出每个样本的 [meta, reads]）、builtin/reference（参考文件，把 --fasta 这类参数变成通道，有 with_meta 和 file 两个输出）。
+- 端口携带的是通道元组，例如 "meta, h5ad" 或 "meta, sdf"。连线前确认上下游的元组形状和文件格式对得上；不确定的模块先用 search_modules 查端口。
+- 流程从输入节点开始：每样本一行的数据用样本表节点，单个数据文件（如 h5ad、受体结构）用参考文件节点。
 - 修改画布要调用工具，不要只描述步骤。一次改动多个节点时按顺序逐个调用；工具报错时读错误信息并修正后重试。
 - 改完后看 workflow 上下文里的 issues，有 error 要继续修，或者告诉用户还缺什么（比如 --input 样本表路径）。
 - 每个改动都能用 ${shortcutHint(EDITOR_ACTIONS.undo.shortcut)} 撤销，可以放心操作，但不要删除用户没提到的节点。
@@ -28,7 +28,7 @@ export const canvasEditModule = {
   tools: [
     {
       name: "search_modules",
-      description: "按关键词搜索模块库（nf-core 模块和内置输入节点），返回模块 id、说明和输入输出端口。",
+      description: "按关键词搜索模块库（已发布模块和内置节点），返回模块 id、说明和输入输出端口。",
     },
     {
       name: "add_module",

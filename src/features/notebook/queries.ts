@@ -6,13 +6,16 @@ import { api } from "@/lib/api";
 import type { ModuleDef } from "@/features/workflow/types";
 import type { ScriptModuleView } from "./library";
 import type { PortBindingRequest } from "./input-bindings";
-import type { CellRunResult, NotebookDoc, NotebookRevision, NotebookSummary, TryRunRecord } from "./types";
+import type { KernelInfo, KernelSpecList, NotebookDoc, NotebookRevision, NotebookRunResult, NotebookSummary, TryRunRecord } from "./types";
 
 export const notebookKeys = {
   all: ["notebooks"] as const,
   detail: (id: string) => ["notebooks", id] as const,
   revision: (id: string, rev: string) => ["notebooks", id, "rev", rev] as const,
+  kernel: (id: string) => ["notebooks", id, "kernel"] as const,
 };
+
+export const kernelSpecsKey = ["kernels"] as const;
 
 export const scriptModuleKey = ["script-modules"] as const;
 
@@ -76,12 +79,49 @@ export function useSaveNotebook() {
 }
 
 export function useRunNotebook() {
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, cellId }: { id: string; cellId?: string }) =>
-      api<{ cells: CellRunResult[] }>(`/notebooks/${id}/run`, {
+      api<NotebookRunResult>(`/notebooks/${id}/run`, {
         method: "POST",
         body: JSON.stringify(cellId ? { cellId } : {}),
       }),
+    onMutate: ({ id }) => {
+      // The kernel turns busy on the server; show it without waiting for the next poll.
+      qc.setQueryData<KernelInfo>(notebookKeys.kernel(id), (current) => ({ notebookId: id, ...current, state: "busy" }));
+    },
+    onSettled: (_data, _error, { id }) => qc.invalidateQueries({ queryKey: notebookKeys.kernel(id) }),
+  });
+}
+
+/** The notebook's persistent kernel. Polls while it starts or runs so the toolbar can offer interrupt. */
+export function useKernelInfo(id: string, enabled = true) {
+  return useQuery({
+    queryKey: notebookKeys.kernel(id),
+    queryFn: () => api<KernelInfo>(`/notebooks/${id}/kernel`),
+    enabled,
+    refetchInterval: (query) => {
+      const state = query.state.data?.state;
+      return state === "busy" || state === "starting" ? 2_000 : false;
+    },
+  });
+}
+
+export function useKernelAction() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, action }: { id: string; action: "interrupt" | "restart" | "shutdown" }) =>
+      api<KernelInfo>(`/notebooks/${id}/kernel`, { method: "POST", body: JSON.stringify({ action }) }),
+    onSuccess: (info, { id }) => qc.setQueryData(notebookKeys.kernel(id), info),
+  });
+}
+
+/** Jupyter kernelspecs installed for the server's Python. */
+export function useKernelSpecs() {
+  return useQuery({
+    queryKey: kernelSpecsKey,
+    queryFn: () => api<KernelSpecList>("/kernels"),
+    staleTime: 60_000,
   });
 }
 

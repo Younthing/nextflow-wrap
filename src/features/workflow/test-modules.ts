@@ -2,10 +2,9 @@ import type { ChannelElement, ModuleDef, PortDef, WorkflowNode } from "./types";
 
 /**
  * Temporary host-command processes for exercising canvas patterns on this
- * machine. They are not nf-core modules and must not be installed from
- * nf-core/modules.
+ * machine. They are written inline into main.nf, never into modules/.
  */
-const NOTE = "临时测试模块，不是 nf-core。";
+const NOTE = "临时测试模块，只用于验证通道模式。";
 
 const meta = (): ChannelElement => ({ name: "meta", type: "map", kind: "meta", description: "meta.id" });
 const file = (name: string): ChannelElement => ({ name, type: "file", kind: "file", description: name });
@@ -28,7 +27,7 @@ function testModule(spec: Pick<ModuleDef, "id" | "process" | "name" | "descripti
   return {
     path: "",
     category: "临时测试",
-    keywords: ["temporary", "test", "host", "not-nf-core"],
+    keywords: ["temporary", "test", "host"],
     tools: [],
     builtin: true,
     temporary: true,
@@ -284,7 +283,7 @@ function command(id: string, node: WorkflowNode): string {
   }
 }
 
-/** Top-level process definitions. The comment marks them as temporary, not nf-core. */
+/** Top-level process definitions. The comment marks them as temporary. */
 export function renderTemporaryProcesses(nodes: { node: WorkflowNode; def: ModuleDef }[]): string {
   const blocks = nodes
     .filter((planned) => planned.def.temporary)
@@ -297,7 +296,7 @@ export function renderTemporaryProcesses(nodes: { node: WorkflowNode; def: Modul
       );
       const inputs = def.inputs.map(inputDecl);
       const outputs = def.outputs.map((port) => outputDecl(port, optional.has(port.name) || port.name === "side"));
-      return `// TEMPORARY TEST MODULE: ${node.data.alias} (${def.id}) — not nf-core
+      return `// TEMPORARY TEST MODULE: ${node.data.alias} (${def.id})
 process ${node.data.alias} {
     input:
     ${inputs.join("\n    ")}

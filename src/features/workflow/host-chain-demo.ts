@@ -193,7 +193,7 @@ export function hostChainWorkflow(dir: string, input = "samplesheet.csv"): Workf
   return {
     id: "host",
     name: "主机命令模式链",
-    description: "临时测试模块（不是 nf-core）串起通道算子，在本机 Shell 里跑真实文本命令。",
+    description: "临时测试模块串起通道算子，在本机 Shell 里跑真实文本命令。",
     version: 1,
     nodes,
     edges,

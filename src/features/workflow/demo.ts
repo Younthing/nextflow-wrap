@@ -1,3 +1,5 @@
+import { REFERENCE_ID, SAMPLESHEET_ID } from "./builtins";
+import { EXAMPLE_CLUSTER_ID, EXAMPLE_FASTQ_QC_ID, EXAMPLE_REPORT_ID, EXAMPLE_SCANPY_QC_ID, EXAMPLE_TRIM_ID } from "./example-modules";
 import { inHandle, outHandle } from "./ports";
 import type { WorkflowDoc, WorkflowEdge, WorkflowNode } from "./types";
 
@@ -22,45 +24,50 @@ const edge = (source: string, out: string, target: string, inp: string): Workflo
   targetHandle: inHandle(inp),
 });
 
-/** A small RNA-seq pipeline used to seed the mock backend. */
-export function demoRnaseqWorkflow(id: string): WorkflowDoc {
+/** A small single-cell pipeline on the example modules. Seeds the mock backend and stories. */
+export function demoWorkflow(id: string): WorkflowDoc {
   return {
     id,
-    name: "RNA-seq 比对与质控",
-    description: "fastp 修剪 → STAR 比对 → MultiQC 汇总",
+    name: "单细胞质控与聚类",
+    description: "scanpy 过滤细胞 → Leiden 聚类 → 汇总报告",
     version: 1,
-    params: {
-      input: "assets/samplesheet.csv",
-      outdir: "results",
-      fasta: "s3://ngi-igenomes/igenomes/Homo_sapiens/Ensembl/GRCh38/Sequence/WholeGenomeFasta/genome.fa",
-      gtf: "s3://ngi-igenomes/igenomes/Homo_sapiens/Ensembl/GRCh38/Annotation/Genes/genes.gtf",
-    },
+    params: { counts: "data/pbmc3k.h5ad", outdir: "results" },
     nodes: [
-      node("input", "builtin/samplesheet", "SAMPLESHEET", 0, 140, { config: {} }),
-      node("fasta", "builtin/reference", "REFERENCE", 0, 420, { config: {}, settings: { param: "fasta", format: "fasta" } }),
-      node("gtf", "builtin/reference", "REFERENCE_2", 0, 620, { config: {}, settings: { param: "gtf", format: "gtf" } }),
-      node("fastp", "nf-core/fastp", "FASTP", 360, 60, {
-        widgets: { discard_trimmed_pass: false, save_trimmed_fail: false, save_merged: false },
-      }),
-      node("fastqc", "nf-core/fastqc", "FASTQC", 760, 0),
-      node("star_index", "nf-core/star/genomegenerate", "STAR_GENOMEGENERATE", 360, 480),
-      node("star", "nf-core/star/align", "STAR_ALIGN", 760, 320, {
-        widgets: { star_ignore_sjdbgtf: false },
-        config: { publish: true, args: "--outSAMtype BAM SortedByCoordinate --quantMode GeneCounts" },
-      }),
-      node("multiqc", "nf-core/multiqc", "MULTIQC", 1180, 120),
+      node("counts", REFERENCE_ID, "COUNTS", 0, 160, { config: {}, settings: { param: "counts", format: "other" } }),
+      node("qc", EXAMPLE_SCANPY_QC_ID, "SCANPY_QC", 360, 120, { widgets: { min_genes: 200, max_pct_mt: 5 } }),
+      node("cluster", EXAMPLE_CLUSTER_ID, "SCANPY_CLUSTER", 760, 120, { widgets: { resolution: 0.5 } }),
+      node("report", EXAMPLE_REPORT_ID, "SUMMARY_REPORT", 1160, 160, { widgets: { title: "PBMC 3k" } }),
     ],
     edges: [
-      edge("input", "reads", "fastp", "reads"),
-      edge("fastp", "reads", "fastqc", "reads"),
-      edge("fastp", "reads", "star", "reads"),
-      edge("fasta", "with_meta", "star_index", "fasta"),
-      edge("gtf", "with_meta", "star_index", "gtf"),
-      edge("star_index", "index", "star", "index"),
-      edge("gtf", "with_meta", "star", "gtf"),
-      edge("fastqc", "zip", "multiqc", "multiqc_files"),
-      edge("fastp", "json", "multiqc", "multiqc_files"),
-      edge("star", "log_final", "multiqc", "multiqc_files"),
+      edge("counts", "with_meta", "qc", "adata"),
+      edge("qc", "adata", "cluster", "adata"),
+      edge("qc", "plots", "report", "files"),
+      edge("cluster", "umap", "report", "files"),
+      edge("cluster", "markers", "report", "files"),
+    ],
+    updatedAt: "2026-10-30T00:00:00.000Z",
+  };
+}
+
+/** A per-sample read pipeline on the example modules, for simulator and output tests. */
+export function readsQcWorkflow(id: string): WorkflowDoc {
+  return {
+    id,
+    name: "测序质控",
+    description: "修剪 → 质控 → 汇总报告",
+    version: 1,
+    params: { input: "assets/samplesheet.csv", outdir: "results" },
+    nodes: [
+      node("input", SAMPLESHEET_ID, "SAMPLESHEET", 0, 140, { config: {} }),
+      node("trim", EXAMPLE_TRIM_ID, "TRIM_READS", 360, 100, { widgets: { min_length: 30 } }),
+      node("qc", EXAMPLE_FASTQ_QC_ID, "FASTQ_QC", 760, 0),
+      node("report", EXAMPLE_REPORT_ID, "SUMMARY_REPORT", 1160, 120, { widgets: { title: "Reads" } }),
+    ],
+    edges: [
+      edge("input", "reads", "trim", "reads"),
+      edge("trim", "reads", "qc", "reads"),
+      edge("qc", "html", "report", "files"),
+      edge("trim", "json", "report", "files"),
     ],
     updatedAt: "2026-10-30T00:00:00.000Z",
   };

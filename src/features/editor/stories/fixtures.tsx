@@ -1,16 +1,15 @@
 import * as React from "react";
 import { ReactFlowProvider } from "@xyflow/react";
 
-import catalog from "@/data/nf-core-modules.json";
 import { BUILTIN_MODULES } from "@/features/workflow/builtins";
 import { indexModules } from "@/features/workflow/catalog";
-import { demoRnaseqWorkflow } from "@/features/workflow/demo";
-import type { ModuleCatalog, WorkflowDoc } from "@/features/workflow/types";
+import { demoWorkflow } from "@/features/workflow/demo";
+import { EXAMPLE_MODULES } from "@/features/workflow/example-modules";
+import type { WorkflowDoc } from "@/features/workflow/types";
 import { createEditorStore, type EditorStore } from "../store";
 import { EditorProvider } from "../editor-provider";
 
-export const storyCatalog = catalog as ModuleCatalog;
-export const storyModules = [...BUILTIN_MODULES, ...storyCatalog.modules];
+export const storyModules = [...BUILTIN_MODULES, ...EXAMPLE_MODULES];
 
 const fixtureStores = new WeakMap<Element, EditorStore>();
 
@@ -26,7 +25,7 @@ export function getStoryEditorStore(root: HTMLElement): EditorStore {
 
 /** Seeds the editor store so editor components render outside the app. */
 export function EditorFixture({
-  doc = demoRnaseqWorkflow("wf_story"),
+  doc = demoWorkflow("wf_story"),
   selectedNodeIds = [],
   children,
 }: {
@@ -39,7 +38,7 @@ export function EditorFixture({
   const [store] = React.useState(() => {
     const store = createEditorStore();
     const s = store.getState();
-    s.setIndex(indexModules(storyCatalog.modules));
+    s.setIndex(indexModules(EXAMPLE_MODULES));
     s.load(doc);
     if (selectedNodeIds.length > 0) {
       const selected = new Set(selectedNodeIds);

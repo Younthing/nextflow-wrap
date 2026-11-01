@@ -3,27 +3,26 @@ import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 
 import { Button } from "@/components/ui/button";
 import { defaultLaunchConfig } from "@/features/project/launch";
-import { qcDemoWorkflow } from "@/features/workflow/qc-demo";
+import { demoWorkflow } from "@/features/workflow/demo";
 import { RunConfirmDialog } from "../run-confirm";
 import { cancelConfirmView, resumeConfirmView, startConfirmView, type RunConfirmView, type StartRunPlan } from "../run-actions";
 
-const workflow = qcDemoWorkflow();
+const workflow = demoWorkflow("wf_story");
 const readyPlan: StartRunPlan = {
   launch: defaultLaunchConfig(),
   command: "nextflow run . \\\n    -profile docker \\\n    -c run.config",
   runConfig: "workDir = 'work'\n",
   profile: "docker",
   problems: [],
-  modulesSha: "abc",
   workflow,
   request: null,
 };
 
 const views = {
-  start: startConfirmView(readyPlan, "质控流程已经连好了。"),
+  start: startConfirmView(readyPlan, "单细胞流程已经连好了。"),
   stop: cancelConfirmView("tender_curie", []),
   resume: resumeConfirmView("tender_curie", []),
-  blocked: startConfirmView({ ...readyPlan, problems: ["请先保存流程（Ctrl+S）", "FASTQC：主输入 reads 未连接"], request: null }),
+  blocked: startConfirmView({ ...readyPlan, problems: ["请先保存流程（Ctrl+S）", "SCANPY_QC：主输入 adata 未连接"], request: null }),
 } satisfies Record<string, RunConfirmView>;
 
 function Demo({ view }: { view: RunConfirmView }) {

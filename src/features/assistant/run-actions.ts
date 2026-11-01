@@ -197,7 +197,6 @@ export interface StartRunInput {
   docId: string;
   doc: WorkflowDoc;
   index: ModuleIndex;
-  modulesSha: string;
   config: LaunchConfig;
   /** Real runner: lock the launch the way the run dialog does. */
   real: boolean;
@@ -212,7 +211,6 @@ export interface StartRunPlan {
   runConfig: string;
   profile: string;
   problems: string[];
-  modulesSha: string;
   workflow: WorkflowDoc;
   request: LaunchRequest | null;
 }
@@ -242,7 +240,6 @@ export function prepareStartRun(input: StartRunInput): StartRunPlan {
   if (input.index.size && knownExecutor) {
     try {
       project = generateProject(input.doc, input.index, {
-        modulesSha: input.modulesSha,
         registry: launch.registry,
       });
     } catch (err) {
@@ -279,11 +276,9 @@ export function prepareStartRun(input: StartRunInput): StartRunPlan {
               path,
               content,
             })),
-            components: project.components,
           },
           params: input.doc.params,
           launch,
-          modulesSha: input.modulesSha,
           runConfig,
           command,
         }
@@ -295,7 +290,6 @@ export function prepareStartRun(input: StartRunInput): StartRunPlan {
     runConfig,
     profile,
     problems,
-    modulesSha: input.modulesSha,
     workflow: input.doc,
     request,
   };
@@ -305,7 +299,6 @@ export function prepareStartRun(input: StartRunInput): StartRunPlan {
 export function startPlanStamp(plan: StartRunPlan): string {
   const doc = plan.workflow;
   return JSON.stringify({
-    modulesSha: plan.modulesSha,
     command: plan.command,
     runConfig: plan.runConfig,
     problems: plan.problems,

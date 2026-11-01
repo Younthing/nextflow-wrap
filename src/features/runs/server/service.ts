@@ -1,13 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { z } from "zod";
-import catalog from "@/data/nf-core-modules.json";
 import { generateProject } from "@/features/project/generate";
 import {
   defaultLaunchConfig,
   ENGINES,
   EXECUTORS,
   executorDef,
+  EXTRA_PROFILES,
   launchCommand,
   launchProblems,
   profileList,
@@ -16,10 +16,10 @@ import {
   type ExecutorId,
   type LaunchConfig,
 } from "@/features/project/launch";
+import { indexModules } from "@/features/workflow/catalog";
 import { parseWorkflowDoc } from "@/features/workflow/document";
 import type { WorkflowDoc } from "@/features/workflow/types";
 import { validateWorkflow } from "@/features/workflow/validate";
-import { executionModuleIndex } from "./execution-index";
 import { dataDirectory, store, type StoredExecution } from "@/lib/server/database";
 import type { RunProgress } from "../types";
 
@@ -44,7 +44,7 @@ const launchSchema = z.object({
   executor: z.enum(EXECUTORS.map((executor) => executor.id) as [ExecutorId, ...ExecutorId[]]),
   engine: z.enum(ENGINES as [ContainerEngine, ...ContainerEngine[]]),
   settings: z.record(z.string(), z.union([plainText(500), z.number().finite(), z.boolean()])),
-  extraProfiles: z.array(z.enum(["test", "debug", "gpu", "arm64", "emulate_amd64", "wave"])).max(6),
+  extraProfiles: z.array(z.enum(EXTRA_PROFILES)).max(EXTRA_PROFILES.length),
   workDir: plainText(1000), resume: z.boolean(), registry: z.enum(["quay.io", "docker.rainbond.cc"]), runName: z.string().regex(/^[A-Za-z][A-Za-z0-9_-]{0,60}$/).optional(),
 });
 
@@ -86,19 +86,18 @@ export function runnerReady() {
 }
 
 export function submitRun(body: unknown, idempotency?: string) {
-  const request = z.object({ workflow: z.unknown(), params: paramsSchema, launch: launchSchema, modulesSha: z.string().optional() }).parse(body);
+  const request = z.object({ workflow: z.unknown(), params: paramsSchema, launch: launchSchema }).parse(body);
   if (!runnerReady()) throw new HttpError(503, "Runner 未就绪，请先启动 pnpm runner 并检查健康状态");
-  if (request.modulesSha && request.modulesSha !== catalog.gitSha) throw new HttpError(409, "模块目录版本已变更，请刷新页面");
   const workflow = workflowInput(request.workflow);
   if (!store().workflow(workflow.id)) throw new HttpError(400, "请先保存流程");
   workflow.params = request.params;
-  const index = executionModuleIndex(store().scriptModules());
+  const index = indexModules(store().scriptModules());
   const issues = validateWorkflow(workflow.nodes, workflow.edges, request.params, index).filter((issue) => issue.level === "error");
   if (issues.length) throw new HttpError(400, issues.map((issue) => issue.message).join("；"));
   if (new Set(workflow.nodes.map((node) => node.id)).size !== workflow.nodes.length) throw new HttpError(400, "节点 ID 重复");
   if (request.launch.resume) throw new HttpError(400, "续跑需要从运行详情选择来源记录");
   const launch = checkedLaunch(request.launch);
-  const project = generateProject(workflow, index, { modulesSha: catalog.gitSha, registry: launch.registry });
+  const project = generateProject(workflow, index, { registry: launch.registry });
   const id = randomUUID();
   const root = join(dataDirectory(), "executions", id);
   const now = new Date().toISOString();
@@ -108,7 +107,7 @@ export function submitRun(body: unknown, idempotency?: string) {
       id, runName: launch.runName ?? `studio_${id.replaceAll("-", "").slice(0, 12)}`, workflowId: workflow.id, workflowName: workflow.name,
       executor: launch.executor, profile: profileList(launch), status: "submitted", phase: "queued", submittedAt: now, progress: emptyProgress(),
       command: launchCommand(launch), launch, params: { ...request.params, outdir: join(root, "attempts", id, "results") }, runConfig: renderRunConfig(launch),
-      project: { name: project.meta.name, files: project.files, components: project.components }, workflow,
+      project: { name: project.meta.name, files: project.files.map(({ path, content }) => ({ path, content })) }, workflow,
     },
   };
   return store().transaction(() => {

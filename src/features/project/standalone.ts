@@ -4,8 +4,8 @@ import type { ChannelElement, ModuleDef, PortDef, WorkflowDoc, WorkflowNode } fr
 
 /**
  * A self-contained script with the same channel wiring as the generated
- * workflow, and a local process in place of each nf-core module. Used to run
- * the generated dataflow without containers or the nf-core template.
+ * workflow, and a stub process in place of each module. Used to run the
+ * generated dataflow without containers or the modules' own scripts.
  */
 
 const IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;

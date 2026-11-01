@@ -232,7 +232,7 @@ async function runLanguage(page: Page, language: "python" | "r") {
     language === "python" ? "Python 出图并发布" : "R 出图并发布",
   );
   if (language === "r") {
-    await page.getByRole("button", { name: /内核/ }).click();
+    await page.getByRole("button", { name: /^内核/ }).click();
     await page.getByRole("option", { name: "R 4.3 · r-deseq2" }).click();
   }
   await fillCell(page, language === "python" ? PYTHON_PLOT : R_PLOT);

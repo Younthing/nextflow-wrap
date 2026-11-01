@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import catalog from "@/data/nf-core-modules.json";
 import { getEditorSaveSession, type EditorSaveRead } from "@/features/editor/editor-save";
 import { createEditorStore, selectIsDirty, type EditorStore } from "@/features/editor/store";
 import { defaultLaunchConfig } from "@/features/project/launch";
 import { indexModules } from "@/features/workflow/catalog";
 import { emptyWorkflow } from "@/features/workflow/document";
-import { qcDemoWorkflow } from "@/features/workflow/qc-demo";
-import type { ModuleCatalog, WorkflowDoc } from "@/features/workflow/types";
+import { readsQcWorkflow } from "@/features/workflow/demo";
+import { EXAMPLE_MODULES } from "@/features/workflow/example-modules";
+import type { WorkflowDoc } from "@/features/workflow/types";
 import { composeAssistantPrompt } from "./modules/compose";
 import {
   CANCEL_RUN_DESCRIPTION,
@@ -29,8 +29,8 @@ import {
   type StartRunInput,
 } from "./run-actions";
 
-const typed = catalog as ModuleCatalog;
-const index = indexModules(typed.modules);
+const index = indexModules(EXAMPLE_MODULES);
+const qcDemoWorkflow = () => readsQcWorkflow("qc-smoke");
 
 function input(overrides: Partial<StartRunInput> = {}): StartRunInput {
   const doc = overrides.doc ?? qcDemoWorkflow();
@@ -38,7 +38,6 @@ function input(overrides: Partial<StartRunInput> = {}): StartRunInput {
     docId: doc.id,
     doc,
     index,
-    modulesSha: typed.gitSha,
     config: defaultLaunchConfig(),
     real: false,
     runnerReady: true,
@@ -53,7 +52,6 @@ describe("prepareStartRun", () => {
     const plan = prepareStartRun(input());
     expect(plan.problems).toEqual([]);
     expect(plan.request).toMatchObject({
-      modulesSha: typed.gitSha,
       params: { input: "assets/samplesheet.csv", outdir: "results" },
       launch: { executor: "local", engine: "shell", resume: false },
       command: expect.stringContaining("nextflow run ."),

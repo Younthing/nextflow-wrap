@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import { CATALOG_BUILTINS } from "@/features/workflow/catalog-builtins";
 import { modulesForCatalog, modulesForDrawer, newerScriptModule } from "@/features/workflow/origin";
-import type { ModuleDef } from "@/features/workflow/types";
 import { demoNotebooks, demoScriptModules } from "./seed";
 import { buildScriptModule, nextModuleVersion } from "./publish";
 import type { TryRunRecord } from "./types";
@@ -100,23 +99,20 @@ describe("publish", () => {
 describe("module lists", () => {
   const builtins = CATALOG_BUILTINS;
   const scripts = demoScriptModules();
-  const nfcore = [{ id: "nf-core/fastqc", path: "fastqc", name: "fastqc", process: "FASTQC", category: "qc", description: "", keywords: [], tools: [], inputs: [], outputs: [] }] satisfies ModuleDef[];
-  const all = [...builtins, ...scripts, ...nfcore];
+  const all = [...builtins, ...scripts];
 
-  it("hides failed scripts and nf-core from the drawer", () => {
-    const drawer = modulesForDrawer(all, false).map((mod) => mod.id);
+  it("hides failed scripts from the drawer", () => {
+    const drawer = modulesForDrawer(all).map((mod) => mod.id);
     expect(drawer).toContain("script/qc_summary/v1");
     expect(drawer).toContain("script/hello_py/v2");
     expect(drawer).not.toContain("script/deseq2_plot/v1");
-    expect(drawer).not.toContain("nf-core/fastqc");
     expect(drawer).toContain("builtin/merge-samplesheet");
   });
 
-  it("keeps failed scripts on the catalog and hides nf-core until asked", () => {
-    const catalog = modulesForCatalog(all, false).map((mod) => mod.id);
+  it("keeps failed scripts on the catalog", () => {
+    const catalog = modulesForCatalog(all).map((mod) => mod.id);
     expect(catalog).toContain("script/deseq2_plot/v1");
-    expect(catalog).not.toContain("nf-core/fastqc");
-    expect(modulesForCatalog(all, true).map((mod) => mod.id)).toContain("nf-core/fastqc");
+    expect(catalog).toContain("builtin/merge-samplesheet");
   });
 
   it("points a node at a newer passed publish", () => {

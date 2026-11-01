@@ -64,6 +64,16 @@ export function createEditorActions(store: EditorStore) {
     return searchModules(modules, query).slice(0, limit).map(describeModule);
   }
 
+  /** Ids close to a mistyped one: the name part of `script/<name>/v1`, shortened until something matches. */
+  function nearModuleIds(moduleId: string): string[] {
+    const name = moduleId.split("/").filter((part) => !/^(script|builtin|v\d+)$/.test(part)).join(" ") || moduleId;
+    for (let length = name.length; length >= 3; length--) {
+      const hits = searchCatalog(name.slice(0, length), 5);
+      if (hits.length) return hits.map((m) => m.moduleId);
+    }
+    return [];
+  }
+
   /** Finds a node by id or by its alias, ignoring case. */
   function findNode(ref: string): FlowNode {
     const { nodes } = store.getState();
@@ -168,10 +178,7 @@ export function createEditorActions(store: EditorStore) {
     const state = store.getState();
     const def = state.index.get(args.moduleId);
     if (!def) {
-      const guesses = searchCatalog(
-        args.moduleId.replace(/^nf-core\//, ""),
-        5,
-      ).map((m) => m.moduleId);
+      const guesses = nearModuleIds(args.moduleId);
       throw new Error(
         `模块 ${args.moduleId} 不存在。${guesses.length ? `相近的有：${guesses.join(", ")}` : "先用 search_modules 查一下。"}`,
       );

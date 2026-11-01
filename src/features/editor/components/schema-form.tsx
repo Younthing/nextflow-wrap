@@ -21,7 +21,7 @@ interface Group {
   fields: [string, JsonSchema][];
 }
 
-/** nf-core schemas group params under `$defs`, referenced from `allOf`. */
+/** Pipeline schemas group params under `$defs`, referenced from `allOf`. */
 export function schemaGroups(schema: JsonSchema): Group[] {
   const defs = schema.$defs ?? {};
   const order = schema.allOf?.map((r) => r.$ref.replace("#/$defs/", "")) ?? Object.keys(defs);
