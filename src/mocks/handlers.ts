@@ -3,6 +3,7 @@ import { delay, http, HttpResponse } from "msw";
 import catalog from "@/data/nf-core-modules.json";
 import samplesheetSchema from "@/data/samplesheet-schema.json";
 import { patchModuleEnv, readModuleEnv } from "@/features/notebook/env";
+import type { PortBindingRequest } from "@/features/notebook/input-bindings";
 import { PercentError } from "@/features/notebook/jupytext";
 import { referenceCounts, scriptModuleViews, summarizeNotebook } from "@/features/notebook/library";
 import { notebookFromLibrary, storedLibraryCopy } from "@/features/notebook/library-copy";
@@ -166,6 +167,7 @@ export const handlers = [
     const body = (await request.json().catch(() => ({}))) as {
       args?: Record<string, string>;
       sampleId?: "fastqc-pair" | "samplesheet";
+      bindings?: PortBindingRequest[];
       condaYaml?: string;
       containerImage?: string;
     };
@@ -175,7 +177,13 @@ export const handlers = [
     } catch (error) {
       return HttpResponse.json({ message: error instanceof Error ? error.message : "环境无效" }, { status: 400 });
     }
-    const record = simulateTryRun(doc, withSampleValues(body.args ?? {}, body.sampleId), env);
+    const useBindings = !!body.bindings?.length;
+    const record = simulateTryRun(
+      doc,
+      useBindings ? {} : withSampleValues(body.args ?? {}, body.sampleId),
+      env,
+      { bindings: useBindings ? body.bindings : undefined, sampleId: useBindings ? undefined : body.sampleId },
+    );
     writeDb((db) => {
       db.tryRuns[`${doc.id}:${doc.rev}`] = record;
     });

@@ -67,6 +67,19 @@ describe("try-run http", () => {
       await expect(handleNotebookApi("POST", ["notebooks", saved.id, "try-run"], post("/api/notebooks/nb_env/try-run", {
         condaYaml: "/envs/a\n.yml",
       }), db)).rejects.toThrow(/换行/);
+      const owned = await handleNotebookApi("POST", ["notebooks", saved.id, "try-run"], post("/api/notebooks/nb_env/try-run", {
+        bindings: [{ port: "title", source: "path", value: "bound" }],
+        condaYaml: yaml,
+        containerImage: "python:3.11-slim",
+      }), db);
+      expect(owned.status).toBe(200);
+      const bound = await owned.json() as TryRunRecord;
+      expect(bound.passed).toBe(true);
+      expect(bound.envVia).toBe("container");
+      expect(bound.log).toContain("输入 title · 路径 · bound");
+      expect(bound.bindings).toEqual([{ port: "title", source: "path", label: "bound" }]);
+      expect(bound.log).toContain("选用 container 'python:3.11-slim'");
+
       db.close();
     } finally {
       if (previous === undefined) delete process.env.TRY_RUN_CONTAINER_BIN;

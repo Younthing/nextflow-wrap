@@ -36,6 +36,14 @@ describe("executeTryRun", () => {
     expect(record.containerImage).toBeUndefined();
     expect(record.log).toContain("未设置 conda / container");
     expect(record.log).toContain("选用本机 python3");
+    expect(record.log).toContain("输入 fastq_zip · 样例 · 内置样例：2 个 FastQC zip");
+    expect(record.log).toContain("输入 min_q · 路径 · 30");
+    expect(record.log).toContain("输入 title · 路径 · QC 汇总");
+    expect(record.bindings?.map((binding) => [binding.port, binding.source])).toEqual([
+      ["fastq_zip", "sample"],
+      ["min_q", "path"],
+      ["title", "path"],
+    ]);
     expect(record.log).toContain(`$ python3 ${scriptName} `);
     expect(record.log).not.toContain("main.py");
     const demo = simulateTryRun(notebook, {
@@ -155,6 +163,53 @@ describe("executeTryRun module environment", () => {
     expect(absent.passed).toBe(false);
     expect(absent.log).toContain("找不到 conda 文件");
     expect(absent.log).not.toContain("e2e docker shim");
+  });
+});
+
+describe("executeTryRun own data", () => {
+  const hello = () => demoNotebooks().find((doc) => doc.id === "hello_py")!;
+
+  it("runs an uploaded samplesheet and a sample fixture", async () => {
+    const csv = Buffer.from("sample,fastq_1\nUploaded,a.fq\n").toString("base64");
+    const uploaded = await executeTryRun(hello(), {}, undefined, undefined, {
+      bindings: [{ port: "samplesheet", source: "upload", files: [{ name: "mine.csv", contentBase64: csv }] }],
+    });
+    expect(uploaded.passed).toBe(true);
+    expect(uploaded.bindings).toEqual([{ port: "samplesheet", source: "upload", label: "mine.csv" }]);
+    expect(uploaded.log).toContain("输入 samplesheet · 上传 · mine.csv");
+    expect(uploaded.log).toContain("--samplesheet mine.csv");
+
+    const sample = await executeTryRun(hello(), {}, undefined, undefined, {
+      bindings: [{ port: "samplesheet", source: "sample", value: "samplesheet" }],
+    });
+    expect(sample.passed).toBe(true);
+    expect(sample.log).toContain("输入 samplesheet · 样例 · 内置样例：samplesheet.csv");
+  });
+
+  it("copies a host path into the work directory before the CLI runs", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "nb-own-"));
+    const csvPath = join(dir, "sheet.csv");
+    await writeFile(csvPath, "sample,fastq_1\nHost,a.fq\n");
+    try {
+      const record = await executeTryRun(hello(), {}, undefined, undefined, {
+        bindings: [{ port: "samplesheet", source: "path", value: csvPath }],
+      });
+      expect(record.passed).toBe(true);
+      expect(record.log).toContain(`输入 samplesheet · 路径 · ${csvPath} → sheet.csv`);
+      expect(record.log).toContain("--samplesheet sheet.csv");
+      expect(record.bindings?.[0]?.source).toBe("path");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps a missing path string and reports the failure in the log", async () => {
+    const record = await executeTryRun(hello(), {}, undefined, undefined, {
+      bindings: [{ port: "samplesheet", source: "path", value: "missing.csv" }],
+    });
+    expect(record.passed).toBe(false);
+    expect(record.log).toContain("输入 samplesheet · 路径 · missing.csv");
+    expect(record.log).toContain("--samplesheet missing.csv");
   });
 });
 

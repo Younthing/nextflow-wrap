@@ -9,16 +9,17 @@ import { AsyncPlaceholder } from "@/components/ui/async-placeholder";
 import { Button } from "@/components/ui/button";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EnvConfigAssistant, PublishAssistant } from "@/features/assistant/modules/surfaces";
 import { convertNotebook, ConvertError, inputPorts, outputPorts } from "@/features/notebook/convert";
 import { missingEnvLabels, sameModuleEnv, stageModuleEnv, tryRunEnvSummary } from "@/features/notebook/env";
+import { defaultInputDraft, SOURCE_LABEL, type InputDraft } from "@/features/notebook/input-bindings";
 import { latestModuleForNotebook } from "@/features/notebook/library";
 import { nextModuleVersion } from "@/features/notebook/publish";
 import { useNotebook, usePublishNotebook, useScriptModules, useTryRunNotebook } from "@/features/notebook/queries";
 import { kernelLabel } from "@/features/notebook/types";
 import { cn } from "@/lib/utils";
 import { ModuleEnvFields, ModuleEnvPreview } from "./module-env-form";
+import { bindingsFromDrafts, TryRunBindingTable, TryRunInputs } from "./try-run-inputs";
 
 const STEPS = ["转化预览", "试跑 CLI", "保存为模块"];
 
@@ -53,9 +54,8 @@ function PublishWizardScreen({ notebookId }: { notebookId: string }) {
   const scripts = useScriptModules();
   const tryRun = useTryRunNotebook();
   const publish = usePublishNotebook();
-  const [args, setArgs] = React.useState<Record<string, string>>({});
+  const [drafts, setDrafts] = React.useState<Record<string, InputDraft>>({});
   const [seededFor, setSeededFor] = React.useState<string | null>(null);
-  const [sampleId, setSampleId] = React.useState<string>("none");
   const [name, setName] = React.useState("");
   const [description, setDescription] = React.useState("");
   const [changelog, setChangelog] = React.useState("");
@@ -74,18 +74,12 @@ function PublishWizardScreen({ notebookId }: { notebookId: string }) {
     }
   }, [doc]);
 
-  if (doc && converted?.ok && seededFor !== doc.id) {
-    const next: Record<string, string> = {};
-    for (const input of converted.value.inputs) {
-      if (input.defaultValue !== undefined) next[input.name] = input.defaultValue;
-    }
-    const wantsZip = converted.value.inputs.some((input) => /zip|fastq/i.test(input.name));
-    if (wantsZip) {
-      next.fastq_zip = next.fastq_zip || "S1_fastq.zip,S2_fastq.zip";
-      setSampleId("fastqc-pair");
-    }
-    setArgs(next);
-    setSeededFor(doc.id);
+  const seedKey = doc && converted?.ok ? `${doc.id}:${doc.rev}` : null;
+  if (seedKey && seededFor !== seedKey && converted?.ok) {
+    const next: Record<string, InputDraft> = {};
+    for (const input of converted.value.inputs) next[input.name] = defaultInputDraft(input);
+    setDrafts(next);
+    setSeededFor(seedKey);
   }
 
   if (doc && namedFor !== doc.id) {
@@ -169,10 +163,10 @@ function PublishWizardScreen({ notebookId }: { notebookId: string }) {
       )}
 
       {step === 2 && converted?.ok && (
-        <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[20rem_minmax(0,1fr)]">
+        <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[24rem_minmax(0,1fr)]">
           <section className="glass space-y-3 overflow-auto rounded-xl p-4">
             <h2 className="text-sm font-semibold">试跑参数</h2>
-            <p className="text-xs text-muted-foreground">笔记本内核 {kernelLabel(doc.kernel)} 不参与试跑。下面的 conda／容器与第③步写入模块的是同一份。</p>
+            <p className="text-xs text-muted-foreground">每个输入端口绑定上传文件、本机路径，或该类型已有的样例。笔记本内核 {kernelLabel(doc.kernel)} 不参与试跑。下面的 conda／容器与第③步写入模块的是同一份。</p>
             <ModuleEnvFields
               idPrefix="publish-env"
               condaYaml={condaYaml}
@@ -187,22 +181,11 @@ function PublishWizardScreen({ notebookId }: { notebookId: string }) {
             ) : (
               <p role="alert" className="text-xs text-destructive">{staged.message}</p>
             )}
-            {converted.value.inputs.some((input) => /zip|fastq/i.test(input.name)) && (
-              <FormField label="样例数据">
-                <Select value={sampleId} onValueChange={setSampleId}>
-                  <SelectTrigger size="sm"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">不使用样例</SelectItem>
-                    <SelectItem value="fastqc-pair">内置样例：2 个 FastQC zip</SelectItem>
-                  </SelectContent>
-                </Select>
-              </FormField>
-            )}
-            {converted.value.inputs.map((input) => (
-              <FormField key={input.name} label={`${input.name} · ${input.type}${input.required ? " · 必填" : ""}`} htmlFor={`arg-${input.name}`}>
-                <Input id={`arg-${input.name}`} value={args[input.name] ?? ""} onChange={(event) => setArgs((current) => ({ ...current, [input.name]: event.target.value }))} className="h-8 font-mono text-xs" />
-              </FormField>
-            ))}
+            <TryRunInputs
+              inputs={converted.value.inputs}
+              drafts={drafts}
+              onChange={(port, draft) => setDrafts((current) => ({ ...current, [port]: draft }))}
+            />
             <Button
               type="button"
               variant="outline"
@@ -211,8 +194,7 @@ function PublishWizardScreen({ notebookId }: { notebookId: string }) {
                 if (!staged.ok) return;
                 tryRun.mutate({
                   id: doc.id,
-                  args,
-                  sampleId: sampleId === "none" ? undefined : sampleId,
+                  bindings: bindingsFromDrafts(converted.value.inputs, drafts),
                   condaYaml: staged.condaYaml,
                   containerImage: staged.containerImage,
                 });
@@ -227,6 +209,7 @@ function PublishWizardScreen({ notebookId }: { notebookId: string }) {
           <section className="glass flex min-h-0 flex-col overflow-hidden rounded-xl p-4">
             <h2 className="text-sm font-semibold">日志 {logMark}</h2>
             <pre className="mt-3 min-h-32 flex-1 overflow-auto rounded-lg bg-secondary/60 p-3 font-mono text-xs">{receipt?.log || "试跑通过后才能保存。"}</pre>
+            {receipt?.bindings && <TryRunBindingTable bindings={receipt.bindings} />}
             {receipt && (
               <table className="mt-3 w-full text-left text-xs">
                 <thead className="text-muted-foreground">
@@ -280,6 +263,13 @@ function PublishWizardScreen({ notebookId }: { notebookId: string }) {
             <p>端口 {converted?.ok ? `${converted.value.inputs.length} 输入 · ${converted.value.outputs.length} 输出` : "—"}</p>
             <p>笔记本内核 <span className="font-mono">{kernelLabel(doc.kernel)}</span>，不写入 conda／容器。试跑日志里的环境与下面这份相同。</p>
             <ModuleEnvPreview condaYaml={condaYaml} containerImage={containerImage} />
+            {passed && receipt?.bindings?.length ? (
+              <ul className="grid gap-1 font-mono text-xs">
+                {receipt.bindings.map((binding) => (
+                  <li key={binding.port}>{binding.port} · {SOURCE_LABEL[binding.source]} · {binding.label}</li>
+                ))}
+              </ul>
+            ) : null}
             <p className={passed ? "text-success" : "text-destructive"}>
               {passed
                 ? `试跑通过 · ${receipt?.durationMs ?? 0}ms`

@@ -185,6 +185,7 @@ async function publish(page: Page, version: "v1" | "v2", condaYaml: string, imag
     )
     .toContain("通过");
   await expect(tryLog).toContainText(`conda '${condaYaml}'`);
+  await expect(tryLog).toContainText("输入 title · 路径 · S1");
   await expect(tryLog).toContainText(`选用 container '${image}'`);
   await expect(tryLog).toContainText(`e2e docker shim: image ${image}`);
   await expect(tryLog).not.toContainText("选用本机");

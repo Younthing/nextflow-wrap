@@ -7,6 +7,8 @@ import { CELL_DRIVER } from "./cell-driver";
 import { cellsForRun } from "./cells";
 import { ConvertError, convertNotebook, scriptFileName, scriptInterpreter, tryRunArgv } from "./convert";
 import { readModuleEnv, type ModuleEnvPatch } from "./env";
+import { planTryRunInputs, type InputPlan, type PortBindingRequest } from "./input-bindings";
+import { stageInputPlan, type StagedInputs } from "./input-bindings-stage";
 import { finalizeCellResult } from "./outputs";
 import {
   buildTryRunHeader,
@@ -33,6 +35,8 @@ export interface TryRunExecOptions {
   tools?: TryRunTools;
   cacheDir?: string;
   run?: typeof runCommand;
+  /** Per-port upload / path / sample bindings. When set, values and sampleId are ignored. */
+  bindings?: PortBindingRequest[];
 }
 
 interface LaunchStep {
@@ -46,16 +50,6 @@ interface LaunchStep {
 function safeOutputName(pattern: string): string {
   if (!/^[\w.-]+$/.test(pattern)) throw new ConvertError(`输出文件名无效：${pattern}`);
   return pattern;
-}
-
-export async function materializeSample(dir: string, sampleId: string | undefined): Promise<void> {
-  if (sampleId === "fastqc-pair") {
-    await writeFile(inDir(dir, "S1_fastq.zip"), "sample-s1");
-    await writeFile(inDir(dir, "S2_fastq.zip"), "sample-s2");
-  }
-  if (sampleId === "samplesheet") {
-    await writeFile(inDir(dir, "samplesheet.csv"), "sample,fastq_1\nS1,a.fq\n");
-  }
 }
 
 function envFields(env: { condaYaml?: string; containerImage?: string }, via?: TryRunVia) {
@@ -82,6 +76,7 @@ function refusedRecord(
   env: { condaYaml?: string; containerImage?: string },
   started: number,
   message: string,
+  planned?: Pick<InputPlan, "lines" | "records">,
 ): TryRunRecord {
   // Keep the conda/container lines and omit the host choice. The run was refused.
   const directives = tryRunEnvLines({ env, via: "host", language: converted.language }).slice(0, 1);
@@ -91,9 +86,10 @@ function refusedRecord(
     passed: false,
     exitCode: null,
     durationMs: Date.now() - started,
-    log: [...directives, message].filter(Boolean).join("\n"),
+    log: [...directives, ...(planned?.lines ?? []), message].filter(Boolean).join("\n"),
     outputs: missedOutputs(converted),
     ranAt: new Date().toISOString(),
+    ...(planned?.records?.length ? { bindings: planned.records } : {}),
     ...envFields(env),
   };
 }
@@ -126,14 +122,25 @@ export async function executeTryRun(
 ): Promise<TryRunRecord> {
   const started = Date.now();
   const converted = convertNotebook(notebook);
-  const argv = tryRunArgv(converted.inputs, values);
   const env = readModuleEnv(envInput ?? {});
   const scriptName = scriptFileName(converted.entry);
-  const task = [scriptInterpreter(converted.language), scriptName, ...argv];
+  const interpreter = scriptInterpreter(converted.language);
   const run = options.run ?? runCommand;
-  const fail = (message: string) => refusedRecord(notebook, converted, env, started, message);
+  let planned: InputPlan;
+  try {
+    planned = planTryRunInputs(converted.inputs, values, sampleId, options.bindings);
+  } catch (error) {
+    return refusedRecord(notebook, converted, env, started, error instanceof Error ? error.message : "无法准备输入");
+  }
+  const fail = (message: string) => refusedRecord(notebook, converted, env, started, message, planned);
 
-  const perform = async (dir: string, steps: LaunchStep[], via: TryRunVia, note?: string): Promise<TryRunRecord> => {
+  const perform = async (
+    dir: string,
+    steps: LaunchStep[],
+    via: TryRunVia,
+    staged: StagedInputs,
+    note?: string,
+  ): Promise<TryRunRecord> => {
     let exitCode: number | null = 0;
     let output = "";
     const displays: string[] = [];
@@ -158,7 +165,7 @@ export async function executeTryRun(
     const passed = exitCode === 0 && outputs.length > 0 && outputs.every((item) => item.ok);
     const durationMs = Date.now() - started;
     const header = buildTryRunHeader(
-      tryRunEnvLines({ env, via, language: converted.language, note }),
+      [...tryRunEnvLines({ env, via, language: converted.language, note }), ...staged.lines],
       displays,
     );
     const tail = [output, passed ? `完成，用时 ${durationMs}ms` : ""].filter(Boolean).join("\n");
@@ -171,29 +178,45 @@ export async function executeTryRun(
       log: clipTryRunLog(header, tail),
       outputs,
       ranAt: new Date().toISOString(),
+      bindings: staged.records,
       ...envFields(env, via),
     };
   };
 
-  const inWorkDir = async (stepsFor: (dir: string) => Promise<LaunchStep[]> | LaunchStep[], via: TryRunVia, note?: string) => {
+  const inWorkDir = async (
+    stepsFor: (dir: string, argv: string[]) => Promise<LaunchStep[]> | LaunchStep[],
+    via: TryRunVia,
+    note?: string,
+  ) => {
     const dir = await mkdtemp(join(/* turbopackIgnore: true */ tmpdir(), "nb-try-"));
     try {
-      await materializeSample(dir, sampleId);
+      let staged: StagedInputs;
+      try {
+        staged = await stageInputPlan(dir, planned, [scriptName]);
+      } catch (error) {
+        return fail(error instanceof Error ? error.message : "无法准备输入");
+      }
       await writeFile(inDir(dir, scriptName), converted.script, { mode: 0o755 });
-      return await perform(dir, await stepsFor(dir), via, note);
+      let argv: string[];
+      try {
+        argv = tryRunArgv(converted.inputs, staged.values);
+      } catch (error) {
+        return fail(error instanceof Error ? error.message : "无法准备输入");
+      }
+      return await perform(dir, await stepsFor(dir, argv), via, staged, note);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
   };
 
-  if (!env.condaYaml && !env.containerImage) {
-    return inWorkDir(() => [{
-      executable: task[0] ?? "python3",
-      args: task.slice(1),
-      timeoutMs: HOST_TIMEOUT_MS,
-      display: hostTryRunCommand(converted.language, converted.entry, argv),
-    }], "host");
-  }
+  const hostSteps = (_dir: string, argv: string[]): LaunchStep[] => [{
+    executable: interpreter,
+    args: [scriptName, ...argv],
+    timeoutMs: HOST_TIMEOUT_MS,
+    display: hostTryRunCommand(converted.language, converted.entry, argv),
+  }];
+
+  if (!env.condaYaml && !env.containerImage) return inWorkDir(hostSteps, "host");
 
   if (env.condaYaml) {
     const problem = await condaFileProblem(env.condaYaml);
@@ -208,18 +231,11 @@ export async function executeTryRun(
   }
   const selection = selectTryRunEngine(env, tools);
   if (selection.via === "unavailable") return fail(selection.message);
-  if (selection.via === "host") {
-    return inWorkDir(() => [{
-      executable: task[0] ?? "python3",
-      args: task.slice(1),
-      timeoutMs: HOST_TIMEOUT_MS,
-      display: hostTryRunCommand(converted.language, converted.entry, argv),
-    }], "host");
-  }
+  if (selection.via === "host") return inWorkDir(hostSteps, "host");
   if (selection.via === "container") {
     const image = env.containerImage ?? "";
-    return inWorkDir((dir) => {
-      const launch = containerCommand(selection.tool, dir, image, task);
+    return inWorkDir((dir, argv) => {
+      const launch = containerCommand(selection.tool, dir, image, [interpreter, scriptName, ...argv]);
       return [{ executable: launch.executable, args: launch.args, timeoutMs: ENV_TIMEOUT_MS }];
     }, "container", selection.note);
   }
@@ -234,7 +250,7 @@ export async function executeTryRun(
   } catch {
     ready = false;
   }
-  return inWorkDir(() => {
+  return inWorkDir((_dir, argv) => {
     const steps: LaunchStep[] = [];
     if (!ready) {
       const create = condaCreateCommand(selection.tool, prefix, yamlPath);
@@ -245,7 +261,7 @@ export async function executeTryRun(
         cleanup: () => rm(prefix, { recursive: true, force: true }),
       });
     }
-    const launch = condaRunCommand(selection.tool, prefix, task);
+    const launch = condaRunCommand(selection.tool, prefix, [interpreter, scriptName, ...argv]);
     steps.push({ executable: launch.executable, args: launch.args, timeoutMs: ENV_TIMEOUT_MS });
     return steps;
   }, "conda", selection.note);
