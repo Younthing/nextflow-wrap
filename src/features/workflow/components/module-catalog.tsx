@@ -146,7 +146,7 @@ export function ModuleCatalog() {
                     <TableCell className="max-w-64">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-mono text-sm">{def.name}</span>
-                        {failed && <Badge variant="destructive">不可拖入</Badge>}
+                        {failed && <Badge variant="destructive">不可拖入画布</Badge>}
                       </div>
                       <div className="truncate text-xs text-muted-foreground">{def.description}</div>
                     </TableCell>
@@ -236,7 +236,7 @@ export function ModuleCatalog() {
       )}
 
       <p className="text-xs text-muted-foreground">
-        每个自定义模块记录 sourceNotebookId 与 sourceNotebookRev。试跑不通过的版本留在这里，标成「不可拖入」，不会出现在画布抽屉。内置节点随产品提供。nf-core 打开「显示 nf-core」后才列出，只读。
+        每个自定义模块记录 sourceNotebookId 与 sourceNotebookRev。试跑不通过的版本留在这里，标成「不可拖入画布」，不会出现在画布抽屉。内置节点随产品提供。nf-core 打开「显示 nf-core」后才列出，只读。
       </p>
 
       <Dialog open={!!contract} onOpenChange={(open) => !open && setContract(null)}>

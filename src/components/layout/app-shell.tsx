@@ -14,7 +14,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             Nextflow Studio
           </span>
           <span className="text-xs text-muted-foreground">
-            可视化搭建 nf-core 流程
+            用笔记本和内置节点搭建流程
           </span>
           <div className="ml-auto flex items-center gap-2">
             <BackendStatus />

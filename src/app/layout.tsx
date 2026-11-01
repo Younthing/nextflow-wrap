@@ -11,7 +11,7 @@ export const metadata: Metadata = {
     default: "Nextflow Studio",
     template: "%s · Nextflow Studio",
   },
-  description: "可视化搭建、运行和追踪 nf-core 风格的 Nextflow 流程",
+  description: "用笔记本、内置节点搭建并运行 Nextflow 流程",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
