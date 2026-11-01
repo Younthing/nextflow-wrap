@@ -41,7 +41,7 @@ ComfyUI 式的 Nextflow 可视化前端：在笔记本里写分析脚本并发�
 
 点工具栏的「运行」会把画布生成一个标准 Nextflow 项目（`src/features/project`），并选择运行环境后提交到后端：
 
-- 生成的文件：`main.nf`（入口 workflow）、`modules/local/<name>/main.nf`（每个发布模块一个 process，写着它的 conda / container 依据）、`bin/<脚本>`、`nextflow.config`（参数和全部运行时 profile）、`conf/{base,modules}.config`、`nextflow_schema.json`、`README.md`；用到样本表时另有 `assets/schema_input.json` 和示例 `assets/samplesheet.csv`。不需要 nf-core/tools、Git 或任何插件，离线也能生成。
+- 生成的文件：`main.nf`（入口 workflow）、`modules/<namespace>/<name>/`（每个发布模块一个自包含目录：`main.nf` 里的 process 写着 conda / container 依据，另有 `meta.yml`、可选的 `environment.yml` 和 `resources/usr/bin/<脚本>`；本机和 HPC 执行器靠 `nextflow.enable.moduleBinaries` 把它放上 PATH，云批处理和 k8s 改放项目 `bin/`）、`nextflow.config`（参数和全部运行时 profile）、`conf/{base,modules}.config`、`nextflow_schema.json`、`README.md`；用到样本表时另有 `assets/schema_input.json` 和示例 `assets/samplesheet.csv`。不需要 nf-core/tools、Git 或任何插件，离线也能生成。
 - 样本表用 `splitCsv` 读入并按 sample 合并多行，参数在应用里按 schema 校验。
 - 真实模式按 Nextflow 自己的语义运行：模块里写的 conda / container 只是依据，实际用哪个由 `-profile` 决定。可选本机 shell（默认，不加 profile）以及 conda、mamba、micromamba、docker、podman、singularity、apptainer、charliecloud、shifter、sarus、spack、wave；执行器可选本机、SLURM、HyperQueue、PBS Pro、PBS/Torque、SGE、LSF、Flux、HTCondor、Moab、OAR、NQSII、Bridge，以及 Google/AWS/Azure Batch 和 Kubernetes。runner 启动前检查所选执行器的提交命令（如 `sbatch`、`hq`）和本机运行时的命令（如 `conda`、`apptainer`）是否在 PATH 里。集群和云执行器的工作目录要写计算节点能访问的绝对路径或对象存储地址。Apple Silicon 上用 Docker 时自动加 `emulate_amd64`。执行器设置写进单独的 `run.config`，运行时用 `-profile`，参数写进 `params.json`，runner 在独立项目目录里执行：
 
@@ -128,9 +128,9 @@ runner 启动时写入一个内置示例流程（host-chain：用本机 shell �
 
 本机 web 默认只监听 127.0.0.1，执行可信工作流。runner 按执行器分槽位排队：本机执行器同一时间只跑一个运行（任务都在这台机器上，避免 CPU/内存超订）；集群和云执行器的 Nextflow head 只负责提交作业，默认可同时跑 4 个，用 `NEXTFLOW_STUDIO_REMOTE_SLOTS` 调整。两类各自先到先跑，本机运行排队时不挡集群运行。runner 落盘提交时生成的项目快照（模块之后重新发布也不影响这次运行），用 `nf-weblog@1.2.0` 采集真实状态，trace 最终对账；运行图中的任务数随数据流展开。取消会向 Nextflow 进程组发 SIGTERM（本机 10 秒、集群/云 60 秒后 SIGKILL），并清理带本次运行标签的容器。Nextflow head 在独立进程组里运行，输出直接写日志文件，所以 runner 停止或崩溃时运行不中断；重启后 runner 核验原进程身份并重新接管，复用上次的事件端口继续接收 weblog（端口被占用时改为轮询 trace）。head 在 runner 停止期间结束的，按 `.nextflow/history` 记录的 OK/ERR 判定成功或失败。只有还在准备阶段的运行会被标记中断。重启 web 不影响独立 runner。
 
-数据目录默认在 Linux 上是 `${XDG_DATA_HOME:-~/.local/share}/nextflow-studio/`，macOS 上是 `~/Library/Application Support/Nextflow Studio/`（已有 `~/.local/share/nextflow-studio/studio.sqlite` 时继续用旧位置）。其中 `studio.sqlite` 保存工作流和运行状态，`host-chain/` 保存示例输入；`pipelines/<流程 id>/` 是每个流程固定的项目和 launch 目录，每次运行只重写有变化的文件，`.nextflow/` 历史和缓存库也在这里；`work/` 是所有流程共用的本机 work 目录；`executions/<lineage>/attempts/<run-id>/` 保存各次参数、日志、trace、报告、结果和当次运行的项目副本 `project/`。
+数据目录默认在 Linux 上是 `${XDG_DATA_HOME:-~/.local/share}/nextflow-studio/`，macOS 上是 `~/Library/Application Support/Nextflow Studio/`（已有 `~/.local/share/nextflow-studio/studio.sqlite` 时继续用旧位置）。其中 `studio.sqlite` 保存工作流和运行状态，`host-chain/` 保存示例输入；`library/modules/<namespace>/<name>/<version>/` 是模块库，每个发布版本一个目录，内容和生成项目里的模块目录相同，另有 `notebook.py|R`（percent 格式笔记本）和 `module.json`，设 `NEXTFLOW_STUDIO_MODULE_LIBRARY` 可指向共享目录（比如团队的 Git 仓库）；`pipelines/<流程 id>/` 是每个流程固定的项目和 launch 目录，每次运行只重写有变化的文件，`.nextflow/` 历史和缓存库也在这里；`work/` 是所有流程共用的本机 work 目录；`executions/<lineage>/attempts/<run-id>/` 保存各次参数、日志、trace、报告、结果和当次运行的项目副本 `project/`。
 
-固定项目目录是因为 Nextflow 把 `bin/` 脚本按路径和修改时间算进任务哈希，生成的脚本命令里也带 `${workflow.projectDir}`，项目换目录或被整体重写后 `-resume` 就找不到缓存。同一流程的运行因此按顺序执行。结果用 `publishDir` 发布：work 和结果目录在同一文件系统上时用硬链接（`link`，不占额外空间，清理 work 后结果仍在），否则复制。
+固定项目目录是因为 Nextflow 把 `bin/` 和模块 `resources/usr/bin/` 里的脚本按路径和修改时间算进任务哈希，项目换目录或被整体重写后 `-resume` 就找不到缓存。同一流程的运行因此按顺序执行。结果用 `publishDir` 发布：work 和结果目录在同一文件系统上时用硬链接（`link`，不占额外空间，清理 work 后结果仍在），否则复制。
 
 缓存目录默认在 Linux 上是 `${XDG_CACHE_HOME:-~/.cache}/nextflow-studio/`，macOS 上是 `~/Library/Caches/Nextflow Studio/`。runner 把 `NXF_CONDA_CACHEDIR` 指到其中的 `conda/`、`NXF_SINGULARITY_CACHEDIR` 和 `NXF_APPTAINER_CACHEDIR` 指到 `singularity/`（环境里已设置的值优先），笔记本试跑的 conda 环境也放在同一个 `conda/`。
 

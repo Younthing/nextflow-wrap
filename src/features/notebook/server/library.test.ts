@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -74,6 +74,11 @@ describe("module library persistence", () => {
       expect(library?.script).toBe(db.scriptModule(view.id)?.script);
       expect(library?.script).not.toContain("only in the notebook");
       expect(readPercent(library?.percent ?? "").cells).toEqual(saved.cells);
+
+      // The same version is also a folder in the module library next to the database.
+      const folder = join(directory, "library", "modules", "local", "round_trip", "v1");
+      expect(readFileSync(join(folder, "notebook.py"), "utf8")).toBe(library?.percent);
+      expect(readFileSync(join(folder, "main.nf"), "utf8")).toContain("process ");
 
       const edited = db.saveNotebook({
         ...db.notebook(saved.id)!,

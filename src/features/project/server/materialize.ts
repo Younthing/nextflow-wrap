@@ -1,4 +1,4 @@
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import type { ProjectSnapshot } from "@/features/runs/types";
 
@@ -9,6 +9,8 @@ export function projectPath(root: string, path: string): string {
   return resolved;
 }
 
+const fileMode = (file: { executable?: boolean }) => (file.executable ? 0o755 : 0o644);
+
 /** Caller supplies a new directory; never overwrite an existing execution. */
 export async function materializeProject(project: Pick<ProjectSnapshot, "files">, directory: string): Promise<void> {
   await mkdir(dirname(directory), { recursive: true });
@@ -16,7 +18,7 @@ export async function materializeProject(project: Pick<ProjectSnapshot, "files">
   for (const file of project.files) {
     const path = projectPath(directory, file.path);
     await mkdir(dirname(path), { recursive: true });
-    await writeFile(path, file.content, { flag: "wx" });
+    await writeFile(path, file.content, { flag: "wx", mode: fileMode(file) });
   }
 }
 
@@ -40,9 +42,15 @@ export async function syncProject(project: Pick<ProjectSnapshot, "files">, direc
   for (const file of project.files) {
     const path = projectPath(directory, file.path);
     const current = await readFile(path, "utf8").catch((error: NodeJS.ErrnoException) => { if (error.code === "ENOENT") return undefined; throw error; });
-    if (current === file.content) continue;
+    const mode = fileMode(file);
+    if (current === file.content) {
+      // chmod leaves the modification time, and so the task hash, alone.
+      if (((await stat(path)).mode & 0o777) !== mode) await chmod(path, mode);
+      continue;
+    }
     await mkdir(dirname(path), { recursive: true });
-    await writeFile(path, file.content);
+    await writeFile(path, file.content, { mode });
+    await chmod(path, mode);
     written.push(file.path);
   }
   const keep = new Set(project.files.map((file) => file.path));

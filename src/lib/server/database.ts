@@ -6,7 +6,7 @@ import type { NotebookDoc, NotebookRevision, TryRunRecord } from "@/features/not
 import type { RunDetail, TaskRecord } from "@/features/runs/types";
 import { commitWorkflowPut, type WorkflowPutResult } from "@/features/workflow/revision";
 import type { ModuleDef, WorkflowDoc } from "@/features/workflow/types";
-import { dataDirectory } from "./paths";
+import { dataDirectory, moduleLibraryDirectory } from "./paths";
 
 // Runtime data is intentionally outside the deployable Next.js source tree.
 export { dataDirectory };
@@ -30,8 +30,13 @@ export interface StoredExecution {
 /** All mutations are synchronous transactions so web and runner cannot lose updates. */
 export class StudioStore {
   readonly db: DatabaseSync;
+  /** Module library folder for this database. An in-memory database has none. */
+  readonly moduleLibrary?: string;
   constructor(path = join(dataDirectory(), "studio.sqlite")) {
-    if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
+    if (path !== ":memory:") {
+      mkdirSync(dirname(path), { recursive: true });
+      this.moduleLibrary = moduleLibraryDirectory(undefined, dirname(path));
+    }
     this.db = new DatabaseSync(path);
     const version = Number(this.db.prepare("PRAGMA user_version").get()?.user_version);
     if (version > 3) { this.db.close(); throw new Error(`不支持的数据库版本：${version}`); }

@@ -4,7 +4,7 @@ import { indexModules } from "@/features/workflow/catalog";
 import { buildScriptModule } from "@/features/notebook/publish";
 import type { NotebookDoc, TryRunRecord } from "@/features/notebook/types";
 import type { WorkflowDoc } from "@/features/workflow/types";
-import { scriptEnvDirectives, scriptProcessSource } from "./script-process";
+import { moduleSlugOf, scriptEnvDirectives, scriptMetaYaml, scriptModuleFiles, scriptProcessSource } from "./script-process";
 import { generateProject } from "./generate";
 
 const notebook: NotebookDoc = {
@@ -65,12 +65,16 @@ describe("script module project files", () => {
     const project = generateProject(doc, indexModules([def]), {});
     const workflow = project.files.find((file) => file.path === "main.nf")!.content;
     const process = project.files.find((file) => file.path === `modules/local/${def.path}/main.nf`)!.content;
-    const script = project.files.find((file) => file.path === def.command)!.content;
+    const script = project.files.find((file) => file.path === `modules/local/${def.path}/resources/usr/bin/hello_note_v1.py`)!.content;
     expect(workflow).toContain(`from './modules/local/${def.path}/main'`);
     expect(workflow).toContain("HELLO_NOTE (");
     expect(process).toContain("process HELLO_NOTE");
     expect(process).not.toContain("notebook");
     expect(script).toContain("argparse");
+    // Found on PATH, so the same main.nf works from resources/usr/bin and from the project's bin/.
+    expect(process).toContain('python3 "\\$(command -v hello_note_v1.py)"');
+    // ext.args continues the CLI's command line rather than running as its own command.
+    expect(process).toMatch(/--title '\$\{title\}' \\\\\n\s+\$\{task\.ext\.args \?: ''\}\n/);
     expect(process).not.toContain("conda ");
     expect(process).not.toContain("container ");
   });
@@ -130,5 +134,27 @@ describe("script module project files", () => {
     expect(condaOnly).not.toContain("container ");
     expect(scriptEnvDirectives({ containerImage: "img:1" })).toEqual(["container 'img:1'"]);
     expect(scriptEnvDirectives({})).toEqual([]);
+  });
+
+  it("lays out a self-contained module directory with its metadata and environment", () => {
+    const def = {
+      ...buildScriptModule({ notebook, name: "hello_note", description: notebook.description, existing: [], receipt }),
+      condaYaml: "/envs/hello.yml",
+      environmentYml: "channels: [conda-forge]\ndependencies: [python=3.11]",
+    };
+    expect(moduleSlugOf(def)).toBe("hello_note");
+    const files = scriptModuleFiles(def);
+    expect(files.map((file) => file.path)).toEqual(["main.nf", "meta.yml", "environment.yml", "resources/usr/bin/hello_note_v1.py"]);
+    expect(files.find((file) => file.path.startsWith("resources/"))!.executable).toBe(true);
+    // A module carrying its own environment points at it rather than the original path.
+    expect(files[0].content).toContain('conda "${moduleDir}/environment.yml"');
+    expect(files[0].content).not.toContain("/envs/hello.yml");
+    const meta = scriptMetaYaml(def);
+    expect(meta).toContain('name: "hello_note"');
+    expect(meta).toContain('namespace: "local"');
+    expect(meta).toContain('version: "v1"');
+    expect(meta).toContain("  - name: title\n    type: val");
+    expect(meta).toContain('    pattern: "report.html"');
+    expect(meta).toContain('  notebook: "nb_hello"');
   });
 });
