@@ -19,7 +19,7 @@ export function WorkbenchTabs({
 }) {
   if (!tabs.length) return null;
   return (
-    <div role="tablist" aria-label="打开的笔记本" className="flex min-w-0 items-end gap-0.5 overflow-x-auto border-b border-border px-2 pt-1.5">
+    <nav aria-label="打开的笔记本" className="flex min-w-0 items-end gap-0.5 overflow-x-auto border-b border-border px-2 pt-1.5">
       {tabs.map((id) => {
         const selected = id === active;
         const name = names[id] ?? "笔记本";
@@ -32,7 +32,7 @@ export function WorkbenchTabs({
             )}
             onAuxClick={(event) => { if (event.button === 1) { event.preventDefault(); onClose(id); } }}
           >
-            <Link href={`/workbench/${id}`} role="tab" aria-selected={selected} className="truncate outline-none focus-visible:underline" title={name}>
+            <Link href={`/workbench/${id}`} aria-current={selected ? "page" : undefined} className="truncate outline-none focus-visible:underline" title={name}>
               {name}
             </Link>
             <button
@@ -46,6 +46,6 @@ export function WorkbenchTabs({
           </div>
         );
       })}
-    </div>
+    </nav>
   );
 }

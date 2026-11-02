@@ -35,10 +35,9 @@ export function ProjectChip() {
         <button
           type="button"
           className="inline-flex h-8 max-w-72 items-center gap-2 rounded-lg border border-glass-border bg-glass py-1 pr-2 pl-1 text-sm font-medium hover:bg-glass-strong focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-none"
-          aria-label={`当前项目 ${project.name}`}
         >
           <ProjectBadge name={project.name} className="size-6 rounded-md text-[11px]" />
-          <span className="truncate">{project.name}</span>
+          <span className="truncate"><span className="sr-only">当前项目：</span>{project.name}</span>
           <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
         </button>
       </DropdownMenuTrigger>

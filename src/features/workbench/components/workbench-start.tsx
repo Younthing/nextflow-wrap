@@ -72,7 +72,7 @@ export function WorkbenchStart({
           </section>
         ) : null}
         <p className="text-xs leading-relaxed text-muted-foreground">
-          左边的「文件」就是项目文件夹，单击文件会复制它相对项目的路径，粘贴到单元格里就能读。分析反复要用时，可以在笔记本的「导出」里导出为模块，放进流程编排。
+          左边的「文件」就是项目文件夹，单击文件会复制它的完整路径，粘贴到单元格里就能读。分析反复要用时，可以在笔记本的「导出」里导出为模块，放进流程编排。
         </p>
       </div>
     </div>
