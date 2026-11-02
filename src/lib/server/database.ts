@@ -8,7 +8,7 @@ import type { Project } from "@/features/workspace/types";
 import { commitWorkflowPut, type WorkflowPutResult } from "@/features/workflow/revision";
 import type { ModuleDef, WorkflowDoc } from "@/features/workflow/types";
 import { DataVersionError, migrateDataLayout, migrateDatabase, migrateModuleLibrary, type MigrationResult } from "./migrations";
-import { dataDirectory, moduleLibraryDirectory } from "./paths";
+import { dataDirectory, moduleLibraryDirectory, workspaceDirectory } from "./paths";
 
 // Runtime data is intentionally outside the deployable Next.js source tree.
 export { dataDirectory };
@@ -34,12 +34,15 @@ export class StudioStore {
   readonly db: DatabaseSync;
   /** Module library folder for this database. An in-memory database has none. */
   readonly moduleLibrary?: string;
+  /** Example project folder (the default workspace). An in-memory database has none. */
+  readonly workspace?: string;
   /** What opening this database upgraded, for the setup page and diagnostics. */
   readonly migration: MigrationResult;
   constructor(path = join(dataDirectory(), "studio.sqlite")) {
     if (path !== ":memory:") {
       mkdirSync(dirname(path), { recursive: true });
       this.moduleLibrary = moduleLibraryDirectory(undefined, dirname(path));
+      this.workspace = workspaceDirectory(undefined, dirname(path));
     }
     this.db = new DatabaseSync(path);
     this.db.exec("PRAGMA busy_timeout=5000;");

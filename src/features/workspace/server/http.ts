@@ -22,7 +22,7 @@ const idPattern = /^[\w-]{1,80}$/;
 export async function handleProjectsApi(method: string, path: string[], request: Request, db: StudioStore = store()): Promise<Response> {
   // The demo notebooks are seeded on first use; doing it here makes the example project show up on a fresh install.
   ensureNotebookDemo(db);
-  const context: ProjectContext = { db, exampleDir: join(dataDirectory(), "projects", "example") };
+  const context: ProjectContext = { db, exampleDir: db.workspace ?? join(dataDirectory(), "projects", "example") };
   const [, id, action] = path;
   if (!id && method === "GET") return json(await listProjects(context));
   if (!id && method === "POST") return json(await createProject(context, createSchema.parse(await request.json())), 201);
