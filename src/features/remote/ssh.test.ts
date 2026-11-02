@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import { defaultLaunchConfig } from "@/features/project/launch";
 import { missingRemoteTools } from "./server/remote-run";
-import { cancelScript, launchScript, packScript, parseLaunch, parsePoll, parseProbe, parseSize, pollScript, remoteLayout, SAFE_PATH, sq, sshArgs } from "./ssh";
+import { cancelScript, launchScript, packScript, parseLaunch, parsePoll, parseProbe, parseSize, pollScript, remoteLayout, SAFE_PATH, sq, sshArgs, taskLogScript } from "./ssh";
 import type { RemoteHost } from "./types";
 
 const host: RemoteHost = { id: "hpc", name: "HPC", host: "login.example.org", user: "ana", port: 2222, identityFile: "/Users/ana/.ssh/id_ed25519", baseDir: "~/nextflow-studio" };
@@ -63,8 +63,8 @@ describe("remote ssh helpers", () => {
     expect(parseLaunch("motd\n@@PID 4242\n@@START Mon Nov  2 01:00:00 2026\n")).toEqual({ pid: 4242, pidStart: "Mon Nov  2 01:00:00 2026" });
     expect(() => parseLaunch("@@ERROR 在集群上找不到 nextflow\n")).toThrow("在集群上找不到 nextflow");
     expect(() => parseLaunch("bash: oops")).toThrow("没能在集群上启动");
-    expect(parsePoll("@@ALIVE 1\n@@TRACE\ntask_id\thash\n1\tab/cd\n")).toEqual({ alive: true, exitCode: undefined, trace: "task_id\thash\n1\tab/cd\n" });
-    expect(parsePoll("@@ALIVE 0\n@@EXIT 1\n@@TRACE\n")).toEqual({ alive: false, exitCode: 1, trace: "" });
+    expect(parsePoll("@@ALIVE 1\n@@TRACE\ntask_id\thash\n1\tab/cd\n@@CONSOLE\nN E X T F L O W\n")).toEqual({ alive: true, exitCode: undefined, trace: "task_id\thash\n1\tab/cd\n", console: "N E X T F L O W\n" });
+    expect(parsePoll("@@ALIVE 0\n@@EXIT 1\n@@TRACE\n@@CONSOLE\n")).toEqual({ alive: false, exitCode: 1, trace: "", console: "" });
     expect(parseSize("@@KB 12\n")).toBe(12 * 1024);
     expect(parseSize("@@KB -1\n")).toBe(-1);
   });
@@ -75,6 +75,7 @@ describe("remote ssh helpers", () => {
       pollScript({ attemptDir: "/s/r/1", pid: 12, pidStart: "Mon Nov  2 01:00:00 2026" }),
       cancelScript({ pid: 12, pidStart: "x" }),
       packScript("/s/r/1", ["trace.tsv", ".nextflow/history"]),
+      taskLogScript("/s/work/ab/cdef"),
     ];
     for (const script of scripts) expect(() => execFileSync("sh", ["-n"], { input: script })).not.toThrow();
     expect(scripts[0]).toContain("module load nextflow\n");

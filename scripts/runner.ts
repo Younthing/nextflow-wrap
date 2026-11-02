@@ -22,6 +22,9 @@ import { dataDirectory, store, type StoredExecution } from "@/lib/server/databas
 import { workDirectory } from "@/lib/server/paths";
 import { applyStoredSettings } from "@/lib/server/settings";
 import { WEBLOG_PLUGIN } from "@/lib/server/toolchain";
+import { readSettings } from "@/lib/server/settings";
+import { cancelRemoteRun, collectRemoteRun, pollRemoteRun, startRemoteRun } from "@/features/remote/server/remote-run";
+import { SshSession } from "@/features/remote/server/session";
 
 // Runtime settings from the settings page (Java, Nextflow, proxy) apply before the preflight reads them.
 applyStoredSettings();
@@ -169,8 +172,121 @@ async function supervise(id: string, tools: RuntimeTools, controller: AbortContr
   });
 }
 
+/** How often a remote head is polled over ssh; each poll also brings back its trace and console. */
+const remotePollMs = Number(process.env.NEXTFLOW_STUDIO_REMOTE_POLL_MS ?? 10_000);
+
+function remoteSession(run: StoredExecution, tools: RuntimeTools) {
+  const hostId = run.detail.remote?.hostId ?? run.detail.launch.remote;
+  const host = readSettings().remotes.find((candidate) => candidate.id === hostId);
+  if (!host) throw new Error("这个远程集群已在设置页删除，runner 无法再连接它；Nextflow 可能仍在集群上运行");
+  return new SshSession(host, tools.env);
+}
+
+/**
+ * Watch a head on a cluster's login node: poll it over ssh until it exits, mirroring its trace and console here,
+ * then bring back logs, reports, history and (when small enough) results. A stop request sends SIGTERM there,
+ * then SIGKILL a minute later. When the runner stops, the head keeps running and the next runner adopts it.
+ */
+async function superviseRemote(id: string, tools: RuntimeTools, controller: AbortController) {
+  const session = remoteSession(db.run(id, true)!, tools);
+  let cancelledAt = 0;
+  let killed = false;
+  let failures = 0;
+  let poll: Awaited<ReturnType<typeof pollRemoteRun>> | undefined;
+  const aborted = new Promise<void>((resolve) => controller.signal.addEventListener("abort", () => resolve(), { once: true }));
+  for (;;) {
+    if (stopping) return;
+    const run = db.run(id, true)!;
+    const state = run.detail.remote!;
+    if (controller.signal.aborted && !cancelledAt) {
+      cancelledAt = Date.now();
+      await cancelRemoteRun(session, state).catch(console.error);
+    } else if (cancelledAt && !killed && Date.now() - cancelledAt > 60_000) {
+      killed = true;
+      await cancelRemoteRun(session, state, "KILL").catch(console.error);
+    }
+    try {
+      poll = await pollRemoteRun(session, state);
+      failures = 0;
+    } catch (error) {
+      // A dropped VPN or a login node reboot should not fail a run that may still be fine on the cluster.
+      if (++failures >= Math.max(30, Math.ceil(30 * 60_000 / remotePollMs))) throw new Error(`超过 30 分钟连不上 ${state.hostName}，不再跟踪；Nextflow 可能仍在集群上运行\n${error instanceof Error ? error.message : String(error)}`);
+      console.error(`Run ${id}: polling ${state.hostName} failed (${failures})`, error);
+      await Promise.race([sleep(remotePollMs), stopped]);
+      continue;
+    }
+    if (poll.trace) {
+      await writeFile(join(run.attemptDir, "trace.tsv"), poll.trace);
+      await reconcileTrace(db, db.run(id, true)!);
+    }
+    if (poll.console) await writeFile(join(run.attemptDir, "console.log"), poll.console);
+    if (!poll.alive) break;
+    await Promise.race([sleep(remotePollMs), stopped, aborted.then(() => (cancelledAt ? sleep(remotePollMs) : undefined))]);
+  }
+  db.updateRun(id, (record) => { record.detail.phase = "finalizing"; });
+  const run = db.run(id, true)!;
+  const state = run.detail.remote!;
+  const collected = await collectRemoteRun(session, state, run.attemptDir, String(run.detail.params.outdir));
+  db.updateRun(id, (record) => { record.detail.remote = { ...state, ...collected }; });
+  const written = (await readFile(join(run.attemptDir, "exit-code"), "utf8").catch(() => "")).trim();
+  const code = poll?.exitCode ?? (written ? Number(written) : undefined);
+  const history = await readFile(join(run.attemptDir, "remote", ".nextflow", "history"), "utf8").catch(() => "");
+  const recorded = historyStatus(history, run.detail.runName);
+  const sessionId = historySession(history, run.detail.runName);
+  if (sessionId && !db.run(id, true)?.sessionId) db.updateRun(id, (record) => { record.sessionId = sessionId; record.detail.nextflowSessionId = sessionId; });
+  if (code !== 0 && !(code === undefined && recorded === "OK")) {
+    const reason = code === undefined ? `${state.hostName} 上的 Nextflow 已结束，history 记录为 ${recorded ?? "未完成"}` : `${state.hostName} 上的 Nextflow 退出码 ${code}`;
+    const tail = await logTail(join(run.attemptDir, "console.log"));
+    throw new CommandError(`${reason}\n${tail}`, code ?? null, tail);
+  }
+  await reconcileTrace(db, db.run(id)!);
+  await publishDiagnostics(db.run(id)!);
+  const files = await resultFiles(db.run(id)!);
+  await writeFile(join(run.attemptDir, "artifacts.json"), JSON.stringify(files, null, 2));
+  db.updateRun(id, (record) => {
+    record.detail.status = record.cancelRequested ? "cancelled" : "succeeded";
+    record.detail.phase = undefined;
+    record.detail.exitCode = 0;
+    record.detail.completedAt = new Date().toISOString();
+  });
+}
+
+/** A run on a cluster: the project goes there over ssh and Nextflow starts on the login node. */
+async function executeRemote(run: StoredExecution, tools: RuntimeTools, controller: AbortController) {
+  const id = run.detail.id;
+  try {
+    await mkdir(run.attemptDir, { recursive: true });
+    const session = remoteSession(run, tools);
+    await syncProject(run.detail.project, run.projectDir);
+    await materializeProject(run.detail.project, join(run.attemptDir, "project"));
+    if (stopping) throw new Error("Runner 正在停止");
+    // The run's own outdir is the local folder results come back to; startRemoteRun sets the one on the host.
+    const params = { ...run.detail.params };
+    delete params.outdir;
+    const started = await startRemoteRun({
+      host: session.host, session, runId: id, workflowId: run.detail.workflowId, runName: run.detail.runName,
+      projectDir: run.projectDir, attemptDir: run.attemptDir, launch: run.detail.launch, params,
+      resumeSession: run.resumeFrom ? run.sessionId : undefined, signal: controller.signal,
+    });
+    await writeFile(join(run.attemptDir, "manifest.json"), JSON.stringify({ workflow: run.detail.workflow, host: session.host, nextflow: started.versions, remote: started.state, command: started.command }, null, 2));
+    db.updateRun(id, (record) => {
+      record.detail.launch = started.launch;
+      record.detail.runConfig = started.runConfig;
+      record.detail.command = started.command;
+      record.detail.remote = started.state;
+      record.detail.status = "running";
+      if (record.detail.phase === "preparing") record.detail.phase = "executing";
+      record.detail.startedAt = new Date().toISOString();
+    });
+    await superviseRemote(id, tools, controller);
+  } catch (error) {
+    await failRun(id, tools, error);
+  }
+}
+
 async function execute(run: StoredExecution, tools: RuntimeTools, port: number, controller: AbortController) {
   const id = run.detail.id;
+  if (run.detail.launch.remote) return executeRemote(run, tools, controller);
   const token = randomUUID();
   eventTokens.set(id, token);
   try {
@@ -255,6 +371,12 @@ async function execute(run: StoredExecution, tools: RuntimeTools, port: number, 
 function adoptOrphans(tools: RuntimeTools, port: number) {
   for (const run of db.runs(true).filter((run) => active(run) && run.owner && run.owner !== owner)) {
     const id = run.detail.id;
+    if (run.detail.remote?.pid) {
+      db.updateRun(id, (record) => { record.owner = owner; });
+      console.log(`Adopting run ${id} on ${run.detail.remote.hostName} (pid ${run.detail.remote.pid})`);
+      track(id, (controller) => superviseRemote(id, tools, controller).catch((error: unknown) => failRun(id, tools, error)));
+      continue;
+    }
     if (!run.pid) {
       db.updateRun(id, (record) => {
         record.detail.status = record.cancelRequested ? "cancelled" : "interrupted";
@@ -333,7 +455,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => {
     stopping = true;
     markStopped();
-    for (const [id, job] of work) if (!db.run(id, true)?.pid) job.controller.abort();
+    for (const [id, job] of work) { const run = db.run(id, true); if (!run?.pid && !run?.detail.remote?.pid) job.controller.abort(); }
   });
 }
 main().catch((error: unknown) => { console.error(error); const state = db.runtime(); if (state?.owner === owner) db.setRuntime({ ...state, error: error instanceof Error ? error.message : String(error), heartbeat: 0 }); process.exitCode = 1; });

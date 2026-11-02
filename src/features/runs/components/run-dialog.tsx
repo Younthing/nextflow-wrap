@@ -37,6 +37,7 @@ import { EnvironmentForm } from "./environment-form";
 import { ProjectSettingsForm } from "@/features/project/components/project-settings-form";
 import { readLaunchConfig, rememberLaunchConfig } from "../saved-launch";
 import { useHealthStatus, useLaunchRun, useRuns } from "../queries";
+import { useSettings } from "@/features/settings/queries";
 
 export function RunDialog({
   open,
@@ -57,9 +58,13 @@ export function RunDialog({
   const revision = useEditorStore((s) => s.revision);
   const saveShortcut = useShortcutLabel(EDITOR_ACTIONS.save.shortcut);
   const index = useEditorStore((s) => s.index);
-  const [config, setConfig] = React.useState<LaunchConfig>(() =>
+  const [saved, setConfig] = React.useState<LaunchConfig>(() =>
     readLaunchConfig(docId),
   );
+  const settings = useSettings();
+  const remotes = settings.data?.settings.remotes;
+  // A cluster removed on the settings page since these run settings were saved falls back to this machine.
+  const config: LaunchConfig = saved.remote && remotes && !remotes.some((host) => host.id === saved.remote) ? { ...saved, remote: undefined, workDir: "work" } : saved;
   const launchConfig: LaunchConfig = real ? realLaunchConfig(config) : config;
   const [tab, setTab] = React.useState("environment");
 
@@ -171,6 +176,7 @@ export function RunDialog({
                 config={launchConfig}
                 onChange={setConfig}
                 real={real}
+                remotes={remotes}
               />
               <ProjectSettingsForm />
             </div>

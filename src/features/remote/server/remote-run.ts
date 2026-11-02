@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { gstr } from "@/features/project/groovy";
 import { launchTools, profileList, renderRunConfig, type LaunchConfig } from "@/features/project/launch";
 import type { PipelineParams } from "@/features/workflow/types";
-import { cancelScript, launchScript, parseLaunch, parsePoll, parseProbe, parseSize, pollScript, probeScript, remoteLayout, sizeScript } from "../ssh";
+import { cancelScript, launchScript, parseLaunch, parsePoll, parseProbe, parseSize, pollScript, probeScript, remoteLayout, sizeScript, taskLogScript } from "../ssh";
 import type { RemoteHost, RemoteProbe, RemoteRunState } from "../types";
 import type { SshSession } from "./session";
 
@@ -98,8 +98,15 @@ export async function startRemoteRun(input: RemoteStart) {
 }
 
 export async function pollRemoteRun(session: SshSession, state: RemoteRunState) {
-  if (!state.pid) return { alive: false, trace: "" } as ReturnType<typeof parsePoll>;
+  if (!state.pid) return { alive: false, trace: "", console: "" } as ReturnType<typeof parsePoll>;
   return parsePoll(await session.script(pollScript({ attemptDir: state.attemptDir, pid: state.pid, pidStart: state.pidStart ?? "" }), { timeoutMs: 60_000 }));
+}
+
+/** A task's logs on the host. The work directory must sit inside the run's work root there. */
+export async function remoteTaskLog(session: SshSession, state: RemoteRunState, workdir: string) {
+  const root = `${state.workDir.replace(/\/+$/, "")}/`;
+  if (!workdir.startsWith(root) || workdir.split("/").includes("..")) throw new Error("任务目录不在这次运行的 work 目录里");
+  return session.script(taskLogScript(workdir), { timeoutMs: 60_000 });
 }
 
 export async function cancelRemoteRun(session: SshSession, state: RemoteRunState, signal: "TERM" | "KILL" = "TERM") {

@@ -125,19 +125,34 @@ export function pollScript(opts: { attemptDir: string; pid: number; pidStart: st
     `if [ -f ${sq(`${opts.attemptDir}/exit-code`)} ]; then echo "@@EXIT $(cat ${sq(`${opts.attemptDir}/exit-code`)})"; fi`,
     'echo "@@TRACE"',
     `cat ${sq(`${opts.attemptDir}/trace.tsv`)} 2>/dev/null || true`,
+    'echo "@@CONSOLE"',
+    `tail -n 300 ${sq(`${opts.attemptDir}/console.log`)} 2>/dev/null || true`,
     "",
   ].join("\n");
 }
 
-export function parsePoll(output: string): { alive: boolean; exitCode?: number; trace: string } {
-  const marker = output.indexOf("@@TRACE\n");
-  const head = marker >= 0 ? output.slice(0, marker) : output;
+export function parsePoll(output: string): { alive: boolean; exitCode?: number; trace: string; console: string } {
+  const traceAt = output.indexOf("@@TRACE\n");
+  const consoleAt = output.indexOf("@@CONSOLE\n", Math.max(traceAt, 0));
+  const head = traceAt >= 0 ? output.slice(0, traceAt) : output;
   const exit = head.match(/^@@EXIT (-?\d+)\s*$/m)?.[1];
   return {
     alive: /^@@ALIVE 1$/m.test(head),
     exitCode: exit === undefined ? undefined : Number(exit),
-    trace: marker >= 0 ? output.slice(marker + "@@TRACE\n".length) : "",
+    trace: traceAt >= 0 ? output.slice(traceAt + "@@TRACE\n".length, consoleAt >= 0 ? consoleAt : undefined) : "",
+    console: consoleAt >= 0 ? output.slice(consoleAt + "@@CONSOLE\n".length) : "",
   };
+}
+
+/** The tail of a task's log files on the host, like the local task log view. */
+export function taskLogScript(workdir: string): string {
+  return [
+    `cd ${sq(workdir)} 2>/dev/null || { echo "任务目录已不在集群上"; exit 0; }`,
+    "for f in .command.log .command.err .command.out .command.sh; do",
+    '  if [ -f "$f" ]; then printf "\n--- %s ---\n" "$f"; tail -c 64000 "$f"; fi',
+    "done",
+    "",
+  ].join("\n");
 }
 
 /** SIGTERM to the head's process group (or the head alone without setsid); a Nextflow head then cancels its jobs. */

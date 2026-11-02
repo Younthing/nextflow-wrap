@@ -411,5 +411,6 @@ export function launchCommand(config: LaunchConfig): string {
   parts.push("-c run.config", "-params-file params.json");
   if (config.runName) parts.push(`-name ${config.runName}`);
   if (config.resume) parts.push("-resume");
-  return parts.join(" \\\n    ");
+  const command = parts.join(" \\\n    ");
+  return config.remote ? `# 经 SSH 在远程集群（${config.remote}）的登录节点上以 nohup 启动\n${command}` : command;
 }

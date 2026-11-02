@@ -143,7 +143,7 @@ export function RunHeader({ run }: { run: RunDetail }) {
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
         <Stat label="运行环境">
           <span className="flex items-center gap-1.5">
-            {executorDef(run.executor).name}
+            {run.remoteHost ? `${run.remoteHost} · ${run.executor === "local" ? "登录节点" : executorDef(run.executor).name}` : executorDef(run.executor).name}
             {health.data?.mocked && <Badge variant="warning">预览</Badge>}
           </span>
         </Stat>

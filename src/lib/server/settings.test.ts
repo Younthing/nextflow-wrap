@@ -55,7 +55,9 @@ describe("settings", () => {
 
   it("reads a settings file from before remote hosts and cloud settings existed", () => {
     const dir = temp();
-    const { remotes: _remotes, cloud: _cloud, ...old } = defaultSettings();
+    const old: Partial<ReturnType<typeof defaultSettings>> = defaultSettings();
+    delete old.remotes;
+    delete old.cloud;
     writeFileSync(join(dir, "settings.json"), JSON.stringify({ ...old, runtime: { defaultEngine: "conda" } }));
     expect(readSettings(dir)).toMatchObject({ runtime: { defaultEngine: "conda" }, remotes: [], cloud: {} });
   });

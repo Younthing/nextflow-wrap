@@ -7,6 +7,7 @@ import type { LaunchRequest, RunDetail, RunSummary } from "@/features/runs/types
 import { indexModules, resolveNodeDef } from "@/features/workflow/catalog";
 import { newId } from "@/features/workflow/nodes";
 import { profileList } from "@/features/project/launch";
+import { DEMO_REMOTE_HOST } from "./remotes";
 import { readDb, writeDb, type StoredRun } from "./db";
 import { sampleAnnDataSummary } from "@/features/runs/anndata";
 
@@ -45,6 +46,7 @@ export function summarize(run: RunDetail): RunSummary {
     completedAt: run.completedAt,
     progress: run.progress,
     errorMessage: run.errorMessage,
+    remoteHost: run.remoteHost,
   };
 }
 
@@ -80,6 +82,8 @@ export const runHandlers = [
       project: body.project,
       workflow: body.workflow,
       ...(body.resumeFrom ? { resumeFromRunId: body.resumeFrom } : {}),
+      // The demo cluster is the only one the preview knows; its runs are simulated like local ones.
+      ...(body.launch.remote ? { remoteHost: body.launch.remote === DEMO_REMOTE_HOST.id ? DEMO_REMOTE_HOST.name : body.launch.remote } : {}),
     };
     writeDb((db) => {
       db.runs[run.id] = run;
