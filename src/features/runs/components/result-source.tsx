@@ -29,7 +29,7 @@ export function ResultSource({ file, fullPath, workflow, tasks }: { file: Result
             {source.moduleName && <span>· {source.moduleName}{source.version ? ` ${source.version}` : ""}</span>}
           </span>
           {source.notebook && (
-            <Link href={`/notebooks/${source.notebook.id}${source.notebook.rev ? `?rev=${source.notebook.rev}` : ""}`} className="inline-flex items-center gap-1 hover:underline">
+            <Link href={`/workbench/${source.notebook.id}${source.notebook.rev ? `?rev=${source.notebook.rev}` : ""}`} className="inline-flex items-center gap-1 hover:underline">
               <NotebookText className="size-3.5" aria-hidden="true" />
               源笔记本{source.notebook.rev ? ` r${source.notebook.rev}` : ""}
             </Link>

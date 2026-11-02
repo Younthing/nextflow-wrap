@@ -93,6 +93,7 @@ describe("helpers", () => {
   it("give a stable badge", () => {
     expect(projectBadge("单细胞")).toEqual(projectBadge("单细胞"));
     expect(projectBadge("egfr").initial).toBe("E");
+    expect(["primary", "path", "file", "meta", "value", "destructive"]).toContain(projectBadge("egfr").tone);
   });
 
   it("label when a project was opened", () => {

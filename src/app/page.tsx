@@ -1,8 +1,10 @@
-import { redirect } from "next/navigation";
+import type { Metadata } from "next";
 
-// The page only redirects, so there is no segment to validate for instant navigation.
+import { WelcomePage } from "@/features/workspace/components/welcome-page";
+
+export const metadata: Metadata = { title: "欢迎" };
 export const instant = false;
 
 export default function HomePage() {
-  redirect("/workflows");
+  return <WelcomePage />;
 }
