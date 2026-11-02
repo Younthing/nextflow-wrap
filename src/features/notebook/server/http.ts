@@ -16,6 +16,8 @@ import { HttpError } from "@/features/runs/server/service";
 import type { ModuleDef } from "@/features/workflow/types";
 import type { StudioStore } from "@/lib/server/database";
 import { store } from "@/lib/server/database";
+import { notebookProjectId } from "@/features/workspace/projects";
+import { currentProjectId } from "@/features/workspace/server/projects";
 
 const json = (value: unknown, status = 200) => Response.json(value, { status, headers: { "cache-control": "no-store" } });
 
@@ -30,6 +32,7 @@ const writeSchema = z.object({
   description: z.string().max(2000).optional(),
   kernel: z.string().trim().min(1).max(80).refine((value) => !/[\u0000-\u001f]/.test(value), "内核名称不能包含换行"),
   cells: z.array(cellSchema).max(80),
+  projectId: z.string().regex(/^[\w-]{1,80}$/).optional(),
 });
 
 const runSchema = z.object({
@@ -172,6 +175,8 @@ export async function handleNotebookApi(method: string, path: string[], request:
     let doc: NotebookDoc;
     try {
       doc = notebookFromLibrary(copy, newNotebookId(db));
+      const projectId = currentProjectId(db);
+      if (projectId) doc = { ...doc, projectId };
     } catch (error) {
       if (error instanceof PercentError) throw new HttpError(400, error.message);
       throw error;
@@ -183,7 +188,8 @@ export async function handleNotebookApi(method: string, path: string[], request:
 
   if (!id && method === "GET") {
     const modules = db.scriptModules();
-    return json(db.notebooks().map((doc) => summarizeNotebook(doc, modules)));
+    const project = new URL(request.url).searchParams.get("project");
+    return json(db.notebooks().filter((doc) => !project || notebookProjectId(doc) === project).map((doc) => summarizeNotebook(doc, modules)));
   }
 
   if (!id && method === "POST") {
@@ -200,7 +206,8 @@ export async function handleNotebookApi(method: string, path: string[], request:
       createdAt: now,
       updatedAt: now,
     };
-    return json(db.saveNotebook(doc), 201);
+    const projectId = body.projectId ?? currentProjectId(db);
+    return json(db.saveNotebook(projectId ? { ...doc, projectId } : doc), 201);
   }
 
   if (!id) throw new HttpError(404, "接口不存在");

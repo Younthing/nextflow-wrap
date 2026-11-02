@@ -19,7 +19,7 @@ describe("StudioStore", () => {
       expect(runner.migration).toMatchObject({ from: 2, to: SCHEMA_VERSION });
       const web = new StudioStore(join(dir, "studio.sqlite"));
       expect(web.migration.applied).toEqual([]);
-      expect(web.lastMigration()).toMatchObject({ from: 2, to: SCHEMA_VERSION, applied: [3, 4] });
+      expect(web.lastMigration()).toMatchObject({ from: 2, to: SCHEMA_VERSION, applied: [3, 4, 5] });
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 

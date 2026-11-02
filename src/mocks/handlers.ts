@@ -23,6 +23,8 @@ import { settingsHandlers } from "./settings";
 import { storageHandlers } from "./storage";
 import { diagnosticsHandlers } from "./diagnostics";
 import { remoteHandlers } from "./remotes";
+import { projectHandlers } from "./projects";
+import { notebookProjectId } from "@/features/workspace/projects";
 
 const summarize = (w: WorkflowDoc): WorkflowSummary => ({
   id: w.id,
@@ -42,6 +44,7 @@ export const handlers = [
   ...storageHandlers,
   ...diagnosticsHandlers,
   ...remoteHandlers,
+  ...projectHandlers,
   http.get("/api/health", async () => {
     await delay(150);
     return HttpResponse.json<HealthStatus>({
@@ -63,7 +66,9 @@ export const handlers = [
     const copy = storedLibraryCopy(moduleId, db.libraryCopies[moduleId], moduleDef, notebook, revision);
     if (!copy) return HttpResponse.json({ message: "这个模块没有可重建的库副本" }, { status: 404 });
     try {
-      const doc = notebookFromLibrary(copy, newId("nb"));
+      const built = notebookFromLibrary(copy, newId("nb"));
+      const current = readDb().currentProject;
+      const doc = current ? { ...built, projectId: current } : built;
       writeDb((next) => {
         next.libraryCopies[copy.moduleId] = copy;
         next.notebooks[doc.id] = doc;
@@ -89,11 +94,13 @@ export const handlers = [
     });
   }),
 
-  http.get("/api/notebooks", async () => {
+  http.get("/api/notebooks", async ({ request }) => {
     await delay(80);
     const db = readDb();
     const modules = Object.values(db.scriptModules);
+    const project = new URL(request.url).searchParams.get("project");
     const list = Object.values(db.notebooks)
+      .filter((doc) => !project || notebookProjectId(doc) === project)
       .map((doc) => summarizeNotebook(doc, modules))
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
     return HttpResponse.json(list);
@@ -112,6 +119,7 @@ export const handlers = [
       rev: 1,
       createdAt: now,
       updatedAt: now,
+      ...((body.projectId ?? readDb().currentProject) ? { projectId: body.projectId ?? readDb().currentProject } : {}),
     };
     writeDb((db) => {
       db.notebooks[doc.id] = doc;

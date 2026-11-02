@@ -4,6 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 import type { ModuleLibraryCopy } from "@/features/notebook/library-copy";
 import type { NotebookDoc, NotebookRevision, TryRunRecord } from "@/features/notebook/types";
 import type { RunDetail, TaskRecord } from "@/features/runs/types";
+import type { Project } from "@/features/workspace/types";
 import { commitWorkflowPut, type WorkflowPutResult } from "@/features/workflow/revision";
 import type { ModuleDef, WorkflowDoc } from "@/features/workflow/types";
 import { DataVersionError, migrateDataLayout, migrateDatabase, migrateModuleLibrary, type MigrationResult } from "./migrations";
@@ -201,6 +202,18 @@ export class StudioStore {
   saveTryRun(record: TryRunRecord) {
     this.db.prepare("INSERT INTO notebook_try_runs(notebook_id, rev, data) VALUES (?,?,?) ON CONFLICT(notebook_id, rev) DO UPDATE SET data=excluded.data").run(record.notebookId, record.rev, JSON.stringify(record));
   }
+  /** Recent projects, most recently opened first. */
+  projects(): Project[] {
+    return this.db.prepare("SELECT data FROM projects ORDER BY opened DESC").all().map((row) => JSON.parse(String(row.data)) as Project);
+  }
+  project(id: string): Project | undefined {
+    const row = this.db.prepare("SELECT data FROM projects WHERE id=?").get(id);
+    return row ? JSON.parse(String(row.data)) as Project : undefined;
+  }
+  saveProject(project: Project) {
+    this.db.prepare("INSERT INTO projects(id, opened, data) VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET opened=excluded.opened, data=excluded.data").run(project.id, project.openedAt, JSON.stringify(project));
+  }
+  deleteProject(id: string) { this.db.prepare("DELETE FROM projects WHERE id=?").run(id); }
   close() { this.db.close(); }
 }
 

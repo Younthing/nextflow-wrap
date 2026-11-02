@@ -26,7 +26,7 @@ describe("migrateDatabase", () => {
     legacy.prepare("INSERT INTO workflows VALUES (?,?)").run("wf", "{}");
     const result = migrateDatabase(legacy, { backupDir: join(dir, "backups"), now: () => new Date("2026-11-01T00:00:00Z") });
     expect(result.from).toBe(3);
-    expect(result.applied).toEqual([4]);
+    expect(result.applied).toEqual([4, 5]);
     expect(result.backup && existsSync(result.backup)).toBe(true);
     const copy = new DatabaseSync(result.backup!);
     expect(Number(copy.prepare("PRAGMA user_version").get()?.user_version)).toBe(3);
