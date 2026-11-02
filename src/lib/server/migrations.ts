@@ -60,6 +60,11 @@ export const SCHEMA_MIGRATIONS: readonly SchemaMigration[] = [
     `);
     },
   },
+  {
+    version: 5,
+    description: "recent projects",
+    up: (db) => db.exec("CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, opened TEXT NOT NULL, data TEXT NOT NULL);"),
+  },
 ];
 
 export const SCHEMA_VERSION = SCHEMA_MIGRATIONS.at(-1)!.version;

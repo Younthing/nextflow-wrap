@@ -14,6 +14,7 @@ import { handleSettingsApi } from "@/features/settings/server/http";
 import { handleStorageApi } from "@/features/storage/server/http";
 import { handleDiagnosticsApi } from "@/features/diagnostics/server/http";
 import { handleRemoteApi } from "@/features/remote/server/http";
+import { handleProjectsApi } from "@/features/workspace/server/http";
 import { remoteTaskLog } from "@/features/remote/server/remote-run";
 import { SshSession } from "@/features/remote/server/session";
 import { applyStoredSettings, readSettings } from "@/lib/server/settings";
@@ -45,6 +46,7 @@ async function handle(request: Request, context: Context): Promise<Response> {
     if (resource === "storage") return handleStorageApi(method, path, request);
     if (resource === "diagnostics" && !id) return handleDiagnosticsApi(method, request);
     if (resource === "remotes") return handleRemoteApi(method, path, request);
+    if (resource === "projects") return handleProjectsApi(method, path, request);
     if (resource === "notebooks" || resource === "script-modules" || resource === "kernels") return handleNotebookApi(method, path, request);
     if (resource === "schemas" && id === "samplesheet" && method === "GET") return json(samplesheetSchema);
     if (resource === "workflows") {

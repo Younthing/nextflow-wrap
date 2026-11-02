@@ -21,6 +21,8 @@ export interface NotebookDoc {
   rev: number;
   createdAt: string;
   updatedAt: string;
+  /** Project (workspace folder) the notebook belongs to. Unset on notebooks from before projects: see `notebookProjectId`. */
+  projectId?: string;
   /** Set when this notebook was rebuilt from a module library copy. */
   libraryModuleId?: string;
   librarySourceNotebookId?: string;
@@ -49,6 +51,7 @@ export interface NotebookSummary {
   moduleId?: string;
   /** Rebuilt from a module library copy, not the original analysis notebook. */
   fromLibrary?: boolean;
+  projectId: string;
 }
 
 export interface MarkerInput {

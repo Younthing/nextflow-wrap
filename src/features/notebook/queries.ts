@@ -10,6 +10,7 @@ import type { KernelInfo, KernelSpecList, NotebookDoc, NotebookRevision, Noteboo
 
 export const notebookKeys = {
   all: ["notebooks"] as const,
+  list: (project?: string) => ["notebooks", { project: project ?? null }] as const,
   detail: (id: string) => ["notebooks", id] as const,
   revision: (id: string, rev: string) => ["notebooks", id, "rev", rev] as const,
   kernel: (id: string) => ["notebooks", id, "kernel"] as const,
@@ -24,10 +25,12 @@ export interface ScriptModuleList {
   references: Record<string, number>;
 }
 
-export function useNotebooks() {
+/** Notebooks of one project, or every notebook when no project is given. */
+export function useNotebooks(project?: string, options: { enabled?: boolean } = {}) {
   return useQuery({
-    queryKey: notebookKeys.all,
-    queryFn: () => api<NotebookSummary[]>("/notebooks"),
+    queryKey: notebookKeys.list(project),
+    queryFn: () => api<NotebookSummary[]>(project ? `/notebooks?project=${encodeURIComponent(project)}` : "/notebooks"),
+    enabled: options.enabled ?? true,
   });
 }
 
@@ -63,7 +66,7 @@ function refreshNotebooks(qc: ReturnType<typeof useQueryClient>, doc?: NotebookD
 export function useCreateNotebook() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: Pick<NotebookDoc, "name" | "description" | "kernel" | "cells">) =>
+    mutationFn: (body: Pick<NotebookDoc, "name" | "description" | "kernel" | "cells" | "projectId">) =>
       api<NotebookDoc>("/notebooks", { method: "POST", body: JSON.stringify(body) }),
     onSuccess: (doc) => refreshNotebooks(qc, doc),
   });
