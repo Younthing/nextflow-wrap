@@ -63,3 +63,6 @@ storybook-static
 /desktop/dist/
 /desktop/resources/
 /desktop/release/
+
+# standalone server package (scripts/build-server.mjs)
+/dist-server

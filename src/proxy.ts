@@ -1,16 +1,26 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { checkSession, SESSION_COOKIE, SESSION_HEADER } from "@/features/desktop/session-guard";
+import { guardRequest } from "@/features/desktop/server-guard";
+import { SESSION_COOKIE, TOKEN_QUERY } from "@/features/desktop/session-guard";
 
-/** In the desktop app, only the app's own window (holding the session cookie) may use this server. */
+const COOKIE_MAX_AGE = 30 * 24 * 60 * 60;
+
+/** Only holders of the session token (the desktop window, or a browser that opened the `?token=` link) may use this server. */
 export function proxy(request: NextRequest) {
-  const verdict = checkSession({
-    token: process.env.NEXTFLOW_STUDIO_SESSION_TOKEN,
-    port: process.env.PORT,
-    host: request.headers.get("host"),
-    cookie: request.cookies.get(SESSION_COOKIE)?.value,
-    header: request.headers.get(SESSION_HEADER),
-  });
-  if (verdict.ok) return NextResponse.next();
-  return new NextResponse(verdict.reason, { status: verdict.status, headers: { "content-type": "text/plain; charset=utf-8" } });
+  const verdict = guardRequest(request);
+  if (!verdict.ok) return new NextResponse(verdict.reason, { status: verdict.status, headers: { "content-type": "text/plain; charset=utf-8" } });
+  if (!verdict.bootstrap) return NextResponse.next();
+  // Drop the token from the address bar and history; the cookie carries it from now on.
+  const clean = request.nextUrl.clone();
+  clean.searchParams.delete(TOKEN_QUERY);
+  const host = request.headers.get("host");
+  const location = host ? `${clean.protocol}//${host}${clean.pathname}${clean.search}` : clean.toString();
+  const response = NextResponse.redirect(location, 302);
+  response.cookies.set(SESSION_COOKIE, process.env.NEXTFLOW_STUDIO_SESSION_TOKEN!, { httpOnly: true, sameSite: "strict", path: "/", maxAge: COOKIE_MAX_AGE });
+  return response;
 }
+
+export const config = {
+  // The proxy buffers request bodies (and cuts them at 10 MB), so the streaming upload checks the session itself.
+  matcher: ["/((?!api/fs/upload$).*)"],
+};

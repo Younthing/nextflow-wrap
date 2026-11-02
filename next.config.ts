@@ -5,7 +5,7 @@ const nextConfig: NextConfig = {
   ...(process.env.NEXT_OUTPUT === "standalone" ? { output: "standalone" as const } : {}),
   // Server code reads runtime paths dynamically, so tracing would otherwise copy the whole checkout.
   outputFileTracingExcludes: {
-    "*": ["desktop/**", "docs/**", "e2e/**", "storybook-static/**", "test-results/**", ".nf-verify/**", "nxf-tmp.*/**", ".codegraph/**", "**/*.test.ts", "**/*.stories.tsx"],
+    "*": ["desktop/**", "dist-server/**", "docs/**", "e2e/**", "storybook-static/**", "test-results/**", ".nf-verify/**", "nxf-tmp.*/**", ".codegraph/**", "**/*.test.ts", "**/*.stories.tsx"],
   },
   // Notebooks moved into the workbench and the module library to a flat route; keep old links working.
   async redirects() {

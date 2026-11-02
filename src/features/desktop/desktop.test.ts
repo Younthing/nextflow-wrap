@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { allowedHost, checkSession } from "./session-guard";
+import { allowedHost, checkSession, parseAllowedHosts } from "./session-guard";
 import { parseEnvBlock, quitPrompt, RestartTracker } from "./supervisor";
 import { projectMenuState, readProjectMenuState, RECENT_LIMIT } from "./project-menu";
 
@@ -20,6 +20,22 @@ describe("checkSession", () => {
     expect(allowedHost("localhost:9", "9")).toBe(true);
     expect(allowedHost("[::1]:9", "9")).toBe(true);
     expect(allowedHost("127.0.0.1.nip.io:9", "9")).toBe(false);
+  });
+  it("accepts any loopback port when no port is pinned (a tunnelled standalone server)", () => {
+    expect(checkSession({ ...base, port: undefined, host: "127.0.0.1:40001" })).toEqual({ ok: true });
+  });
+  it("accepts configured host names, with or without a port", () => {
+    const allowedHosts = parseAllowedHosts(" Studio.lab.example , gpu01:8765,");
+    expect(allowedHosts).toEqual(["studio.lab.example", "gpu01:8765"]);
+    expect(checkSession({ ...base, port: undefined, allowedHosts, host: "studio.lab.example:9000" })).toEqual({ ok: true });
+    expect(checkSession({ ...base, port: undefined, allowedHosts, host: "gpu01:8765" })).toEqual({ ok: true });
+    expect(checkSession({ ...base, port: undefined, allowedHosts, host: "gpu01:9999" })).toMatchObject({ ok: false, status: 421 });
+    expect(checkSession({ ...base, port: undefined, allowedHosts, host: "studio.lab.example.evil.test" })).toMatchObject({ ok: false, status: 421 });
+  });
+  it("turns a matching ?token= into a bootstrap, and still rejects a wrong one", () => {
+    expect(checkSession({ ...base, cookie: undefined, query: "secret-token" })).toEqual({ ok: true, bootstrap: true });
+    expect(checkSession({ ...base, cookie: undefined, query: "wrong" })).toMatchObject({ ok: false, status: 403 });
+    expect(checkSession({ ...base, host: "evil.test", query: "secret-token" })).toMatchObject({ ok: false, status: 421 });
   });
 });
 

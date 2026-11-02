@@ -17,6 +17,7 @@ pnpm lint                    # run ESLint and Next.js rules
 pnpm test                    # run Vitest unit tests
 pnpm build                   # create a production build
 pnpm build-storybook         # verify Storybook production output
+pnpm build-server            # standalone Linux server package (docs/server.md)
 ```
 
 Before a PR, run `pnpm typecheck && pnpm lint && pnpm test && pnpm build && pnpm build-storybook`.

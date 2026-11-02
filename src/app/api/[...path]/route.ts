@@ -9,7 +9,7 @@ import { previewKind } from "@/features/runs/preview";
 import { active, assertSameOrigin, resumable, cancelRun, HttpError, requireRun, resumeRun, runnerReady, submitRun, workflowInput } from "@/features/runs/server/service";
 import { handleNotebookApi } from "@/features/notebook/server/http";
 import { handleSetupApi } from "@/features/setup/server/http";
-import { handleFsApi } from "@/features/files/server/http";
+import { handleFsApi, handleUpload } from "@/features/files/server/http";
 import { handleSettingsApi } from "@/features/settings/server/http";
 import { handleStorageApi } from "@/features/storage/server/http";
 import { handleDiagnosticsApi } from "@/features/diagnostics/server/http";
@@ -18,7 +18,7 @@ import { handleProjectsApi } from "@/features/workspace/server/http";
 import { remoteTaskLog } from "@/features/remote/server/remote-run";
 import { SshSession } from "@/features/remote/server/session";
 import { applyStoredSettings, readSettings } from "@/lib/server/settings";
-import type { HealthStatus } from "@/lib/api-types";
+import { API_VERSION, type HealthStatus } from "@/lib/api-types";
 import { store } from "@/lib/server/database";
 
 type Context = { params: Promise<{ path: string[] }> };
@@ -27,18 +27,20 @@ const json = (value: unknown, status = 200) => Response.json(value, { status, he
 async function handle(request: Request, context: Context): Promise<Response> {
   try {
     const url = new URL(request.url);
+    const path = (await context.params).path;
+    // Streams past the 2 MB body cap below; it checks the session itself because the proxy skips it.
+    if (path.length === 2 && path[0] === "fs" && path[1] === "upload") return handleUpload(request);
     if (request.method !== "GET") {
       // Next.js may normalize request.url to localhost; Host retains the browser's public origin.
       assertSameOrigin(request);
       if (Number(request.headers.get("content-length") ?? 0) > 2 * 1024 ** 2) throw new HttpError(413, "请求过大");
     }
-    const path = (await context.params).path;
     const [resource, id, action] = path;
     const method = request.method;
     if (resource === "health" && method === "GET") {
       const state = store().runtime();
       const ready = runnerReady();
-      return json({ status: ready ? "ok" : "degraded", nextflowVersion: state?.versions?.nextflow ?? "未就绪", mocked: false, runnerReady: !!ready, diagnostics: state?.error ?? (ready ? undefined : "请启动 pnpm runner"), resources: state?.resources } satisfies HealthStatus);
+      return json({ status: ready ? "ok" : "degraded", appVersion: process.env.NEXTFLOW_STUDIO_APP_VERSION, apiVersion: API_VERSION, nextflowVersion: state?.versions?.nextflow ?? "未就绪", mocked: false, runnerReady: !!ready, diagnostics: state?.error ?? (ready ? undefined : "请启动 pnpm runner"), resources: state?.resources } satisfies HealthStatus);
     }
     if (resource === "setup") return handleSetupApi(method, path, request);
     if (resource === "fs") return handleFsApi(method, path, request);
