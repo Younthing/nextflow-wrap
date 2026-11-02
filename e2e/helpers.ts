@@ -54,17 +54,47 @@ export async function runCell(page: Page, number: number, expected?: RegExp) {
   await expect(page.getByRole("button", { name: `运行单元格 ${number}` })).toBeEnabled({ timeout: 60_000 });
 }
 
+/** Opens the example project from the welcome page unless a project is already open; the workbench needs one. */
+export async function ensureProject(page: Page) {
+  await go(page, "/");
+  const open = await page.evaluate(async () => ((await (await fetch("/api/projects")).json()) as { current?: string }).current);
+  if (open) return;
+  await page.getByRole("button", { name: /从示例开始/ }).click();
+  await page.waitForURL(/\/workbench/);
+}
+
+/** Opens one item of the sidebar's 流程 group, expanding the group first when it is collapsed. */
+export async function flowNav(page: Page, label: "流程编排" | "运行记录" | "产物" | "模块库") {
+  const nav = page.getByRole("navigation", { name: "主导航" });
+  const group = nav.getByRole("button", { name: "流程" });
+  if ((await group.getAttribute("aria-expanded")) !== "true") await group.click();
+  await nav.getByRole("link", { name: label }).click();
+}
+
+/** Marks the selected cell as a module input or output through the toolbar. */
+export async function markCell(page: Page, role: "输入" | "输出") {
+  await page.getByRole("combobox", { name: "当前单元格类型" }).click();
+  await page.getByRole("option", { name: role, exact: true }).click();
+}
+
+/** 导出 › 导出为模块… */
+export async function exportModule(page: Page) {
+  await page.getByRole("button", { name: /^导出/ }).click();
+  await page.getByRole("menuitem", { name: /导出为模块/ }).click();
+}
+
 /** Writes a notebook from cells, runs the probe cells in the kernel, and publishes it with path bindings for its file inputs. */
 export async function notebookModule(page: Page, name: string, cells: { source: string; role?: "input" | "output" }[], probe: { cell: number; text?: RegExp }[], bindings: { port: string; path: string } | { port: string; path: string }[], shotPrefix = "e2e-sc") {
-  await go(page, "/notebooks");
-  await page.getByRole("button", { name: "新建笔记本" }).click();
-  await page.waitForURL(/\/notebooks\/nb_/);
+  await ensureProject(page);
+  await go(page, "/workbench");
+  await page.getByRole("button", { name: "新建笔记本", exact: true }).click();
+  await page.waitForURL(/\/workbench\/nb_/);
   await page.getByRole("textbox", { name: "笔记本名称" }).fill(name);
   for (const [index, cell] of cells.entries()) {
     if (index > 0) await page.getByRole("button", { name: "+ 代码" }).click();
     await fillCell(page, cell.source);
-    if (cell.role === "input") await page.getByRole("button", { name: "标为输入" }).click();
-    if (cell.role === "output") await page.getByRole("button", { name: "标为输出" }).click();
+    if (cell.role === "input") await markCell(page, "输入");
+    if (cell.role === "output") await markCell(page, "输出");
   }
   // Each probe runs one cell; later cells only work because the kernel kept the earlier variables.
   await expect(page.getByRole("status").filter({ hasText: "内核未启动" })).toBeVisible();
@@ -73,7 +103,7 @@ export async function notebookModule(page: Page, name: string, cells: { source: 
   await shot(page, `${shotPrefix}-${name.split("_")[1]}-notebook.png`);
 
   await waitForNotebookSaved(page);
-  await page.getByRole("button", { name: "发布为模块…" }).click();
+  await exportModule(page);
   await page.waitForURL(/\/publish\?step=1/);
   await page.getByRole("button", { name: "下一步：试跑" }).click();
   for (const binding of [bindings].flat()) {
@@ -91,7 +121,7 @@ export async function notebookModule(page: Page, name: string, cells: { source: 
     .toContain("通过");
   await page.getByRole("button", { name: "下一步：保存" }).click();
   await page.getByRole("button", { name: /^保存为模块 v1/ }).click();
-  await page.waitForURL("**/workflows/modules");
+  await page.waitForURL("**/modules");
 }
 
 /** Drags a wire from an output handle to empty canvas on its right and picks the module the search offers. */
