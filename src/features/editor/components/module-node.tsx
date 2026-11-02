@@ -1,8 +1,9 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { AlertTriangle, Ban, Boxes } from "lucide-react";
+import { AlertTriangle, Ban, Boxes, CodeXml } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -12,6 +13,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { PathInput } from "@/features/files/components/path-input";
+import { sourceNotebookHref } from "@/features/notebook/canvas-values";
 import { FOLDER_ID, isInputNode, pathName } from "@/features/workflow/builtins";
 import { resolveNodeDef } from "@/features/workflow/catalog";
 import { inputParamName } from "@/features/workflow/inputs";
@@ -30,8 +32,10 @@ import type {
 } from "@/features/workflow/types";
 import { cn } from "@/lib/utils";
 import { categoryColor, portColor } from "../port-style";
+import { useNodeIssues } from "../node-issues";
+import { sourceValues } from "../source-values";
 import { type FlowNode } from "../store";
-import { useEditorStore } from "@/features/editor/editor-provider";
+import { useEditorStore, useEditorStoreApi } from "@/features/editor/editor-provider";
 
 function PortTooltip({
   port,
@@ -257,6 +261,65 @@ function InputNodeBody({ id, def, data }: { id: string; def: ModuleDef; data: Fl
   );
 }
 
+/** `</>`: open the notebook this module was published from, with this node's values filled in. */
+function SourceButton({ nodeId, def }: { nodeId: string; def: ModuleDef }) {
+  const router = useRouter();
+  const store = useEditorStoreApi();
+  const notebookId = def.sourceNotebookId;
+  if (!notebookId) return null;
+  const open = (event: React.MouseEvent) => {
+    event.stopPropagation();
+    const state = store.getState();
+    const node = state.nodes.find((item) => item.id === nodeId);
+    if (!node) return;
+    const values = sourceValues(node, def, state.nodes, state.edges);
+    router.push(sourceNotebookHref(notebookId, values));
+  };
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          aria-label="在笔记本中打开源码"
+          onClick={open}
+          onDoubleClick={(event) => event.stopPropagation()}
+          className="nodrag grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+        >
+          <CodeXml className="size-3.5" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="top">在源笔记本中打开，带上这个节点的参数和输入文件</TooltipContent>
+    </Tooltip>
+  );
+}
+
+/** Errors and warnings from validation, on the node they belong to. */
+function IssueBadge({ nodeId }: { nodeId: string }) {
+  const issues = useNodeIssues(nodeId);
+  if (!issues.length) return null;
+  const error = issues.some((issue) => issue.level === "error");
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          role="img"
+          aria-label={`${error ? "错误" : "提醒"}：${issues.map((issue) => issue.message).join("；")}`}
+          className={cn("grid size-6 shrink-0 place-items-center", error ? "text-destructive" : "text-warning")}
+        >
+          <AlertTriangle className="size-3.5" />
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-sm">
+        <ul className="grid gap-1">
+          {issues.map((issue) => (
+            <li key={issue.message}>{issue.message}</li>
+          ))}
+        </ul>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 export function ModuleNode({ id, data, selected }: NodeProps<FlowNode>) {
   const index = useEditorStore((s) => s.index);
   const def = resolveNodeDef(index, data);
@@ -270,6 +333,12 @@ export function ModuleNode({ id, data, selected }: NodeProps<FlowNode>) {
     );
   }
 
+  return <KnownNode id={id} data={data} selected={selected} def={def} />;
+}
+
+function KnownNode({ id, data, selected, def }: Pick<NodeProps<FlowNode>, "id" | "data" | "selected"> & { def: ModuleDef }) {
+  const issues = useNodeIssues(id);
+  const failing = !data.disabled && issues.some((issue) => issue.level === "error");
   const accent = categoryColor(def.category);
   const origin = moduleOrigin(def);
   const subtitle = origin === "script"
@@ -286,6 +355,7 @@ export function ModuleNode({ id, data, selected }: NodeProps<FlowNode>) {
     <div
       className={cn(
         "glass-strong w-64 rounded-xl text-foreground transition-shadow",
+        failing && "ring-1 ring-destructive/60",
         selected && "ring-2 ring-primary/70",
         data.disabled && "opacity-50",
       )}
@@ -317,6 +387,8 @@ export function ModuleNode({ id, data, selected }: NodeProps<FlowNode>) {
             {(data.config.label ?? def.label)!.replace("process_", "")}
           </span>
         )}
+        {!data.disabled && <IssueBadge nodeId={id} />}
+        {origin === "script" && <SourceButton nodeId={id} def={def} />}
       </div>
       {isInputNode(def.id) ? (
         <InputNodeBody id={id} def={def} data={data} />

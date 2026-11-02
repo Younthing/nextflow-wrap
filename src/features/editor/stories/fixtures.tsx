@@ -5,7 +5,7 @@ import { BUILTIN_MODULES } from "@/features/workflow/builtins";
 import { indexModules } from "@/features/workflow/catalog";
 import { demoWorkflow } from "@/features/workflow/demo";
 import { EXAMPLE_MODULES } from "@/features/workflow/example-modules";
-import type { WorkflowDoc } from "@/features/workflow/types";
+import type { ModuleDef, WorkflowDoc } from "@/features/workflow/types";
 import { createEditorStore, type EditorStore } from "../store";
 import { EditorProvider } from "../editor-provider";
 
@@ -27,9 +27,12 @@ export function getStoryEditorStore(root: HTMLElement): EditorStore {
 export function EditorFixture({
   doc = demoWorkflow("wf_story"),
   selectedNodeIds = [],
+  modules = EXAMPLE_MODULES,
   children,
 }: {
   doc?: WorkflowDoc;
+  /** Catalog modules the canvas resolves nodes against. */
+  modules?: readonly ModuleDef[];
   /** Node ids to mark selected after the document loads. */
   selectedNodeIds?: readonly string[];
   children: React.ReactNode;
@@ -38,7 +41,7 @@ export function EditorFixture({
   const [store] = React.useState(() => {
     const store = createEditorStore();
     const s = store.getState();
-    s.setIndex(indexModules(EXAMPLE_MODULES));
+    s.setIndex(indexModules([...modules]));
     s.load(doc);
     if (selectedNodeIds.length > 0) {
       const selected = new Set(selectedNodeIds);

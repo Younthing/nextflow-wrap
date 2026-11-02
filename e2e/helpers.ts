@@ -170,8 +170,8 @@ export async function addFileInput(page: Page, path: string) {
 
 /** Starts the canvas with the Shell runtime and waits on the run page until it succeeds. */
 export async function runWithShell(page: Page) {
-  await page.getByRole("button", { name: "运行", exact: true }).click();
-  const dialog = page.getByRole("dialog");
+  await page.getByRole("button", { name: "运行设置", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "运行设置" });
   await dialog.getByLabel("容器 / 环境（-profile）").click();
   await page.getByRole("option", { name: /^Shell/ }).click();
   const start = dialog.getByRole("button", { name: "启动运行" });

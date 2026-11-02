@@ -1,10 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { expect, fn, within } from "storybook/test";
-import { RunDialog } from "../components/run-dialog";
+import { RunSettingsDialog } from "../components/run-settings-dialog";
 import { EditorFixture } from "@/features/editor/stories/fixtures";
 const meta = {
-  title: "Runs/RunDialog",
-  component: RunDialog,
+  title: "Runs/RunSettingsDialog",
+  component: RunSettingsDialog,
   args: {
     open: true,
     onOpenChange: fn(),
@@ -17,18 +17,23 @@ const meta = {
       </EditorFixture>
     ),
   ],
-} satisfies Meta<typeof RunDialog>;
+} satisfies Meta<typeof RunSettingsDialog>;
 export default meta;
 type Story = StoryObj<typeof meta>;
 export const Ready: Story = {
   play: async () => {
-    const dialog = within(await within(document.body).findByRole("dialog", { name: "运行流程" }));
-    await expect(dialog.getByRole("tab", { name: "运行环境" })).toHaveAttribute("data-state", "active");
+    const dialog = within(await within(document.body).findByRole("dialog", { name: "运行设置" }));
     const command = dialog.getByText("启动命令（在项目目录中执行）");
     expect(command.parentElement).toHaveTextContent("nextflow run .");
     await expect(dialog.getByText(/预览环境不会连接真实的集群或云执行器/)).toBeInTheDocument();
+    await expect(dialog.getByRole("button", { name: "保存设置" })).toBeEnabled();
   },
 };
 export const Invalid: Story = {
-  args: { issues: [{ level: "error", message: "缺少输入样本表" }] },
+  args: { issues: [{ level: "error", message: "COUNTS：还没有选择文件" }] },
+  play: async () => {
+    const dialog = within(await within(document.body).findByRole("dialog", { name: "运行设置" }));
+    await expect(dialog.getByText("COUNTS：还没有选择文件")).toBeInTheDocument();
+    await expect(dialog.getByRole("button", { name: "启动运行" })).toBeDisabled();
+  },
 };

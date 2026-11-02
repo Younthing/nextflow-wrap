@@ -18,7 +18,7 @@ export const InspectorPanel: Story = {
 export const Toolbar: Story = {
   render: () => (
     <EditorFixture>
-      <EditorToolbar saving={false} onFit={() => {}} onRun={() => {}} />
+      <EditorToolbar saving={false} onFit={() => {}} onRun={() => {}} onRunSettings={() => {}} onExport={() => {}} />
     </EditorFixture>
   ),
 };
@@ -28,7 +28,7 @@ function CommandToolbar() {
     openNodeSearch: () => {},
     fitView: () => {},
   });
-  return <EditorToolbar saving={false} onFit={() => {}} onRun={() => {}} />;
+  return <EditorToolbar saving={false} onFit={() => {}} onRun={() => {}} onRunSettings={() => {}} onExport={() => {}} />;
 }
 
 export const IndependentEditors: Story = {

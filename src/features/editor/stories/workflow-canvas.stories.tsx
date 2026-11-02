@@ -2,12 +2,14 @@ import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { useEffect, useState } from "react";
 import { expect, screen, userEvent, waitFor, within } from "storybook/test";
 import { useStoreApi } from "@xyflow/react";
+import { getRouter } from "@storybook/nextjs-vite/navigation.mock";
 
 import { FILE_ID, FOLDER_ID, SAMPLESHEET_ID } from "@/features/workflow/builtins";
 import { emptyWorkflow } from "@/features/workflow/document";
-import { EXAMPLE_FASTQ_QC_ID, EXAMPLE_REPORT_ID, EXAMPLE_SCANPY_QC_ID } from "@/features/workflow/example-modules";
+import { EXAMPLE_FASTQ_QC_ID, EXAMPLE_MODULES, EXAMPLE_REPORT_ID, EXAMPLE_SCANPY_QC_ID } from "@/features/workflow/example-modules";
 import type { WorkflowDoc } from "@/features/workflow/types";
 import { WorkflowCanvas } from "../components/workflow-canvas";
+import { NodeIssuesProvider } from "../node-issues";
 import { useEditorStoreApi } from "../editor-provider";
 import { useEditorCommands } from "../use-editor-commands";
 import { EditorFixture, getStoryEditorStore } from "./fixtures";
@@ -159,6 +161,62 @@ export const InputNodes: Story = {
     await expect(canvas.getByText("--matrix")).toBeVisible();
     const store = getStoryEditorStore(canvasElement);
     expect(store.getState().nodes.find((node) => node.id === "matrix")?.data.settings?.path).toBe("/home/demo/data/filtered_feature_bc_matrix");
+  },
+};
+
+/** The example modules as if each had been published from a notebook. */
+const publishedModules = EXAMPLE_MODULES.map((def) => ({ ...def, sourceNotebookId: `nb_${def.path}` }));
+
+/** `</>` on a notebook module opens its notebook with the node's values and linked input paths. */
+export const SourceButton: Story = {
+  decorators: [
+    (Story) => (
+      <EditorFixture doc={inputNodesWorkflow()} modules={publishedModules}>
+        <Story />
+      </EditorFixture>
+    ),
+  ],
+  play: async ({ canvasElement }) => {
+    const node = await waitFor(() => {
+      const el = canvasElement.querySelector<HTMLElement>('[data-id="qc"]');
+      if (!el) throw new Error("missing qc node");
+      return el;
+    });
+    const open = await within(node).findByRole("button", { name: "在笔记本中打开源码" });
+    await waitFor(() => expect(open).toBeVisible());
+    // File and folder inputs have no source notebook.
+    const counts = canvasElement.querySelector<HTMLElement>('[data-id="counts"]')!;
+    expect(within(counts).queryByRole("button", { name: "在笔记本中打开源码" })).toBeNull();
+    await userEvent.click(open);
+    const href = String(getRouter().push.mock.lastCall?.[0] ?? "");
+    expect(href.startsWith("/workbench/nb_scanpy_qc?")).toBe(true);
+    const query = new URLSearchParams(href.split("?")[1]);
+    expect(query.get("from")).toBe("SCANPY_QC");
+    expect(query.get("set.adata")).toBe("/home/demo/data/pbmc3k.h5ad");
+    expect(query.get("set.min_genes")).toBe("200");
+  },
+};
+
+/** Validation problems sit on the node they belong to. */
+export const NodeIssues: Story = {
+  decorators: [
+    (Story) => (
+      <EditorFixture doc={inputNodesWorkflow()}>
+        <NodeIssuesProvider
+          issues={[
+            { nodeId: "matrix", level: "error", message: "MATRIX：还没有选择文件夹" },
+            { nodeId: "qc", level: "warning", message: "SCANPY_QC：输出没有下游" },
+          ]}
+        >
+          <Story />
+        </NodeIssuesProvider>
+      </EditorFixture>
+    ),
+  ],
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("img", { name: "错误：MATRIX：还没有选择文件夹" })).toBeVisible());
+    await expect(canvas.getByRole("img", { name: "提醒：SCANPY_QC：输出没有下游" })).toBeVisible();
   },
 };
 
