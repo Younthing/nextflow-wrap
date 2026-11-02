@@ -92,7 +92,7 @@ export function migrateDatabase(db: DatabaseSync, options: { backupDir?: string;
     mkdirSync(options.backupDir, { recursive: true });
     const stamp = (options.now?.() ?? new Date()).toISOString().replaceAll(":", "-").replace(/\..+$/, "");
     backup = join(options.backupDir, `studio-v${from}-${stamp}.sqlite`);
-    if (!existsSync(backup)) db.prepare("VACUUM INTO ?").run(backup);
+    if (!existsSync(/* turbopackIgnore: true */ backup)) db.prepare("VACUUM INTO ?").run(backup);
   }
   for (const step of pending) {
     db.exec("BEGIN IMMEDIATE");

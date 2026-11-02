@@ -37,7 +37,19 @@ export async function waitForNotebookSaved(page: Page) {
 export async function runCell(page: Page, number: number, expected?: RegExp) {
   await waitForNotebookSaved(page);
   await page.getByRole("button", { name: `运行单元格 ${number}` }).click();
-  if (expected) await expect(page.getByText(expected).first()).toBeVisible({ timeout: 300_000 });
+  if (expected) {
+    // Fail with the traceback as soon as the cell errors, instead of waiting out the timeout.
+    const error = page.locator('[data-output="error"]');
+    await expect
+      .poll(
+        async () => {
+          if (await error.count()) throw new Error(`单元格 ${number} 报错:\n${await error.first().innerText()}`);
+          return page.getByText(expected).first().isVisible();
+        },
+        { timeout: 300_000, intervals: [500, 1_000, 2_000] },
+      )
+      .toBe(true);
+  }
   else await expect(page.getByRole("status").filter({ hasText: "内核空闲" })).toBeVisible({ timeout: 180_000 });
   await expect(page.getByRole("button", { name: `运行单元格 ${number}` })).toBeEnabled({ timeout: 60_000 });
 }

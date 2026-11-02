@@ -84,7 +84,7 @@ export async function bundleEntries(options: BundleOptions = {}): Promise<Bundle
     delete (detail as Partial<typeof detail>).project;
     add(`run/${run.detail.id}/detail.json`, { ...detail, workflow: { id: workflow.id, name: workflow.name, nodes: workflow.nodes.map((node) => ({ id: node.id, moduleId: node.data.moduleId, alias: node.data.alias })) }, attemptDir: run.attemptDir, sessionId: run.sessionId });
     for (const name of RUN_FILES) {
-      const text = await tail(join(run.attemptDir, name));
+      const text = await tail(join(/* turbopackIgnore: true */ run.attemptDir, name));
       if (text !== undefined) entries.push({ path: `run/${run.detail.id}/${name}`, text });
     }
     add(`run/${run.detail.id}/tasks.json`, db.tasks(run.detail.id));
