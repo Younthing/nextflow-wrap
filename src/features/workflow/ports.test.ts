@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { BUILTIN_MODULES, withReferenceFormat } from "./builtins";
+import { BUILTIN_MODULES, FILE_ID, FOLDER_ID, formatFromPath, withFileFormat } from "./builtins";
 import {
   EXAMPLE_FASTQ_QC_ID,
   EXAMPLE_MODULES,
@@ -29,13 +29,31 @@ describe("checkCompatibility", () => {
   });
 
   it("strips meta when the input takes bare files", () => {
-    const ref = withReferenceFormat(mod("builtin/reference"), "other");
-    const result = checkCompatibility(output(ref, "with_meta"), input(mod(EXAMPLE_RECEPTOR_ID), "receptor"));
-    expect(result).toMatchObject({ ok: true, adapter: "strip-meta" });
+    const file = withFileFormat(mod(FILE_ID), "/data/receptor.pdb");
+    const result = checkCompatibility(output(file, "file"), input(mod(EXAMPLE_RECEPTOR_ID), "receptor"));
+    expect(result).toMatchObject({ ok: true, adapter: "strip-meta", warning: undefined });
+  });
+
+  it("links a chosen h5ad file straight into an AnnData input", () => {
+    const file = withFileFormat(mod(FILE_ID), "/data/pbmc3k.h5ad");
+    expect(checkCompatibility(output(file, "file"), input(mod(EXAMPLE_SCANPY_QC_ID), "adata"))).toEqual({
+      ok: true,
+      adapter: "direct",
+      warning: undefined,
+    });
+  });
+
+  it("warns when the chosen file has the wrong format", () => {
+    const file = withFileFormat(mod(FILE_ID), "/data/ligands.sdf");
+    expect(checkCompatibility(output(file, "file"), input(mod(EXAMPLE_SCANPY_QC_ID), "adata")).warning).toContain("sdf → h5ad");
+  });
+
+  it("warns when a folder goes into a file input", () => {
+    expect(checkCompatibility(output(mod(FOLDER_ID), "dir"), input(mod(EXAMPLE_SCANPY_QC_ID), "adata")).warning).toContain("dir → h5ad");
   });
 
   it("rejects a bare file into a meta tuple", () => {
-    const result = checkCompatibility(output(mod("builtin/reference"), "file"), input(mod(EXAMPLE_SCANPY_QC_ID), "adata"));
+    const result = checkCompatibility(output(mod(EXAMPLE_REPORT_ID), "report"), input(mod(EXAMPLE_SCANPY_QC_ID), "adata"));
     expect(result.ok).toBe(false);
   });
 
@@ -54,5 +72,19 @@ describe("checkCompatibility", () => {
     const files = input(mod(EXAMPLE_REPORT_ID), "files");
     expect(files.collect).toBe(true);
     expect(checkCompatibility(output(mod(EXAMPLE_SCANPY_QC_ID), "plots"), files)).toMatchObject({ ok: true, warning: undefined });
+  });
+});
+
+describe("formatFromPath", () => {
+  it("reads the extension, skipping compression", () => {
+    expect(formatFromPath("/data/pbmc3k.h5ad")).toBe("h5ad");
+    expect(formatFromPath("reads_1.fq.gz")).toBe("fastq");
+    expect(formatFromPath("C:\\data\\genome.FA")).toBe("fasta");
+    expect(formatFromPath("/data/receptor.pdbqt")).toBe("pdbqt");
+  });
+
+  it("has no format without an extension", () => {
+    expect(formatFromPath("/data/matrix_dir/")).toBeUndefined();
+    expect(formatFromPath("")).toBeUndefined();
   });
 });

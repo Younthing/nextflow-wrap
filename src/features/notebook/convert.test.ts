@@ -58,6 +58,12 @@ describe("convertNotebook", () => {
     expect(createNode(def, { x: 0, y: 0 }, []).data.widgets).toEqual({ min_q: 30, title: "QC 汇总" });
   });
 
+  it("turns a type=dir input into a folder socket", () => {
+    const [port] = inputPorts([{ name: "matrix", type: "dir", required: true }]);
+    expect(port).toMatchObject({ description: "文件夹", elements: [{ type: "directory", kind: "file", format: "dir" }] });
+    expect(port.widget).toBeUndefined();
+  });
+
   it("rejects a missing output pattern", () => {
     const doc: NotebookDoc = {
       ...qc(),

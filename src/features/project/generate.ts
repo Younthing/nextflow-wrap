@@ -2,7 +2,8 @@ import samplesheetSchema from "@/data/samplesheet-schema.json";
 import type { ModuleIndex } from "@/features/workflow/catalog";
 import type { NodeConfig, ProjectSettings, PublishDir, WorkflowDoc } from "@/features/workflow/types";
 import { gdynamic, gstr, section } from "./groovy";
-import { buildParamsSchema, paramsBlock, patternParams, referenceParams, usesSamplesheet } from "./schema";
+import { inputParams } from "@/features/workflow/inputs";
+import { buildParamsSchema, paramsBlock, patternParams, usesSamplesheet } from "./schema";
 import { LABEL_RESOURCES, SAMPLESHEET_CSV, baseConfig, nextflowConfig, type ProjectMeta } from "./templates";
 import { scriptProjectFiles, type ScriptLayout } from "./script-process";
 import { GenerateError, generateMainScript, planNodes } from "./workflow-script";
@@ -152,7 +153,7 @@ function readme(meta: ProjectMeta, doc: WorkflowDoc, index: ModuleIndex) {
     .filter((p) => !p.def.builtin)
     .map((p, i) => `${i + 1}. \`${p.node.data.alias}\`: ${p.def.description.split("\n")[0]}`);
   const input = usesSamplesheet(doc) ? " \\\n   --input samplesheet.csv" : "";
-  const refs = referenceParams(doc).map((r) => ` \\\n   --${r.name} <${r.format.toUpperCase()}>`).join("");
+  const refs = inputParams(doc).map((r) => ` \\\n   --${r.name} <${r.kind === "folder" ? "DIR" : (r.format ?? "file").toUpperCase()}>`).join("");
   return `# ${meta.name}
 
 ${meta.description}
@@ -183,11 +184,11 @@ function withModuleBinaries(config: string, scripts: readonly ProjectFile[], lay
 }
 
 export function generateProject(doc: WorkflowDoc, index: ModuleIndex, opts: GenerateOptions = {}): GeneratedProject {
-  const refs = referenceParams(doc);
+  const inputs = inputParams(doc);
   const { order } = planNodes(doc, index);
   const meta = projectMeta(doc);
   const samplesheet = usesSamplesheet(doc);
-  const schema = buildParamsSchema(meta.name, meta.description, refs, patternParams(doc), { input: samplesheet });
+  const schema = buildParamsSchema(meta.name, meta.description, inputs, patternParams(doc), { input: samplesheet });
 
   const layout = opts.scriptLayout ?? "module";
   const scripts = scriptProjectFiles(order, layout);

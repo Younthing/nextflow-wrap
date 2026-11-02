@@ -24,12 +24,13 @@ import { cn } from "@/lib/utils";
 type CatalogFilter = "both" | "script" | "builtin";
 
 const BUILTIN_ORDER = [
+  "builtin/file",
+  "builtin/folder",
+  "builtin/samplesheet",
   "builtin/merge-samplesheet",
   "builtin/branch",
   "builtin/collect-summary",
   "builtin/export-results",
-  "builtin/samplesheet",
-  "builtin/reference",
 ];
 
 function portLabel(port: PortDef): string {

@@ -1,4 +1,4 @@
-import { BUILTIN_MODULES, REFERENCE_ID, withReferenceFormat } from "./builtins";
+import { BUILTIN_MODULES, withFileFormat } from "./builtins";
 import type { ModuleDef, WorkflowNodeData } from "./types";
 
 export type ModuleIndex = Map<string, ModuleDef>;
@@ -14,10 +14,7 @@ export function resolveNodeDef(
 ): ModuleDef | undefined {
   const def = index.get(data.moduleId);
   if (!def) return undefined;
-  if (def.id === REFERENCE_ID) {
-    return withReferenceFormat(def, data.settings?.format as string | undefined);
-  }
-  return def;
+  return withFileFormat(def, data.settings?.path as string | undefined);
 }
 
 export function searchModules(modules: ModuleDef[], query: string): ModuleDef[] {

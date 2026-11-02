@@ -14,7 +14,9 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
+import { FILE_ID, FOLDER_ID } from "@/features/workflow/builtins";
 import { resolveNodeDef } from "@/features/workflow/catalog";
+import { desktop } from "@/lib/desktop";
 import { checkCompatibility, findPort } from "@/features/workflow/ports";
 import { EDITOR_CANVAS_CLASS, isEditableTarget } from "@/lib/actions";
 import { useShortcutLabels } from "@/lib/use-action-shortcuts";
@@ -42,6 +44,19 @@ import { ModuleNode } from "./module-node";
 import type { SearchRequest } from "./node-search-dialog";
 
 const nodeTypes = { module: ModuleNode };
+
+/** Real paths of files and folders dropped from the desktop. Only the desktop app can read them. */
+function droppedPaths(transfer: DataTransfer): { path: string; folder: boolean }[] {
+  const bridge = desktop();
+  if (!bridge) return [];
+  const items = Array.from(transfer.items).filter((item) => item.kind === "file");
+  return items.flatMap((item) => {
+    const file = item.getAsFile();
+    const path = file ? bridge.pathForFile(file) : undefined;
+    if (!path) return [];
+    return [{ path, folder: item.webkitGetAsEntry?.()?.isDirectory === true }];
+  });
+}
 
 export function WorkflowCanvas({
   onRequestSearch,
@@ -121,6 +136,21 @@ export function WorkflowCanvas({
 
   const onDrop = React.useCallback(
     (e: React.DragEvent) => {
+      if (e.defaultPrevented) return;
+      if (e.dataTransfer.types.includes("Files")) {
+        e.preventDefault();
+        const dropped = droppedPaths(e.dataTransfer);
+        if (!dropped.length) {
+          toast.warning("浏览器拿不到文件的本机路径，请在节点上用「浏览」选择，或在桌面版里拖入");
+          return;
+        }
+        dropped.forEach(({ path, folder }, i) => {
+          const def = index.get(folder ? FOLDER_ID : FILE_ID);
+          if (!def) return;
+          addNode(def, screenToFlowPosition({ x: e.clientX - 120, y: e.clientY - 20 + i * 120 }), { path });
+        });
+        return;
+      }
       const id = e.dataTransfer.getData(MODULE_DRAG_TYPE);
       const def = id && index.get(id);
       if (!def) return;
@@ -236,6 +266,9 @@ export function WorkflowCanvas({
             if (e.dataTransfer.types.includes(MODULE_DRAG_TYPE)) {
               e.preventDefault();
               e.dataTransfer.dropEffect = "move";
+            } else if (e.dataTransfer.types.includes("Files")) {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "copy";
             }
           }}
           onDrop={onDrop}

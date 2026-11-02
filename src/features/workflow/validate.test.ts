@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { SAMPLESHEET_ID } from "./builtins";
+import { FILE_ID, FOLDER_ID, SAMPLESHEET_ID } from "./builtins";
 import { indexModules } from "./catalog";
 import { demoWorkflow, dockingWorkflow } from "./demo";
 import { EXAMPLE_MODULES, EXAMPLE_TRIM_ID } from "./example-modules";
@@ -32,6 +32,24 @@ describe("validateWorkflow", () => {
     const messages = validateWorkflow(nodes, edges, doc.params, index).map((i) => i.message);
     expect(messages).toContain("SCANPY_CLUSTER：主输入 adata 未连接");
     expect(messages).toContain("别名 SCANPY_QC 重复了 2 次");
+  });
+
+  it("requires a path on file and folder inputs unless they are optional", () => {
+    const withSettings = (n: WorkflowNode, settings: Record<string, string | boolean>) => ({ ...n, data: { ...n.data, settings } });
+    const nodes = [
+      node("f", FILE_ID, "COUNTS"),
+      node("d", FOLDER_ID, "MATRIX"),
+      withSettings(node("o", FILE_ID, "EXTRA"), { optional: true }),
+      withSettings(node("ok", FILE_ID, "LIGANDS"), { path: "/data/ligands.csv" }),
+    ];
+    const messages = validateWorkflow(nodes, [], { outdir: "results" }, index).map((i) => i.message);
+    expect(messages).toEqual(["COUNTS：还没有选择文件", "MATRIX：还没有选择文件夹"]);
+  });
+
+  it("rejects an input alias that would shadow a built-in param", () => {
+    const nodes = [{ ...node("f", FILE_ID, "OUTDIR"), data: { ...node("f", FILE_ID, "OUTDIR").data, settings: { path: "/x.csv" } } }];
+    const messages = validateWorkflow(nodes, [], { outdir: "results" }, index).map((i) => i.message);
+    expect(messages[0]).toContain("--outdir");
   });
 
   it("requires --input for the samplesheet", () => {

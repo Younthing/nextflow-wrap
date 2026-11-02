@@ -9,7 +9,7 @@ export function emptyWorkflow(id: string, name = "未命名流程"): WorkflowDoc
     version: WORKFLOW_FILE_VERSION,
     nodes: [],
     edges: [],
-    params: { input: "assets/samplesheet.csv", outdir: "results" },
+    params: { outdir: "results" },
     updatedAt: new Date().toISOString(),
   };
 }

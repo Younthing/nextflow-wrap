@@ -24,6 +24,7 @@ import type { ModuleIndex } from "@/features/workflow/catalog";
 import { validateWorkflow } from "@/features/workflow/validate";
 import type { WorkflowDoc } from "@/features/workflow/types";
 import type { LaunchRequest, RunStatus } from "@/features/runs/types";
+import { launchParams } from "@/features/workflow/inputs";
 import { isRecord } from "@/lib/record";
 
 /**
@@ -277,7 +278,7 @@ export function prepareStartRun(input: StartRunInput): StartRunPlan {
               content,
             })),
           },
-          params: input.doc.params,
+          params: launchParams(input.doc),
           launch,
           runConfig,
           command,

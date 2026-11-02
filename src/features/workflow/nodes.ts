@@ -1,4 +1,3 @@
-import { REFERENCE_ID } from "./builtins";
 import { operatorDefaults } from "./operators";
 import { widgetInputs } from "./ports";
 import type { ModuleDef, WidgetValue, WorkflowNode } from "./types";
@@ -50,16 +49,7 @@ export function createNode(
       alias,
       widgets,
       config: def.builtin ? {} : { publish: true },
-      settings:
-        def.id === REFERENCE_ID
-          ? {
-              param: uniqueAlias(
-                "fasta",
-                existing.map((n) => String(n.data.settings?.param ?? "")),
-              ),
-              format: "fasta",
-            }
-          : operatorDefaults(def.id),
+      settings: operatorDefaults(def.id),
     },
   };
 }

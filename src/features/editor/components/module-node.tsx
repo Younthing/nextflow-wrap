@@ -11,7 +11,10 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { PathInput } from "@/features/files/components/path-input";
+import { FOLDER_ID, isInputNode, pathName } from "@/features/workflow/builtins";
 import { resolveNodeDef } from "@/features/workflow/catalog";
+import { inputParamName } from "@/features/workflow/inputs";
 import { moduleOrigin } from "@/features/workflow/origin";
 import {
   inHandle,
@@ -213,6 +216,47 @@ function NodeBody({
   );
 }
 
+/** File and folder input nodes: the path is picked right on the card. */
+function InputNodeBody({ id, def, data }: { id: string; def: ModuleDef; data: FlowNode["data"] }) {
+  const update = useEditorStore((s) => s.updateNodeData);
+  const settings = data.settings ?? {};
+  const path = String(settings.path ?? "");
+  const folder = def.id === FOLDER_ID;
+  const output = def.outputs[0];
+  const format = output?.elements.find((el) => el.kind === "file")?.format;
+  const missing = !path.trim() && settings.optional !== true;
+  return (
+    <>
+      <div className="nodrag grid gap-1.5 px-3 pt-2.5 pb-1">
+        <PathInput
+          kind={folder ? "directory" : "file"}
+          value={path}
+          placeholder={folder ? "选择文件夹…" : "选择文件…"}
+          aria-label={folder ? "文件夹路径" : "文件路径"}
+          aria-invalid={missing || undefined}
+          onChange={(value) => update(id, { settings: { ...settings, path: value } }, `input:${id}:path`)}
+          className="h-7 px-2 text-xs"
+        />
+        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          {missing ? (
+            <span className="text-destructive">{folder ? "还没有选择文件夹" : "还没有选择文件"}</span>
+          ) : (
+            <span className="font-mono">--{inputParamName(data.alias)}</span>
+          )}
+          {format && (
+            <span className="ml-auto rounded-full bg-secondary px-1.5 py-0.5 font-mono text-[10px]">
+              {folder ? "文件夹" : format}
+            </span>
+          )}
+        </div>
+      </div>
+      <div className="pb-1.5">
+        {output && <PortRow output={output} linkedInputs={new Set()} />}
+      </div>
+    </>
+  );
+}
+
 export function ModuleNode({ id, data, selected }: NodeProps<FlowNode>) {
   const index = useEditorStore((s) => s.index);
   const def = resolveNodeDef(index, data);
@@ -230,7 +274,9 @@ export function ModuleNode({ id, data, selected }: NodeProps<FlowNode>) {
   const origin = moduleOrigin(def);
   const subtitle = origin === "script"
     ? `${def.name}${def.version ? ` · ${def.version}` : ""}`
-    : def.builtin
+    : isInputNode(def.id)
+      ? pathName(String(data.settings?.path ?? "")) || def.name
+      : def.builtin
       ? data.settings?.param
         ? `--${data.settings.param}`
         : def.name
@@ -272,7 +318,11 @@ export function ModuleNode({ id, data, selected }: NodeProps<FlowNode>) {
           </span>
         )}
       </div>
-      <NodeBody id={id} def={def} data={data} />
+      {isInputNode(def.id) ? (
+        <InputNodeBody id={id} def={def} data={data} />
+      ) : (
+        <NodeBody id={id} def={def} data={data} />
+      )}
     </div>
   );
 }

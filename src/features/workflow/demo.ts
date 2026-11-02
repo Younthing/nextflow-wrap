@@ -1,4 +1,4 @@
-import { REFERENCE_ID, SAMPLESHEET_ID } from "./builtins";
+import { FILE_ID, SAMPLESHEET_ID } from "./builtins";
 import { EXAMPLE_CLUSTER_ID, EXAMPLE_DOCK_ID, EXAMPLE_FASTQ_QC_ID, EXAMPLE_LIGANDS_ID, EXAMPLE_REPORT_ID, EXAMPLE_SCANPY_QC_ID, EXAMPLE_TRIM_ID } from "./example-modules";
 import { inHandle, outHandle } from "./ports";
 import type { WorkflowDoc, WorkflowEdge, WorkflowNode } from "./types";
@@ -31,15 +31,15 @@ export function demoWorkflow(id: string): WorkflowDoc {
     name: "单细胞质控与聚类",
     description: "scanpy 过滤细胞 → Leiden 聚类 → 汇总报告",
     version: 1,
-    params: { counts: "data/pbmc3k.h5ad", outdir: "results" },
+    params: { outdir: "results" },
     nodes: [
-      node("counts", REFERENCE_ID, "COUNTS", 0, 160, { config: {}, settings: { param: "counts", format: "other" } }),
+      node("counts", FILE_ID, "COUNTS", 0, 160, { config: {}, settings: { path: "data/pbmc3k.h5ad" } }),
       node("qc", EXAMPLE_SCANPY_QC_ID, "SCANPY_QC", 360, 120, { widgets: { min_genes: 200, max_pct_mt: 5 } }),
       node("cluster", EXAMPLE_CLUSTER_ID, "SCANPY_CLUSTER", 760, 120, { widgets: { resolution: 0.5 } }),
       node("report", EXAMPLE_REPORT_ID, "SUMMARY_REPORT", 1160, 160, { widgets: { title: "PBMC 3k" } }),
     ],
     edges: [
-      edge("counts", "with_meta", "qc", "adata"),
+      edge("counts", "file", "qc", "adata"),
       edge("qc", "adata", "cluster", "adata"),
       edge("qc", "plots", "report", "files"),
       edge("cluster", "umap", "report", "files"),
@@ -80,15 +80,15 @@ export function dockingWorkflow(id: string): WorkflowDoc {
     name: "分子对接（Vina）",
     description: "SMILES 准备配体 → AutoDock Vina 对接 → 打分和最佳构象",
     version: 1,
-    params: { ligands: "data/ligands.csv", receptor: "data/receptor.pdbqt", outdir: "results" },
+    params: { outdir: "results" },
     nodes: [
-      node("ligands", REFERENCE_ID, "LIGANDS", 0, 80, { config: {}, settings: { param: "ligands", format: "other" } }),
-      node("receptor", REFERENCE_ID, "RECEPTOR", 0, 320, { config: {}, settings: { param: "receptor", format: "other" } }),
+      node("ligands", FILE_ID, "LIGANDS", 0, 80, { config: {}, settings: { path: "data/ligands.csv" } }),
+      node("receptor", FILE_ID, "RECEPTOR", 0, 320, { config: {}, settings: { path: "data/receptor.pdbqt" } }),
       node("prepare", EXAMPLE_LIGANDS_ID, "PREPARE_LIGANDS", 360, 60),
       node("dock", EXAMPLE_DOCK_ID, "VINA_DOCK", 760, 160, { widgets: { center_x: 0, center_y: 0, center_z: 0, size: 18, exhaustiveness: 8 } }),
     ],
     edges: [
-      edge("ligands", "with_meta", "prepare", "smiles"),
+      edge("ligands", "file", "prepare", "smiles"),
       edge("prepare", "ligands", "dock", "ligands"),
       edge("receptor", "file", "dock", "receptor"),
     ],
