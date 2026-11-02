@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { indexModules } from "@/features/workflow/catalog";
-import { REFERENCE_ID, SAMPLESHEET_ID } from "@/features/workflow/builtins";
+import { FILE_ID, FOLDER_ID, SAMPLESHEET_ID } from "@/features/workflow/builtins";
 import {
   BUFFER_ID,
   COLLECT_FILE_ID,
@@ -546,14 +546,40 @@ describe("nextflow patterns", () => {
       [
         node("in", FILE_PATH_ID, "FILES", 100, { settings: { glob: `${dir}/*.fa` } }),
         node("out", two.id, "TWO", 200),
-        node("ref", REFERENCE_ID, "FILTER", 100, { settings: { param: "filter", format: "other", optional: true } }),
+        node("ref", FILE_ID, "FILTER", 100, { settings: { optional: true } }),
       ],
       [edge("in", "files", "out", "seq")],
     );
     const { wf } = generated(doc, [two]);
     expect(wf).toContain("Channel.of([]).first()");
-    expect(wf).toMatch(/params\.filter \? channel\.value\(file\(params\.filter, checkIfExists: true\)\) : channel\.value\(\[\]\)/);
+    expect(wf).toContain("def ch_filter = params.filter ? channel.value([ [ id: file(params.filter).baseName ], file(params.filter, checkIfExists: true) ]) : channel.value([ [:], [] ])");
     expect(tasks(run(doc, [two]).output, "TWO").length).toBeGreaterThan(0);
+  }, 120_000);
+
+  it("feeds a chosen file and a chosen folder into one task", () => {
+    const dir = join(INPUTS, "file-folder");
+    writeTree({
+      [join(dir, "pbmc3k.h5ad")]: "adata\n",
+      [join(dir, "matrix", "barcodes.tsv")]: "AAAC\n",
+      [join(dir, "matrix", "matrix.mtx")]: "%%MatrixMarket\n",
+    });
+    const both = moduleOf("both", "BOTH", [port("adata", [meta(), fileEl("adata")]), port("matrix", [fileEl("matrix")])]);
+    const doc = workflow(
+      [
+        node("counts", FILE_ID, "COUNTS", 100, { settings: { path: join(dir, "pbmc3k.h5ad") } }),
+        node("mtx", FOLDER_ID, "MATRIX", 100, { settings: { path: join(dir, "matrix") } }),
+        node("out", both.id, "BOTH", 200),
+      ],
+      [edge("counts", "file", "out", "adata"), edge("mtx", "dir", "out", "matrix")],
+    );
+    const { wf, config } = generated(doc, [both]);
+    expect(wf).toContain("def ch_counts = channel.value([ [ id: file(params.counts).baseName ], file(params.counts, checkIfExists: true) ])");
+    expect(wf).toContain("def ch_matrix = channel.value([ [ id: file(params.matrix).name ], file(params.matrix, checkIfExists: true) ])");
+    expect(config).toContain(`'${join(dir, "pbmc3k.h5ad")}'`);
+    const { output } = run(doc, [both], ["--counts", join(dir, "pbmc3k.h5ad"), "--matrix", join(dir, "matrix")]);
+    const lines = tasks(output, "BOTH");
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("pbmc3k pbmc3k.h5ad matrix");
   }, 120_000);
 
   it("uses ifEmpty so an optional output does not hang join or collect", () => {

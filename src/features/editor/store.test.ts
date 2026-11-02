@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { BUILTIN_MODULES, REFERENCE_ID, SAMPLESHEET_ID } from "@/features/workflow/builtins";
+import { BUILTIN_MODULES, FILE_ID, SAMPLESHEET_ID } from "@/features/workflow/builtins";
+import { FILE_PATH_ID } from "@/features/workflow/operators";
 import { indexModules } from "@/features/workflow/catalog";
 import { emptyWorkflow } from "@/features/workflow/document";
 import type { WorkflowNodeData } from "@/features/workflow/types";
@@ -213,13 +214,26 @@ describe("editor clipboard", () => {
     expect(copy?.data.alias).toBe("SAMPLESHEET_6");
   });
 
-  it("gives a duplicated reference node its own param name and path", () => {
+  it("copies the chosen path with a duplicated file input node", () => {
+    store.setState({
+      params: { outdir: "results" },
+      nodes: [node("f1", "COUNTS", { x: 0, y: 0 }, true, { moduleId: FILE_ID, settings: { path: "/data/pbmc3k.h5ad" } })],
+      edges: [],
+    });
+    store.getState().duplicateSelected();
+    const copy = store.getState().nodes.find((n) => n.selected);
+    expect(copy?.data.alias).toBe("COUNTS_2");
+    expect(copy?.data.settings).toEqual({ path: "/data/pbmc3k.h5ad" });
+    expect(store.getState().params).toEqual({ outdir: "results" });
+  });
+
+  it("gives a duplicated param-reading operator its own param name and path", () => {
     const fasta = "s3://bucket/genome.fa";
     store.setState({
       params: { ...store.getState().params, fasta },
       nodes: [
         node("r1", "REFERENCE", { x: 0, y: 0 }, true, {
-          moduleId: REFERENCE_ID,
+          moduleId: FILE_PATH_ID,
           settings: { param: "fasta", format: "fasta" },
         }),
       ],
@@ -237,12 +251,12 @@ describe("editor clipboard", () => {
     expect(store.getState().nodes).toHaveLength(1);
   });
 
-  it("does not invent a path when the reference param was unset", () => {
+  it("does not invent a path when the operator param was unset", () => {
     store.setState({
       params: {},
       nodes: [
         node("r1", "REFERENCE", { x: 0, y: 0 }, true, {
-          moduleId: REFERENCE_ID,
+          moduleId: FILE_PATH_ID,
           settings: { param: "fasta", format: "fasta" },
         }),
       ],
@@ -253,14 +267,14 @@ describe("editor clipboard", () => {
     expect(store.getState().params).toEqual({});
   });
 
-  it("keeps params.input when duplicating a reference named input_2", () => {
+  it("keeps params.input when duplicating an operator param named input_2", () => {
     const samplesheet = "assets/samplesheet.csv";
     const path = "s3://bucket/extra.fa";
     store.setState({
       params: { input: samplesheet, input_2: path, outdir: "results" },
       nodes: [
         node("r1", "REFERENCE", { x: 0, y: 0 }, true, {
-          moduleId: REFERENCE_ID,
+          moduleId: FILE_PATH_ID,
           settings: { param: "input_2", format: "fasta" },
         }),
       ],
@@ -284,11 +298,11 @@ describe("editor clipboard", () => {
     expect(store.getState().nodes).toHaveLength(1);
   });
 
-  it("pastes reference paths into another workflow under the remapped names", () => {
+  it("pastes operator param values into another workflow under the remapped names", () => {
     const fasta = "s3://bucket/genome.fa";
     const gtf = "s3://bucket/genes.gtf";
     const reference = (id: string, alias: string, param: string, format: string, y: number): FlowNode =>
-      node(id, alias, { x: 0, y }, true, { moduleId: REFERENCE_ID, settings: { param, format } });
+      node(id, alias, { x: 0, y }, true, { moduleId: FILE_PATH_ID, settings: { param, format } });
     store.setState({
       params: { fasta, gtf, input: "assets/samplesheet.csv" },
       nodes: [reference("r1", "REFERENCE", "fasta", "fasta", 0), reference("r2", "REFERENCE_2", "gtf", "gtf", 200)],
@@ -303,7 +317,7 @@ describe("editor clipboard", () => {
       params: { fasta: "s3://destination/genome.fa", input: "other.csv" },
       nodes: [
         node("kept", "REFERENCE", { x: 0, y: 0 }, false, {
-          moduleId: REFERENCE_ID,
+          moduleId: FILE_PATH_ID,
           settings: { param: "fasta", format: "fasta" },
         }),
       ],
@@ -333,7 +347,7 @@ describe("editor clipboard", () => {
       params: { input: "assets/samplesheet.csv", input_2: path, outdir: "results" },
       nodes: [
         node("r1", "REFERENCE", { x: 0, y: 0 }, true, {
-          moduleId: REFERENCE_ID,
+          moduleId: FILE_PATH_ID,
           settings: { param: "input_2", format: "fasta" },
         }),
       ],

@@ -32,9 +32,9 @@ export const PipelineParams: Story = {
     <div className="glass w-96 rounded-xl p-4">
       <SchemaForm
         schema={buildParamsSchema("studio/scrna", "单细胞聚类", [
-          { name: "counts", format: "other", nodeAlias: "COUNTS" },
+          { name: "counts", kind: "file", path: "data/pbmc3k.h5ad", format: "h5ad", optional: false, nodeAlias: "COUNTS" },
         ])}
-        values={{ counts: "data/pbmc3k.h5ad", outdir: "results" }}
+        values={{ outdir: "results" }}
         onChange={fn()}
       />
     </div>

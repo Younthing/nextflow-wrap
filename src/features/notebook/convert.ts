@@ -109,6 +109,11 @@ function argparseLine(input: MarkerInput): string {
   return `p.add_argument(${bits.join(", ")})`;
 }
 
+/** `@input type=dir` (or `directory`, `folder`) takes a whole folder as one path. */
+function isDirType(type: string): boolean {
+  return type === "dir" || type === "directory" || type === "folder";
+}
+
 function isValueType(type: string): boolean {
   return ["int", "integer", "float", "number", "str", "string", "bool", "boolean"].includes(type);
 }
@@ -149,6 +154,13 @@ export function inputPorts(inputs: MarkerInput[]): PortDef[] {
             description: input.name,
           },
         ],
+      };
+    }
+    if (isDirType(input.type)) {
+      return {
+        name: input.name,
+        description: "文件夹",
+        elements: [{ name: input.name, type: "directory", kind: "file", description: input.name, format: "dir" }],
       };
     }
     return {

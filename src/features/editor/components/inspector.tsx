@@ -22,11 +22,13 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  REFERENCE_FORMATS,
-  REFERENCE_ID,
+  FOLDER_ID,
   SAMPLESHEET_ID,
+  isInputNode,
 } from "@/features/workflow/builtins";
+import { PathInput } from "@/features/files/components/path-input";
 import { resolveNodeDef } from "@/features/workflow/catalog";
+import { inputParamName } from "@/features/workflow/inputs";
 import { moduleOrigin, newerScriptModule, scriptModuleVersions, versionDiff } from "@/features/workflow/origin";
 import { portSignature, socketInputs } from "@/features/workflow/ports";
 import { projectMeta } from "@/features/project/generate";
@@ -35,7 +37,6 @@ import { formatPublishRules, parsePublishRules } from "@/features/project/publis
 import {
   buildParamsSchema,
   patternParams,
-  referenceParams,
   usesSamplesheet,
 } from "@/features/project/schema";
 import { operatorFields } from "@/features/workflow/operators";
@@ -149,68 +150,26 @@ function BuiltinSettings({ node, def }: { node: FlowNode; def: ModuleDef }) {
     );
   }
 
-  if (def.id === REFERENCE_ID) {
-    const param = String(settings.param ?? "");
+  if (isInputNode(def.id)) {
+    const folder = def.id === FOLDER_ID;
     return (
-      <Section title="参考文件">
-        <FormField label="参数名" htmlFor="ref-param">
-          <Input
-            id="ref-param"
-            value={param}
-            onChange={(e) =>
-              update(
-                node.id,
-                { settings: { ...settings, param: e.target.value.trim() } },
-                `ref:${node.id}:param`,
-              )
-            }
-            className="h-8 font-mono text-xs"
+      <Section title={folder ? "文件夹输入" : "文件输入"}>
+        <FormField label={folder ? "文件夹" : "文件"} htmlFor="input-path" hint={`流程参数 --${inputParamName(node.data.alias)}，由别名决定`}>
+          <PathInput
+            id="input-path"
+            kind={folder ? "directory" : "file"}
+            value={String(settings.path ?? "")}
+            onChange={(path) => update(node.id, { settings: { ...settings, path } }, `input:${node.id}:path`)}
+            className="h-8 text-xs"
           />
         </FormField>
-        <FormField label="文件格式">
-          <Select
-            value={String(settings.format ?? "other")}
-            onValueChange={(format) =>
-              update(node.id, { settings: { ...settings, format } })
-            }
-          >
-            <SelectTrigger size="sm" className="text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {REFERENCE_FORMATS.map((f) => (
-                <SelectItem key={f} value={f} className="font-mono text-xs">
-                  {f}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </FormField>
         <label className="flex items-center justify-between text-sm">
-          可选文件
+          可以不选
           <Switch
             checked={settings.optional === true}
             onCheckedChange={(optional) => update(node.id, { settings: { ...settings, optional } })}
           />
         </label>
-        {param && (
-          <FormField
-            label={
-              <Label htmlFor="ref-value" className="font-mono text-xs">
-                --{param}
-              </Label>
-            }
-            htmlFor="ref-value"
-          >
-            <Input
-              id="ref-value"
-              value={String(params[param] ?? "")}
-              placeholder="路径或 URL，如 s3://…/genome.fa"
-              onChange={(e) => setParam(param, e.target.value)}
-              className="h-8 font-mono text-xs"
-            />
-          </FormField>
-        )}
       </Section>
     );
   }
@@ -648,7 +607,8 @@ function PipelineInspector() {
     return buildParamsSchema(
       meta.name,
       meta.description,
-      referenceParams({ nodes }),
+      // File and folder paths are picked on their nodes, so they stay out of this form.
+      [],
       patternParams({ nodes }),
       { input: usesSamplesheet({ nodes }) },
     );

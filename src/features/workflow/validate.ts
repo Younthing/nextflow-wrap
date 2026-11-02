@@ -1,5 +1,6 @@
-import { REFERENCE_ID, SAMPLESHEET_ID } from "./builtins";
+import { FOLDER_ID, SAMPLESHEET_ID, isInputNode } from "./builtins";
 import { resolveNodeDef, type ModuleIndex } from "./catalog";
+import { inputParamName } from "./inputs";
 import { checkCompatibility, findPort, socketInputs } from "./ports";
 import type { PipelineParams, WorkflowEdge, WorkflowNode } from "./types";
 
@@ -13,7 +14,8 @@ export interface Issue {
 const isOptional = (el: { description: string }) => /optional|可选/i.test(el.description);
 
 const ALIAS_RE = /^[A-Z][A-Z0-9_]*$/;
-const PARAM_RE = /^[a-z][a-z0-9_]*$/;
+/** Params every generated project already defines. */
+const RESERVED_PARAMS = new Set(["input", "outdir", "publish_dir_mode", "trace_report_suffix"]);
 
 /**
  * Checks that matter before a workflow can be turned into a runnable
@@ -28,7 +30,6 @@ export function validateWorkflow(
 ): Issue[] {
   const issues: Issue[] = [];
   const aliases = new Map<string, number>();
-  const paramNames = new Map<string, number>();
 
   for (const node of nodes) {
     const { data } = node;
@@ -46,15 +47,14 @@ export function validateWorkflow(
     if (def.id === SAMPLESHEET_ID && !params.input) {
       issues.push({ nodeId: node.id, level: "error", message: "样本表节点需要设置流程参数 --input" });
     }
-    if (def.id === REFERENCE_ID) {
-      const param = String(data.settings?.param ?? "");
-      if (!PARAM_RE.test(param)) {
-        issues.push({ nodeId: node.id, level: "error", message: `${data.alias}：参数名 "${param}" 无效` });
-      } else {
-        paramNames.set(param, (paramNames.get(param) ?? 0) + 1);
-        if (!params[param]) {
-          issues.push({ nodeId: node.id, level: "warning", message: `参数 --${param} 还没有设置路径` });
-        }
+    if (isInputNode(def.id)) {
+      const param = inputParamName(data.alias);
+      const what = def.id === FOLDER_ID ? "文件夹" : "文件";
+      if (RESERVED_PARAMS.has(param)) {
+        issues.push({ nodeId: node.id, level: "error", message: `${data.alias}：别名会生成参数 --${param}，和内置参数重名，请改个别名` });
+      }
+      if (!String(data.settings?.path ?? "").trim() && data.settings?.optional !== true) {
+        issues.push({ nodeId: node.id, level: "error", message: `${data.alias}：还没有选择${what}` });
       }
     }
 
@@ -100,9 +100,6 @@ export function validateWorkflow(
 
   for (const [alias, count] of aliases) {
     if (count > 1) issues.push({ level: "error", message: `别名 ${alias} 重复了 ${count} 次` });
-  }
-  for (const [param, count] of paramNames) {
-    if (count > 1) issues.push({ level: "error", message: `参数 --${param} 被 ${count} 个参考文件节点使用` });
   }
   return issues;
 }

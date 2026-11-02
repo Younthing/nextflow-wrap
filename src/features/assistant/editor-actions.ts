@@ -3,7 +3,7 @@ import {
   type EditorStore,
   type EditorState,
 } from "@/features/editor/store";
-import { REFERENCE_FORMATS, REFERENCE_ID } from "@/features/workflow/builtins";
+import { isInputNode } from "@/features/workflow/builtins";
 import { resolveNodeDef, searchModules } from "@/features/workflow/catalog";
 import {
   inHandle,
@@ -315,8 +315,8 @@ export function createEditorActions(store: EditorStore) {
     widgets?: Record<string, WidgetValue>;
     config?: NodeConfig;
     disabled?: boolean;
-    referenceParam?: string;
-    referenceFormat?: string;
+    inputPath?: string;
+    inputOptional?: boolean;
   }) {
     const node = findNode(args.node);
     const def = defOf(node);
@@ -343,27 +343,13 @@ export function createEditorActions(store: EditorStore) {
       patch.config = { ...node.data.config, ...args.config };
     }
     if (args.disabled !== undefined) patch.disabled = args.disabled;
-    if (
-      args.referenceParam !== undefined ||
-      args.referenceFormat !== undefined
-    ) {
-      if (def.id !== REFERENCE_ID)
-        throw new Error("只有「参考文件」节点有参数名和文件格式");
-      const format = args.referenceFormat;
-      if (
-        format &&
-        !(REFERENCE_FORMATS as readonly string[]).includes(format)
-      ) {
-        throw new Error(`文件格式只能是 ${REFERENCE_FORMATS.join(", ")}`);
-      }
-      const param = args.referenceParam?.trim();
-      if (param !== undefined && !/^[a-z][a-z0-9_]*$/.test(param)) {
-        throw new Error(`参数名 ${param} 不合法，只能用小写字母、数字和下划线`);
-      }
+    if (args.inputPath !== undefined || args.inputOptional !== undefined) {
+      if (!isInputNode(def.id))
+        throw new Error("只有「文件输入」和「文件夹输入」节点有路径");
       patch.settings = {
         ...node.data.settings,
-        ...(param !== undefined && { param }),
-        ...(format && { format }),
+        ...(args.inputPath !== undefined && { path: args.inputPath.trim() }),
+        ...(args.inputOptional !== undefined && { optional: args.inputOptional }),
       };
     }
     if (args.alias) patch.alias = checkAlias(args.alias, node.id);

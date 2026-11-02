@@ -1,34 +1,8 @@
 import type { JsonSchema } from "@/features/workflow/queries";
 import { declaredParam } from "@/features/workflow/operators";
 import type { WorkflowDoc } from "@/features/workflow/types";
-import { REFERENCE_ID, SAMPLESHEET_ID } from "@/features/workflow/builtins";
-
-export interface ReferenceParam {
-  name: string;
-  format: string;
-  nodeAlias: string;
-}
-
-export function referenceParams(doc: Pick<WorkflowDoc, "nodes">): ReferenceParam[] {
-  const seen = new Set<string>();
-  const out: ReferenceParam[] = [];
-  for (const n of doc.nodes) {
-    if (n.data.moduleId !== REFERENCE_ID || n.data.disabled) continue;
-    const name = String(n.data.settings?.param ?? "");
-    if (!name || seen.has(name)) continue;
-    seen.add(name);
-    out.push({ name, format: String(n.data.settings?.format ?? "other"), nodeAlias: n.data.alias });
-  }
-  return out;
-}
-
-const FORMAT_PATTERNS: Record<string, string> = {
-  fasta: "^\\S+\\.(fa|fasta|fna)(\\.gz)?$",
-  gtf: "^\\S+\\.(gtf|gff3?)(\\.gz)?$",
-  fai: "^\\S+\\.fai$",
-  bed: "^\\S+\\.bed(\\.gz)?$",
-  vcf: "^\\S+\\.vcf(\\.gz)?$",
-};
+import { SAMPLESHEET_ID } from "@/features/workflow/builtins";
+import type { InputParam } from "@/features/workflow/inputs";
 
 const str = (description: string, extra: Partial<JsonSchema> = {}): JsonSchema => ({
   type: "string",
@@ -92,7 +66,7 @@ export function usesSamplesheet(doc: Pick<WorkflowDoc, "nodes">): boolean {
 export function buildParamsSchema(
   name: string,
   description: string,
-  refs: ReferenceParam[],
+  inputs: InputParam[],
   extras: ExtraParam[] = [],
   opts: { input?: boolean } = {},
 ): JsonSchema & Record<string, unknown> {
@@ -122,21 +96,29 @@ export function buildParamsSchema(
       properties: io,
     },
   };
-  if (refs.length) {
-    defs.reference_files = {
-      title: "Reference files",
+  if (inputs.length) {
+    defs.input_files = {
+      title: "Input files",
       type: "object",
-      fa_icon: "fas fa-dna",
-      description: "Reference files used by the pipeline.",
+      fa_icon: "fas fa-file-import",
+      description: "Files and folders chosen on the canvas. The chosen paths are the defaults.",
+      ...(inputs.some((input) => !input.optional)
+        ? { required: inputs.filter((input) => !input.optional).map((input) => input.name) }
+        : {}),
       properties: Object.fromEntries(
-        refs.map((r) => [
-          r.name,
-          str(`Path to the ${r.format === "other" ? "reference" : r.format.toUpperCase()} file (used by ${r.nodeAlias}).`, {
-            format: "file-path",
-            exists: true,
-            ...(FORMAT_PATTERNS[r.format] ? { pattern: FORMAT_PATTERNS[r.format] } : {}),
-            fa_icon: "far fa-file-code",
-          }),
+        inputs.map((input) => [
+          input.name,
+          str(
+            input.kind === "folder"
+              ? `Path to the folder used by ${input.nodeAlias}.`
+              : `Path to the ${input.format ? `${input.format.toUpperCase()} ` : ""}file used by ${input.nodeAlias}.`,
+            {
+              format: input.kind === "folder" ? "directory-path" : "file-path",
+              exists: true,
+              ...(input.path ? { default: input.path } : {}),
+              fa_icon: input.kind === "folder" ? "fas fa-folder-open" : "far fa-file",
+            },
+          ),
         ]),
       ),
     };
@@ -201,7 +183,7 @@ export function paramsBlock(schema: JsonSchema): string {
       let value: string;
       if (COMPUTED_DEFAULTS[key]) value = COMPUTED_DEFAULTS[key];
       else if (spec.default === undefined) value = spec.type === "boolean" || (Array.isArray(spec.type) && spec.type[0] === "boolean") ? "false" : "null";
-      else if (typeof spec.default === "string") value = `'${spec.default}'`;
+      else if (typeof spec.default === "string") value = `'${spec.default.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
       else value = String(spec.default);
       lines.push(`    ${key.padEnd(width)} = ${value}`);
     }

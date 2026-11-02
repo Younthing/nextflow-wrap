@@ -7,11 +7,11 @@ export const START_RUN_DESCRIPTION =
   "启动编辑器里当前已保存的流程。调用后会弹出确认对话框，只有用户接受才会提交运行；拒绝、关闭或中断都不会启动。使用运行对话框里保存的执行器、profile 和工作目录。你必须等这个工具返回后再说运行已启动。";
 
 const prompt = `## 搭建流程
-- 画布上每个节点是一个从笔记本发布的模块（moduleId 形如 script/scanpy_qc/v1）或内置节点，例如输入节点：builtin/samplesheet（样本表，输出每个样本的 [meta, reads]）、builtin/reference（参考文件，把 --fasta 这类参数变成通道，有 with_meta 和 file 两个输出）。
+- 画布上每个节点是一个从笔记本发布的模块（moduleId 形如 script/scanpy_qc/v1）或内置节点，例如输入节点：builtin/file（文件输入，在节点上选一个文件，输出 [meta, file]）、builtin/folder（文件夹输入，整个文件夹作为一个路径，输出 [meta, dir]）、builtin/samplesheet（样本表，输出每个样本的 [meta, reads]）。
 - 端口携带的是通道元组，例如 "meta, h5ad" 或 "meta, sdf"。连线前确认上下游的元组形状和文件格式对得上；不确定的模块先用 search_modules 查端口。
-- 流程从输入节点开始：每样本一行的数据用样本表节点，单个数据文件（如 h5ad、受体结构）用参考文件节点。
+- 流程从输入节点开始：单个数据文件（如 h5ad、受体结构、配体表）用文件输入节点，并用 configure_node 的 inputPath 设置路径；一个文件夹（如 10x 矩阵目录）用文件夹输入节点；只有每样本一行的 FastQ 数据才用样本表节点。文件输入的流程参数名是别名的小写，例如 COUNTS → --counts。
 - 修改画布要调用工具，不要只描述步骤。一次改动多个节点时按顺序逐个调用；工具报错时读错误信息并修正后重试。
-- 改完后看 workflow 上下文里的 issues，有 error 要继续修，或者告诉用户还缺什么（比如 --input 样本表路径）。
+- 改完后看 workflow 上下文里的 issues，有 error 要继续修，或者告诉用户还缺什么（比如文件输入节点还没选文件）。
 - 每个改动都能用 ${shortcutHint(EDITOR_ACTIONS.undo.shortcut)} 撤销，可以放心操作，但不要删除用户没提到的节点。
 
 ## 启动当前流程
@@ -49,7 +49,7 @@ export const canvasEditModule = {
     {
       name: "configure_node",
       description:
-        "修改节点：别名、模块参数（widgets）、conf/modules.config 设置（ext.args、ext.prefix、是否发布结果、资源标签）、停用，以及参考文件节点的参数名和格式。只传要改的字段。",
+        "修改节点：别名、模块参数（widgets）、conf/modules.config 设置（ext.args、ext.prefix、是否发布结果、资源标签）、停用，以及文件输入、文件夹输入节点的路径（inputPath）和是否可以不选（inputOptional）。只传要改的字段。",
     },
     {
       name: "set_pipeline_param",

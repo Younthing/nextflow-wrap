@@ -3,9 +3,9 @@ import { useEffect, useState } from "react";
 import { expect, screen, userEvent, waitFor, within } from "storybook/test";
 import { useStoreApi } from "@xyflow/react";
 
-import { SAMPLESHEET_ID } from "@/features/workflow/builtins";
+import { FILE_ID, FOLDER_ID, SAMPLESHEET_ID } from "@/features/workflow/builtins";
 import { emptyWorkflow } from "@/features/workflow/document";
-import { EXAMPLE_FASTQ_QC_ID, EXAMPLE_REPORT_ID } from "@/features/workflow/example-modules";
+import { EXAMPLE_FASTQ_QC_ID, EXAMPLE_REPORT_ID, EXAMPLE_SCANPY_QC_ID } from "@/features/workflow/example-modules";
 import type { WorkflowDoc } from "@/features/workflow/types";
 import { WorkflowCanvas } from "../components/workflow-canvas";
 import { useEditorStoreApi } from "../editor-provider";
@@ -28,6 +28,31 @@ function textWidgetWorkflow(): WorkflowDoc {
         },
       },
     ],
+  };
+}
+
+/** A chosen h5ad file wired into QC, and a folder input that has no folder yet. */
+function inputNodesWorkflow(): WorkflowDoc {
+  return {
+    ...emptyWorkflow("wf_inputs", "文件和文件夹输入"),
+    nodes: [
+      {
+        id: "counts",
+        position: { x: 0, y: 0 },
+        data: { moduleId: FILE_ID, alias: "COUNTS", widgets: {}, config: {}, settings: { path: "/home/demo/data/pbmc3k.h5ad" } },
+      },
+      {
+        id: "matrix",
+        position: { x: 0, y: 220 },
+        data: { moduleId: FOLDER_ID, alias: "MATRIX", widgets: {}, config: {}, settings: {} },
+      },
+      {
+        id: "qc",
+        position: { x: 380, y: 0 },
+        data: { moduleId: EXAMPLE_SCANPY_QC_ID, alias: "SCANPY_QC", widgets: { min_genes: 200, max_pct_mt: 5 }, config: { publish: true } },
+      },
+    ],
+    edges: [{ id: "e1", source: "counts", sourceHandle: "out:file", target: "qc", targetHandle: "in:adata" }],
   };
 }
 
@@ -111,6 +136,30 @@ export const RnaseqDemo: Story = {
       </EditorFixture>
     ),
   ],
+};
+
+/** Paths are picked on the input node cards; the folder input says what is missing until a folder is set. */
+export const InputNodes: Story = {
+  decorators: [
+    (Story) => (
+      <EditorFixture doc={inputNodesWorkflow()}>
+        <Story />
+      </EditorFixture>
+    ),
+  ],
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    // React Flow keeps nodes hidden until it has measured them.
+    await waitFor(() => expect(canvas.getByText("pbmc3k.h5ad")).toBeVisible());
+    await expect(canvas.getByText("h5ad")).toBeVisible();
+    await expect(canvas.getByText("还没有选择文件夹")).toBeVisible();
+    const folder = canvas.getByLabelText("文件夹路径");
+    await userEvent.type(folder, "/home/demo/data/filtered_feature_bc_matrix");
+    await waitFor(() => expect(canvas.queryByText("还没有选择文件夹")).toBeNull());
+    await expect(canvas.getByText("--matrix")).toBeVisible();
+    const store = getStoryEditorStore(canvasElement);
+    expect(store.getState().nodes.find((node) => node.id === "matrix")?.data.settings?.path).toBe("/home/demo/data/filtered_feature_bc_matrix");
+  },
 };
 
 export const Empty: Story = {

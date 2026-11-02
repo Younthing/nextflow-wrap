@@ -156,17 +156,16 @@ export async function connect(page: Page, from: Locator, output: string, to: Loc
   await expect(page.getByPlaceholder(/^搜索能连接/)).toHaveCount(0);
 }
 
-/** Adds a reference-file node from the library and points it at `value` under `--param`. */
-export async function addReference(page: Page, param: string, value: string) {
+/** Adds a file input node from the library and points it at `path`. */
+export async function addFileInput(page: Page, path: string) {
   const library = page.getByRole("complementary", { name: "模块库" });
   await expect(library).toBeVisible({ timeout: 60_000 });
-  await library.getByPlaceholder("搜索模块").fill("参考文件");
-  await library.getByRole("button", { name: "参考文件", exact: true }).click();
-  const reference = page.locator(".react-flow__node").filter({ hasText: "REFERENCE" }).last();
-  await reference.evaluate((el) => (el as HTMLElement).click());
-  await page.locator("#ref-param").fill(param);
-  await page.locator("#ref-value").fill(value);
-  return reference;
+  await library.getByPlaceholder("搜索模块").fill("文件输入");
+  await library.getByRole("button", { name: "文件输入", exact: true }).click();
+  const input = page.locator(".react-flow__node").filter({ has: page.getByText(/^FILE(_\d+)?$/) }).last();
+  await input.getByRole("textbox", { name: "文件路径" }).fill(path);
+  await expect(input.getByText(/^--file(_\d+)?$/)).toBeVisible();
+  return input;
 }
 
 /** Starts the canvas with the Shell runtime and waits on the run page until it succeeds. */

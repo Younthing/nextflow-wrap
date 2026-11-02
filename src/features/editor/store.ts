@@ -88,7 +88,8 @@ export interface EditorState {
   onEdgesChange: (changes: EdgeChange<FlowEdge>[]) => void;
   checkConnection: (connection: Connection | FlowEdge) => Compatibility;
   connect: (connection: Connection) => Compatibility;
-  addNode: (def: ModuleDef, position: { x: number; y: number }) => FlowNode;
+  /** `settings` is merged into the new node's settings, e.g. the path of a dropped file. */
+  addNode: (def: ModuleDef, position: { x: number; y: number }, settings?: WorkflowNodeData["settings"]) => FlowNode;
   updateNodeData: (
     id: string,
     patch: Partial<WorkflowNodeData>,
@@ -422,7 +423,7 @@ export const createEditorStore = () =>
         return result;
       },
 
-      addNode: (def, position) => {
+      addNode: (def, position, settings) => {
         get().beginChange();
         // Drop, search, and the other single-node adds share this nudge.
         // Paste and duplicate stay on the PASTE_GAP stair-step in the clipboard.
@@ -430,17 +431,17 @@ export const createEditorStore = () =>
           position,
           get().nodes.map((node) => node.position),
         );
-        const node = toFlowNode(
-          createNode(
-            def,
-            placed,
-            get().nodes.map((n) => ({
-              id: n.id,
-              position: n.position,
-              data: n.data,
-            })),
-          ),
+        const created = createNode(
+          def,
+          placed,
+          get().nodes.map((n) => ({
+            id: n.id,
+            position: n.position,
+            data: n.data,
+          })),
         );
+        if (settings) created.data.settings = { ...created.data.settings, ...settings };
+        const node = toFlowNode(created);
         commit({
           nodes: [
             ...get().nodes.map((n) => ({ ...n, selected: false })),

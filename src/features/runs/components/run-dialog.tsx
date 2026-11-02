@@ -37,6 +37,7 @@ import { EnvironmentForm } from "./environment-form";
 import { ProjectSettingsForm } from "@/features/project/components/project-settings-form";
 import { readLaunchConfig, rememberLaunchConfig } from "../saved-launch";
 import { useHealthStatus, useLaunchRun, useRuns } from "../queries";
+import { launchParams } from "@/features/workflow/inputs";
 import { useSettings } from "@/features/settings/queries";
 
 export function RunDialog({
@@ -50,6 +51,8 @@ export function RunDialog({
 }) {
   const store = useEditorStoreApi();
   const params = useEditorStore((s) => s.params);
+  const nodes = useEditorStore((s) => s.nodes);
+  const runParams = React.useMemo(() => launchParams({ nodes, params }), [nodes, params]);
   const router = useRouter();
   const launch = useLaunchRun();
   const health = useHealthStatus(open);
@@ -126,7 +129,7 @@ export function RunDialog({
           name: project.meta.name,
           files: project.files.map(({ path, content }) => ({ path, content })),
         },
-        params: doc.params,
+        params: launchParams(doc),
         launch: launchConfig,
         runConfig,
         command,
@@ -212,7 +215,7 @@ export function RunDialog({
             <LabeledCode title="run.config（-c）" code={runConfig} language="groovy" />
             <LabeledCode
               title="params.json（-params-file）"
-              code={JSON.stringify(params, null, 2)}
+              code={JSON.stringify(runParams, null, 2)}
               language="json"
             />
           </TabsContent>

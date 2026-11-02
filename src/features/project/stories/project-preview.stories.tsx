@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 
 import { demoScriptModules } from "@/features/notebook/seed";
-import { REFERENCE_ID } from "@/features/workflow/builtins";
+import { FILE_ID } from "@/features/workflow/builtins";
 import { indexModules } from "@/features/workflow/catalog";
 import { emptyWorkflow } from "@/features/workflow/document";
 import type { WorkflowDoc } from "@/features/workflow/types";
@@ -13,9 +13,9 @@ import { defaultLaunchConfig, renderRunConfig } from "../launch";
 const hello = demoScriptModules().find((def) => def.id === "script/hello_py/v2")!;
 const workflow: WorkflowDoc = {
   ...emptyWorkflow("wf_story", "Hello"),
-  params: { sheet: "data/samplesheet.csv", outdir: "results" },
+  params: { outdir: "results" },
   nodes: [
-    { id: "sheet", position: { x: 0, y: 0 }, data: { moduleId: REFERENCE_ID, alias: "SHEET", widgets: {}, config: {}, settings: { param: "sheet", format: "other" } } },
+    { id: "sheet", position: { x: 0, y: 0 }, data: { moduleId: FILE_ID, alias: "SHEET", widgets: {}, config: {}, settings: { path: "data/samplesheet.csv" } } },
     { id: "hello", position: { x: 320, y: 0 }, data: { moduleId: hello.id, alias: "HELLO", widgets: {}, config: { publish: true } } },
   ],
   edges: [{ id: "e1", source: "sheet", sourceHandle: "out:file", target: "hello", targetHandle: "in:samplesheet" }],

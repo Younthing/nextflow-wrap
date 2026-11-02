@@ -1,4 +1,5 @@
-import { REFERENCE_ID, SAMPLESHEET_ID } from "@/features/workflow/builtins";
+import { FOLDER_ID, SAMPLESHEET_ID, isInputNode } from "@/features/workflow/builtins";
+import { inputParamName } from "@/features/workflow/inputs";
 import { resolveNodeDef, type ModuleIndex } from "@/features/workflow/catalog";
 import { isOperator, operatorChannel } from "@/features/workflow/operators";
 import { renderCatalogBuiltinProcesses } from "@/features/workflow/catalog-builtins";
@@ -65,7 +66,6 @@ export function planNodes(doc: WorkflowDoc, index: ModuleIndex): { order: Planne
   return { order, edges };
 }
 
-const refParam = (node: WorkflowNode) => String(node.data.settings?.param ?? "");
 
 /** Shapes an upstream tuple to what the input expects (see `Adapter`). */
 function adapt(expr: string, from: PortDef, to: PortDef): string {
@@ -184,10 +184,7 @@ function mixExpr(parts: string[]): string {
 function baseSource(src: PlannedNode, handle: string): string {
   const port = portFromHandle(handle);
   if (src.def.id === SAMPLESHEET_ID) return "ch_samplesheet";
-  if (src.def.id === REFERENCE_ID) {
-    const param = refParam(src.node);
-    return port === "with_meta" ? `ch_${param}_meta` : `ch_${param}`;
-  }
+  if (isInputNode(src.def.id)) return `ch_${inputParamName(src.node.data.alias)}`;
   if (isOperator(src.def.id)) return operatorChannel(src.node.data.alias, port, src.def.outputs.length);
   return `${src.node.data.alias}.out.${port}`;
 }
@@ -314,23 +311,16 @@ function inputArgument(ctx: Context, { node }: PlannedNode, port: PortDef, isMai
   return expr;
 }
 
-function referenceChannels(ctx: Context, planned: PlannedNode): string {
-  const param = refParam(planned.node);
+function inputChannel(planned: PlannedNode): string {
+  const param = inputParamName(planned.node.data.alias);
   const optional = planned.node.data.settings?.optional === true;
-  const used = new Set(
-    ctx.docEdges.filter((edge) => edge.source === planned.node.id).map((edge) => portFromHandle(edge.sourceHandle)),
-  );
-  const lines = [`// Reference --${param} (${planned.node.data.alias})`];
-  const fileExpr = optional
-    ? `params.${param} ? channel.value(file(params.${param}, checkIfExists: true)) : channel.value([])`
-    : `channel.value(file(params.${param}, checkIfExists: true))`;
-  const metaExpr = optional
-    ? `params.${param} ? channel.value([ [ id: file(params.${param}).baseName ], file(params.${param}, checkIfExists: true) ]) : channel.value([])`
-    : `channel.value([ [ id: file(params.${param}).baseName ], file(params.${param}, checkIfExists: true) ])`;
-  if (used.has("file") || used.size === 0) lines.push(`def ch_${param} = ${fileExpr}`);
-  if (used.has("with_meta")) lines.push(`def ch_${param}_meta = ${metaExpr}`);
-  return lines.join("\n");
+  const what = isFolder(planned) ? "Folder" : "File";
+  const value = `channel.value([ [ id: file(params.${param}).${isFolder(planned) ? "name" : "baseName"} ], file(params.${param}, checkIfExists: true) ])`;
+  const expr = optional ? `params.${param} ? ${value} : channel.value([ [:], [] ])` : value;
+  return `// ${what} input --${param} (${planned.node.data.alias})\ndef ch_${param} = ${expr}`;
 }
+
+const isFolder = (planned: PlannedNode) => planned.def.id === FOLDER_ID;
 
 function skipPrelude(ctx: Context, planned: PlannedNode, port: PortDef): string {
   const raw = inputArgument(ctx, planned, port, true);
@@ -379,7 +369,7 @@ function renderSteps(ctx: Context): string[] {
   const steps: string[] = [];
   for (const planned of ctx.order) {
     if (planned.def.id === SAMPLESHEET_ID) continue;
-    if (planned.def.id === REFERENCE_ID) steps.push(referenceChannels(ctx, planned));
+    if (isInputNode(planned.def.id)) steps.push(inputChannel(planned));
     else if (isOperator(planned.def.id)) steps.push(operatorCall(ctx, planned));
     else steps.push(moduleCall(ctx, planned));
   }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { demoScriptModules } from "@/features/notebook/seed";
-import { REFERENCE_ID } from "@/features/workflow/builtins";
+import { FILE_ID } from "@/features/workflow/builtins";
 import { indexModules } from "@/features/workflow/catalog";
 import { demoWorkflow, readsQcWorkflow } from "@/features/workflow/demo";
 import { EXAMPLE_MODULES } from "@/features/workflow/example-modules";
@@ -50,9 +50,9 @@ describe("generateProject", () => {
     // the collecting report gathers every linked output
     expect(main).toContain("FASTQ_QC.out.html.map { tuple -> tuple[1..-1] }");
     expect(main).toContain(".map { files -> [ [ id: 'summary_report' ], files ] }");
-    // reference params become value channels
+    // file input nodes become value channels named after the alias
     expect(file(demo, "main.nf")).toContain(
-      "def ch_counts_meta = channel.value([ [ id: file(params.counts).baseName ], file(params.counts, checkIfExists: true) ])",
+      "def ch_counts = channel.value([ [ id: file(params.counts).baseName ], file(params.counts, checkIfExists: true) ])",
     );
     expect(main).not.toContain("@{");
   });
@@ -83,7 +83,9 @@ describe("generateProject", () => {
         expect(config).toMatch(new RegExp(`^\\s+${key}\\s+=`, "m"));
       }
     }
-    expect(schema.$defs.reference_files.properties.counts.format).toBe("file-path");
+    expect(schema.$defs.input_files.properties.counts).toMatchObject({ format: "file-path", default: "data/pbmc3k.h5ad" });
+    expect(schema.$defs.input_files.required).toEqual(["counts"]);
+    expect(config).toMatch(/^\s+counts\s+= 'data\/pbmc3k\.h5ad'$/m);
     expect(schema.$defs.input_output_options.required).toEqual(["outdir"]);
   });
 
@@ -91,9 +93,9 @@ describe("generateProject", () => {
     const hello = demoScriptModules().find((def) => def.id === "script/hello_py/v2")!;
     const doc: WorkflowDoc = {
       ...demo,
-      params: { sheet: "sheet.csv", outdir: "results" },
+      params: { outdir: "results" },
       nodes: [
-        { id: "sheet", position: { x: 0, y: 0 }, data: { moduleId: REFERENCE_ID, alias: "SHEET", widgets: {}, config: {}, settings: { param: "sheet", format: "other" } } },
+        { id: "sheet", position: { x: 0, y: 0 }, data: { moduleId: FILE_ID, alias: "SHEET", widgets: {}, config: {}, settings: { path: "sheet.csv" } } },
         { id: "hello", position: { x: 0, y: 0 }, data: { moduleId: hello.id, alias: "HELLO", widgets: {}, config: {} } },
       ],
       edges: [{ id: "e", source: "sheet", sourceHandle: "out:file", target: "hello", targetHandle: "in:samplesheet" }],

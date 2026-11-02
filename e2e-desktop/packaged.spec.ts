@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { _electron as electron, expect, test, type ElectronApplication, type Page } from "@playwright/test";
-import { addReference, extend, go, notebookModule, runWithShell, shot } from "../e2e/helpers";
+import { addFileInput, extend, go, notebookModule, runWithShell, shot } from "../e2e/helpers";
 
 /**
  * The packaged app end to end: an old data directory is upgraded on first start, and a notebook published as a
@@ -108,7 +108,7 @@ test.describe("packaged desktop app", () => {
     await go(page, "/workflows");
     await page.getByRole("button", { name: "新建", exact: true }).click();
     await page.waitForURL(/\/workflows\/(?!modules$)[^/]+$/);
-    const reference = await addReference(page, "words", input);
+    const reference = await addFileInput(page, input);
     await extend(page, reference, "file", name);
     await expect(page.locator(".react-flow__edge")).toHaveCount(1);
     await expect(page.getByText("已保存", { exact: true })).toBeVisible({ timeout: 20_000 });

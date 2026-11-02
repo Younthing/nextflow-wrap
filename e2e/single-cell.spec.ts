@@ -2,11 +2,11 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
-import { artifactDirs, extend, notebookModule, runWithShell, shot } from "./helpers";
+import { addFileInput, artifactDirs, extend, notebookModule, runWithShell, shot } from "./helpers";
 
 /**
  * Single-cell acceptance on the real stack: two scanpy notebooks run in the persistent Jupyter
- * kernel, publish as modules after a host try-run, connect on the canvas behind a reference input,
+ * kernel, publish as modules after a host try-run, connect on the canvas behind a file input,
  * and run under real Nextflow with the Shell runtime. The run must publish a UMAP and marker table.
  *
  * Data comes from scripts/make-pbmc-demo.py: PBMC3K_H5AD, else the 10x PBMC 3k download,
@@ -99,14 +99,7 @@ test.describe("single-cell user path", () => {
     await page.getByRole("button", { name: "新建", exact: true }).click();
     await page.waitForURL(/\/workflows\/(?!modules$)[^/]+$/);
     await page.getByRole("textbox", { name: "流程名称" }).fill(`单细胞 ${stamp}`);
-    const library = page.getByRole("complementary", { name: "模块库" });
-    await expect(library).toBeVisible({ timeout: 60_000 });
-    await library.getByPlaceholder("搜索模块").fill("参考文件");
-    await library.getByRole("button", { name: "参考文件", exact: true }).click();
-    const reference = page.locator(".react-flow__node").filter({ hasText: "REFERENCE" });
-    await reference.evaluate((el) => (el as HTMLElement).click());
-    await page.locator("#ref-param").fill("counts");
-    await page.locator("#ref-value").fill(counts);
+    const reference = await addFileInput(page, counts);
 
     // Zoom out and move the reference to the left so the chain fits beside it, clear of the minimap.
     await page.getByRole("button", { name: /zoom out/i }).click();

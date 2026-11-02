@@ -1,5 +1,5 @@
 import { CATALOG_BUILTIN_IDS } from "./catalog-builtins";
-import { REFERENCE_ID, SAMPLESHEET_ID } from "./builtins";
+import { FILE_ID, FOLDER_ID, SAMPLESHEET_ID } from "./builtins";
 import type { ModuleDef, ModuleOrigin } from "./types";
 
 export function moduleOrigin(def: ModuleDef): ModuleOrigin {
@@ -15,7 +15,7 @@ export function versionNumber(version: string | undefined): number {
 
 /** Builtins listed on `/modules` next to the published modules. */
 export function isCatalogBuiltin(def: ModuleDef): boolean {
-  return def.id === SAMPLESHEET_ID || def.id === REFERENCE_ID || CATALOG_BUILTIN_IDS.has(def.id);
+  return def.id === FILE_ID || def.id === FOLDER_ID || def.id === SAMPLESHEET_ID || CATALOG_BUILTIN_IDS.has(def.id);
 }
 
 /** Latest try-run-passed script module for each source notebook. */

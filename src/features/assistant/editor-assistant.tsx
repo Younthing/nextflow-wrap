@@ -163,14 +163,14 @@ function EditorTools({ onCanvasChange }: { onCanvasChange: () => void }) {
         })
         .optional(),
       disabled: z.boolean().optional(),
-      referenceParam: z
+      inputPath: z
         .string()
         .optional()
-        .describe("参考文件节点对应的流程参数名，如 fasta、gtf"),
-      referenceFormat: z
-        .string()
+        .describe("文件输入或文件夹输入节点选中的路径，如 /data/pbmc3k.h5ad"),
+      inputOptional: z
+        .boolean()
         .optional()
-        .describe("参考文件格式：fasta、gtf、fai、bed、vcf、index、other"),
+        .describe("文件输入或文件夹输入节点是否可以不选路径"),
     }),
     handler: async (args) => attempt(() => configureNode(args)),
   });

@@ -63,9 +63,9 @@ center_x, center_y, center_z, size, exhaustiveness = 0, 0, 0, 18, 8
 
 ## 3. 连成流程
 
-1. 新建流程，拖入两个「参考文件」：`ligands` → `ligands.csv`，`receptor` → `receptor.pdbqt`。
-2. 从 `ligands` 参考拖线到空白处选 `rdkit_ligands`；再从它的 `ligands` 输出拖线选 `vina_dock`。
-3. 把 `receptor` 参考的输出端口直接拖到 `vina_dock` 的 `receptor` 输入。
+1. 新建流程，拖入两个「文件输入」，在节点卡片上分别选 `ligands.csv` 和 `receptor.pdbqt`（桌面版也可以直接把两个文件拖到画布上）。
+2. 从 `ligands.csv` 那个节点的 `file` 输出拖线到空白处选 `rdkit_ligands`；再从它的 `ligands` 输出拖线选 `vina_dock`。
+3. 把 `receptor.pdbqt` 节点的 `file` 输出直接拖到 `vina_dock` 的 `receptor` 输入。
 4. 在 `vina_dock` 节点上按 `box.json` 填口袋中心和边长。
 5. 运行，「容器 / 环境」选 Shell。
 
