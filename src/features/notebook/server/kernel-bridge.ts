@@ -45,11 +45,22 @@ def arg(flag, default=""):
 
 wanted = arg("--kernel")
 cwd = arg("--cwd") or os.getcwd()
+language = (arg("--language") or "python").lower()
 installed = [item["name"] for item in specs()]
 python_kernels = [item["name"] for item in specs() if item["language"].lower() == "python"]
+r_kernels = [item["name"] for item in specs() if item["language"].lower() == "r"]
 note = ""
 if wanted in installed:
     name = wanted
+elif language == "r":
+    # R notebooks use IRkernel: install.packages("IRkernel"); IRkernel::installspec()
+    if r_kernels:
+        name = "ir" if "ir" in r_kernels else r_kernels[0]
+        if wanted and wanted != name:
+            note = "没有名为 %s 的 Jupyter 内核，改用 %s。" % (wanted, name)
+    else:
+        emit({"event": "missing", "message": "没有可用的 R Jupyter 内核（需要 IRkernel）"})
+        sys.exit(3)
 elif "python3" in installed:
     name = "python3"
     if wanted:

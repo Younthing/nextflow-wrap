@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { StoredExecution } from "@/lib/server/database";
-import { historyStatus, nextQueued, slotLimits } from "./queue";
+import { historySession, historyStatus, nextQueued, slotLimits } from "./queue";
 
 const run = (id: string, executor: string, status: string, phase: string | undefined, submittedAt: string, projectDir = `/pipelines/${id}`) => ({
   projectDir, detail: { id, status, phase, submittedAt, launch: { executor } },
@@ -87,5 +87,10 @@ describe("historyStatus", () => {
     expect(historyStatus(history, "live")).toBeUndefined();
     expect(historyStatus(history, "other")).toBeUndefined();
     expect(historyStatus("", "okrun")).toBeUndefined();
+  });
+
+  it("reads the session id a run used, for resume without weblog", () => {
+    expect(historySession(history, "badrun")).toBe("51b46c56-5311-4c21-bffb-dff647ef2868");
+    expect(historySession(history, "other")).toBeUndefined();
   });
 });

@@ -11,6 +11,7 @@ import {
 import { api } from "@/lib/api";
 import type { HealthStatus } from "@/lib/api-types";
 import { toast } from "@/lib/toast";
+import type { AnnDataSummary } from "./anndata";
 import type { ResultFile } from "./outputs";
 import type {
   LaunchRequest,
@@ -57,8 +58,9 @@ export function useResumeRun() {
   });
 }
 
-export function useRuns(workflowId?: string) {
+export function useRuns(workflowId?: string, options: { enabled?: boolean; idlePollMs?: number } = {}) {
   return useQuery({
+    enabled: options.enabled,
     queryKey: runKeys.list(workflowId),
     queryFn: () =>
       api<RunSummary[]>(
@@ -68,7 +70,7 @@ export function useRuns(workflowId?: string) {
       ),
     // Keep polling while anything is still running.
     refetchInterval: (q) =>
-      q.state.data?.some((r) => isActive(r.status)) ? POLL_MS : false,
+      q.state.data?.some((r) => isActive(r.status)) ? POLL_MS : options.idlePollMs ?? false,
   });
 }
 
@@ -213,5 +215,16 @@ export function useResultContent(id: string, path: string | null) {
     },
     enabled: !!path,
     staleTime: Infinity,
+  });
+}
+
+/** Server-side summary of an `.h5ad` result: shape, columns and embeddings. */
+export function useAnnDataSummary(id: string, path: string | null) {
+  return useQuery({
+    queryKey: [...runKeys.detail(id), "summary", path],
+    queryFn: () => api<AnnDataSummary>(`/runs/${id}/results/summary?path=${encodeURIComponent(path ?? "")}`),
+    enabled: !!path,
+    staleTime: Infinity,
+    retry: false,
   });
 }

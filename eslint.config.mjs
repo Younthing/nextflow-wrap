@@ -17,6 +17,10 @@ const eslintConfig = defineConfig([
     "OpenBot/**",
     ".codegraph/**",
     "storybook-static/**",
+    "desktop/dist/**",
+    "desktop/release/**",
+    "desktop/resources/**",
+    "desktop/node_modules/**",
   ]),
 ]);
 

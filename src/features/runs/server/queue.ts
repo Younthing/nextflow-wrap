@@ -51,3 +51,12 @@ export function historyStatus(history: string, runName: string): "OK" | "ERR" | 
   }
   return undefined;
 }
+
+/** Session id of a run from `.nextflow/history` (column 6), used when no weblog event reported it. */
+export function historySession(history: string, runName: string): string | undefined {
+  for (const line of history.trim().split("\n").reverse()) {
+    const columns = line.split("\t");
+    if (columns[2] === runName && /^[0-9a-f-]{36}$/i.test(columns[5] ?? "")) return columns[5];
+  }
+  return undefined;
+}

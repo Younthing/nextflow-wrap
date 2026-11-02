@@ -17,6 +17,7 @@ import { isActive, useCancelRun, useDeleteRun, useHealthStatus, useResumeRun } f
 import type { RunDetail } from "../types";
 import { ProgressBar, ProgressSummary, StatusBadge } from "./run-status";
 import { StopRunButton } from "./stop-run-button";
+import { RunDiagnosticsButton } from "@/features/diagnostics/components/diagnostics-panel";
 
 function Stat({
   label,
@@ -73,12 +74,18 @@ export function RunHeader({ run }: { run: RunDetail }) {
           {run.workflowName}
         </span>
         <div className="ml-auto flex gap-2">
+          <RunDiagnosticsButton runId={run.id} />
           <Button asChild variant="outline" size="sm">
             <Link href={`/workflows/${run.workflowId}`}>
               <PencilRuler /> 在编辑器中打开
             </Link>
           </Button>
-          {!active && run.nextflowSessionId && (
+          {!active && run.nextflowSessionId && run.workCleanedAt && (
+            <span className="self-center text-xs text-muted-foreground" title={`work 目录在 ${run.workCleanedAt} 清理`}>
+              work 已清理，不能续跑
+            </span>
+          )}
+          {!active && run.nextflowSessionId && !run.workCleanedAt && (
             <Button
               variant="outline"
               size="sm"

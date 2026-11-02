@@ -252,11 +252,11 @@ export async function handleNotebookApi(method: string, path: string[], request:
     if (body.action === "shutdown") shutdownKernel(id);
     if (body.action === "restart") {
       shutdownKernel(id);
-      if (notebook.language !== "python") throw new HttpError(400, "R 笔记本本期没有常驻内核");
+      const r = notebook.language !== "python";
       try {
-        await (await kernelFor(id, notebook.kernel)).whenReady();
+        await (await kernelFor(id, notebook.kernel, r ? "r" : "python")).whenReady();
       } catch (error) {
-        if (error instanceof KernelUnavailableError) throw new HttpError(400, `${error.message}。安装 ipykernel 后再启动内核`);
+        if (error instanceof KernelUnavailableError) throw new HttpError(400, `${error.message}。${r ? "安装 IRkernel" : "安装 ipykernel"} 后再启动内核`);
         throw new HttpError(500, error instanceof Error ? error.message : "内核启动失败");
       }
     }

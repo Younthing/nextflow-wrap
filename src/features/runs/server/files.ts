@@ -4,7 +4,7 @@ import { isAbsolute, join, relative, resolve } from "node:path";
 import { Readable } from "node:stream";
 import type { StoredExecution } from "@/lib/server/database";
 import type { ResultFile } from "../outputs";
-import { contentTypeOf, previewKind } from "../preview";
+import { contentTypeOf, previewFor } from "../preview";
 import { HttpError } from "./service";
 
 export async function containedFile(root: string, path: string) {
@@ -36,7 +36,7 @@ export async function resultFiles(run: StoredExecution): Promise<ResultFile[]> {
     const actual = await containedFile(root, path);
     const size = (await stat(actual)).size;
     const node = run.detail.workflow.nodes.find((node) => path.startsWith(`${node.data.alias.toLowerCase()}/`));
-    files.push({ path, size, nodeId: node?.id, preview: size > 10 * 1024 ** 2 ? null : previewKind(path) });
+    files.push({ path, size, nodeId: node?.id, preview: previewFor(path, size) });
   }
   return files.sort((a, b) => a.path.localeCompare(b.path));
 }

@@ -95,7 +95,7 @@ const BIN_EXECUTORS = new Set(["aws-batch", "google-batch", "azure-batch", "k8s"
 export const scriptLayoutFor = (executor: string): ScriptLayout => (BIN_EXECUTORS.has(executor) ? "bin" : "module");
 
 export function submitRun(body: unknown, idempotency?: string) {
-  const request = z.object({ workflow: z.unknown(), params: paramsSchema, launch: launchSchema }).parse(body);
+  const request = z.object({ workflow: z.unknown(), params: paramsSchema, launch: launchSchema, resumeFrom: z.string().max(100).optional() }).parse(body);
   if (!runnerReady()) throw new HttpError(503, "Runner 未就绪，请先启动 pnpm runner 并检查健康状态");
   const workflow = workflowInput(request.workflow);
   if (!store().workflow(workflow.id)) throw new HttpError(400, "请先保存流程");
@@ -106,14 +106,22 @@ export function submitRun(body: unknown, idempotency?: string) {
   if (new Set(workflow.nodes.map((node) => node.id)).size !== workflow.nodes.length) throw new HttpError(400, "节点 ID 重复");
   if (request.launch.resume) throw new HttpError(400, "续跑需要从运行详情选择来源记录");
   const launch = checkedLaunch(request.launch);
+  // Resume: the edited canvas runs with `-resume <session>` of an earlier run of the same workflow. The launch
+  // directory and work directory are stable per workflow, so unchanged steps come from the cache.
+  const source = request.resumeFrom ? resumableSource(request.resumeFrom, workflow.id) : undefined;
+  if (source && source.detail.launch.executor !== launch.executor) throw new HttpError(400, `续跑要用和来源运行相同的执行器（${executorDef(source.detail.launch.executor).name}）`);
+  if (source) Object.assign(launch, { resume: true, workDir: source.detail.launch.workDir });
   const project = generateProject(workflow, index, { registry: launch.registry, scriptLayout: scriptLayoutFor(launch.executor) });
   const id = randomUUID();
-  const root = executionDirectory(id);
+  const lineageId = source?.lineageId ?? id;
+  const root = executionDirectory(lineageId);
   const now = new Date().toISOString();
   const run: StoredExecution = {
     // Every run of a workflow launches from one directory so `-resume` can reuse any earlier session's tasks.
-    lineageId: id, projectDir: pipelineDirectory(workflow.id), attemptDir: join(root, "attempts", id),
+    lineageId, projectDir: pipelineDirectory(workflow.id), attemptDir: join(root, "attempts", id),
+    ...(source ? { resumeFrom: source.detail.id, sessionId: source.sessionId } : {}),
     detail: {
+      ...(source ? { resumeFromRunId: source.detail.id, nextflowSessionId: source.sessionId } : {}),
       id, runName: launch.runName ?? `studio_${id.replaceAll("-", "").slice(0, 12)}`, workflowId: workflow.id, workflowName: workflow.name,
       executor: launch.executor, profile: profileList(launch), status: "submitted", phase: "queued", submittedAt: now, progress: emptyProgress(),
       command: launchCommand(launch), launch, params: { ...request.params, outdir: join(root, "attempts", id, "results") }, runConfig: renderRunConfig(launch),
@@ -126,6 +134,19 @@ export function submitRun(body: unknown, idempotency?: string) {
     return run.detail;
   });
 }
+
+/** An earlier finished run of this workflow whose session cache is still on disk. */
+export function resumableSource(id: string, workflowId: string): StoredExecution {
+  const source = requireRun(id);
+  if (source.detail.workflowId !== workflowId) throw new HttpError(400, "只能续跑同一个流程的运行");
+  if (active(source) || !source.sessionId) throw new HttpError(409, "只能续跑具有 Nextflow session 的已结束运行");
+  if (source.detail.workCleanedAt) throw new HttpError(409, "这次运行的 work 目录已在磁盘页清理，不能再续跑；请重新运行");
+  if (store().runs(true).some((run) => active(run) && run.lineageId === source.lineageId)) throw new HttpError(409, "同一运行链已有活动运行");
+  return source;
+}
+
+/** Whether a run can be the source of a resume, for the run list. */
+export const resumable = (run: StoredExecution) => !active(run) && Boolean(run.sessionId) && !run.detail.workCleanedAt;
 
 export function cancelRun(id: string) {
   const current = requireRun(id);
@@ -141,6 +162,7 @@ export function cancelRun(id: string) {
 export function resumeRun(id: string) {
   const source = requireRun(id);
   if (active(source) || !source.sessionId) throw new HttpError(409, "只能恢复具有 Nextflow session 的已结束运行");
+  if (source.detail.workCleanedAt) throw new HttpError(409, "这次运行的 work 目录已在磁盘页清理，不能再续跑；请重新运行");
   if (!runnerReady()) throw new HttpError(503, "Runner 未就绪");
   return store().transaction(() => {
     if (store().runs(true).some((run) => active(run) && run.lineageId === source.lineageId)) throw new HttpError(409, "同一运行链已有活动运行");

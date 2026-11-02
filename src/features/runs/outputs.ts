@@ -11,6 +11,7 @@ import { projectMeta } from "@/features/project/generate";
 import type { ModuleDef } from "@/features/workflow/types";
 import { SAMPLE_GIF, SAMPLE_JPEG, SAMPLE_PDF, SAMPLE_PNG, SAMPLE_SVG, SAMPLE_WEBP } from "@/features/output/samples";
 import { formatBytes, formatDuration } from "./format";
+import { SAMPLE_PDB, SAMPLE_PDBQT } from "./molecule-samples";
 import { contentTypeOf, previewKind } from "./preview";
 import type { ResultFile, RunDetail, TaskRecord } from "./types";
 export type { ResultFile } from "./types";
@@ -206,6 +207,7 @@ export function resultContent(
   if (file.preview === "png" || file.preview === "jpeg" || file.preview === "gif" || file.preview === "webp") {
     return { contentType: contentTypeOf(path), body: RASTER_SAMPLES[file.preview], encoding: "base64" };
   }
+  if (file.preview === "molecule") return text(/\.pdbqt$/i.test(path) ? SAMPLE_PDBQT : SAMPLE_PDB);
   return text(genericText(path, task));
 }
 

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { History, NotebookText, Workflow } from "lucide-react";
+import { History, NotebookText, Settings, Workflow } from "lucide-react";
 
 import {
   Tooltip,
@@ -55,6 +55,22 @@ export function NavRail() {
           </Tooltip>
         );
       })}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Link
+            href="/settings"
+            aria-label="设置"
+            aria-current={pathname.startsWith("/settings") || pathname.startsWith("/setup") ? "page" : undefined}
+            className={cn(
+              "mt-auto grid size-9 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+              (pathname.startsWith("/settings") || pathname.startsWith("/setup")) && "bg-glass-strong text-primary shadow-sm",
+            )}
+          >
+            <Settings className="size-[18px]" />
+          </Link>
+        </TooltipTrigger>
+        <TooltipContent side="right">设置</TooltipContent>
+      </Tooltip>
     </nav>
   );
 }

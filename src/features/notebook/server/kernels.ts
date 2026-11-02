@@ -1,9 +1,11 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 
 import { dataDirectory } from "@/lib/server/database";
+import { managedPaths } from "@/lib/server/toolchain";
 import type { KernelInfo, KernelSpecList, KernelState } from "../types";
 import { KERNEL_BRIDGE } from "./kernel-bridge";
 
@@ -26,7 +28,13 @@ const IDLE_SHUTDOWN_MS = Number(process.env.NEXTFLOW_STUDIO_KERNEL_IDLE_MS ?? 2 
 const START_TIMEOUT_MS = 180_000;
 
 /** Interpreter that runs the bridge and, through it, the default python3 kernelspec. */
-export const bridgePython = () => process.env.NEXTFLOW_STUDIO_JUPYTER_PYTHON?.trim() || "python3";
+export const bridgePython = () => {
+  const configured = process.env.NEXTFLOW_STUDIO_JUPYTER_PYTHON?.trim();
+  if (configured) return configured;
+  // The setup page's notebook environment, created when this machine had no Jupyter of its own.
+  const managed = managedPaths().notebookPython;
+  return existsSync(managed) ? managed : "python3";
+};
 
 /** Working directory a notebook's kernel keeps between runs. Files written by cells stay here. */
 export const notebookWorkDir = (notebookId: string) => join(dataDirectory(), "scratch", "notebooks", notebookId);
@@ -40,6 +48,7 @@ interface Pending {
 export class KernelSession {
   readonly notebookId: string;
   readonly requested: string;
+  readonly language: "python" | "r";
   state: KernelState = "starting";
   kernel = "";
   note = "";
@@ -56,9 +65,10 @@ export class KernelSession {
   private idleTimer?: NodeJS.Timeout;
   private onExit: () => void;
 
-  constructor(notebookId: string, requested: string, cwd: string, onExit: () => void) {
+  constructor(notebookId: string, requested: string, cwd: string, onExit: () => void, language: "python" | "r" = "python") {
     this.notebookId = notebookId;
     this.requested = requested;
+    this.language = language;
     this.onExit = onExit;
     this.ready = this.start(cwd);
     // Keep an unobserved start failure from crashing the server; execute() reports it.
@@ -67,7 +77,7 @@ export class KernelSession {
 
   private start(cwd: string): Promise<void> {
     return new Promise((resolve, reject) => {
-      const child = spawn(/* turbopackIgnore: true */ bridgePython(), ["-u", "-c", KERNEL_BRIDGE, "--kernel", this.requested, "--cwd", cwd], {
+      const child = spawn(/* turbopackIgnore: true */ bridgePython(), ["-u", "-c", KERNEL_BRIDGE, "--kernel", this.requested, "--cwd", cwd, "--language", this.language], {
         cwd,
         env: { ...process.env, PYTHONUNBUFFERED: "1", PYDEVD_DISABLE_FILE_VALIDATION: "1" },
         stdio: ["pipe", "pipe", "pipe"],
@@ -213,15 +223,15 @@ const registry = globalThis as typeof globalThis & { __nfStudioKernels?: Map<str
 const sessions = (registry.__nfStudioKernels ??= new Map<string, KernelSession>());
 
 /** The notebook's running kernel, started when missing or when the notebook switched kernels. */
-export async function kernelFor(notebookId: string, requested: string): Promise<KernelSession> {
+export async function kernelFor(notebookId: string, requested: string, language: "python" | "r" = "python"): Promise<KernelSession> {
   const current = sessions.get(notebookId);
-  if (current && current.state !== "dead" && current.requested === requested) return current;
+  if (current && current.state !== "dead" && current.requested === requested && current.language === language) return current;
   current?.shutdown();
   const cwd = notebookWorkDir(notebookId);
   await mkdir(cwd, { recursive: true });
   const session: KernelSession = new KernelSession(notebookId, requested, cwd, () => {
     if (sessions.get(notebookId) === session) sessions.delete(notebookId);
-  });
+  }, language);
   sessions.set(notebookId, session);
   return session;
 }

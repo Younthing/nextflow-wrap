@@ -6,6 +6,7 @@ import type { NotebookDoc, NotebookRevision, TryRunRecord } from "@/features/not
 import type { RunDetail, TaskRecord } from "@/features/runs/types";
 import { commitWorkflowPut, type WorkflowPutResult } from "@/features/workflow/revision";
 import type { ModuleDef, WorkflowDoc } from "@/features/workflow/types";
+import { DataVersionError, migrateDataLayout, migrateDatabase, migrateModuleLibrary, type MigrationResult } from "./migrations";
 import { dataDirectory, moduleLibraryDirectory } from "./paths";
 
 // Runtime data is intentionally outside the deployable Next.js source tree.
@@ -32,32 +33,42 @@ export class StudioStore {
   readonly db: DatabaseSync;
   /** Module library folder for this database. An in-memory database has none. */
   readonly moduleLibrary?: string;
+  /** What opening this database upgraded, for the setup page and diagnostics. */
+  readonly migration: MigrationResult;
   constructor(path = join(dataDirectory(), "studio.sqlite")) {
     if (path !== ":memory:") {
       mkdirSync(dirname(path), { recursive: true });
       this.moduleLibrary = moduleLibraryDirectory(undefined, dirname(path));
     }
     this.db = new DatabaseSync(path);
-    const version = Number(this.db.prepare("PRAGMA user_version").get()?.user_version);
-    if (version > 3) { this.db.close(); throw new Error(`不支持的数据库版本：${version}`); }
-    this.db.exec(`
-      PRAGMA journal_mode=WAL;
-      PRAGMA busy_timeout=5000;
-      CREATE TABLE IF NOT EXISTS workflows (id TEXT PRIMARY KEY, data TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS runs (id TEXT PRIMARY KEY, status TEXT NOT NULL, created TEXT NOT NULL, data TEXT NOT NULL, idempotency TEXT UNIQUE, deleted INTEGER NOT NULL DEFAULT 0);
-      CREATE TABLE IF NOT EXISTS tasks (run_id TEXT NOT NULL, id TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(run_id,id));
-      CREATE TABLE IF NOT EXISTS events (run_id TEXT NOT NULL, digest TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(run_id,digest));
-      CREATE TABLE IF NOT EXISTS runtime (id INTEGER PRIMARY KEY CHECK(id=1), data TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS notebooks (id TEXT PRIMARY KEY, updated TEXT NOT NULL, data TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS notebook_revisions (notebook_id TEXT NOT NULL, rev INTEGER NOT NULL, data TEXT NOT NULL, PRIMARY KEY(notebook_id, rev));
-      CREATE TABLE IF NOT EXISTS script_modules (id TEXT PRIMARY KEY, data TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS notebook_try_runs (notebook_id TEXT NOT NULL, rev INTEGER NOT NULL, data TEXT NOT NULL, PRIMARY KEY(notebook_id, rev));
-      CREATE TABLE IF NOT EXISTS module_library (module_id TEXT PRIMARY KEY, data TEXT NOT NULL);
-    `);
-    if (version < 1) this.db.exec("PRAGMA user_version=1");
-    if (Number(this.db.prepare("PRAGMA user_version").get()?.user_version) < 2) this.db.exec("PRAGMA user_version=2");
-    if (Number(this.db.prepare("PRAGMA user_version").get()?.user_version) < 3) this.db.exec("PRAGMA user_version=3");
+    this.db.exec("PRAGMA busy_timeout=5000;");
+    try {
+      if (path !== ":memory:") this.db.exec("PRAGMA journal_mode=WAL;");
+      const appVersion = process.env.NEXTFLOW_STUDIO_APP_VERSION;
+      this.migration = migrateDatabase(this.db, path === ":memory:" ? {} : { backupDir: join(dirname(path), "backups") });
+      if (path !== ":memory:") {
+        migrateDataLayout(dirname(path), appVersion);
+        if (this.moduleLibrary) {
+          // A shared library can be read-only (a team checkout); reading it does not need the marker.
+          try { migrateModuleLibrary(this.moduleLibrary, appVersion); }
+          catch (error) { if (error instanceof DataVersionError) throw error; console.warn(`模块库版本标记未写入：${error instanceof Error ? error.message : String(error)}`); }
+        }
+      }
+      if (appVersion) this.setMeta("appVersion", appVersion);
+      // The web server and the runner open the same file; whichever starts first upgrades it. Keep the result so
+      // the other process can still tell the user about it.
+      if (this.migration.applied.length) this.setMeta("lastMigration", JSON.stringify({ ...this.migration, at: new Date().toISOString() }));
+    } catch (error) { this.db.close(); throw error; }
   }
+  meta(key: string): string | undefined {
+    const row = this.db.prepare("SELECT value FROM meta WHERE key=?").get(key);
+    return row ? String(row.value) : undefined;
+  }
+  /** The most recent schema upgrade of this file, by any process. */
+  lastMigration(): (MigrationResult & { at: string }) | undefined {
+    try { return JSON.parse(this.meta("lastMigration") ?? "null") ?? undefined; } catch { return undefined; }
+  }
+  setMeta(key: string, value: string) { this.db.prepare("INSERT INTO meta(key, value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(key, value); }
   transaction<T>(fn: () => T): T {
     this.db.exec("BEGIN IMMEDIATE");
     try { const result = fn(); this.db.exec("COMMIT"); return result; }

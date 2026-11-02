@@ -96,6 +96,8 @@ export interface EditorState {
   ) => void;
   setWidget: (id: string, name: string, value: WidgetValue) => void;
   removeNodes: (ids: string[]) => void;
+  /** Point a node at another version of its module; links to ports that version lacks are removed. */
+  switchModuleVersion: (id: string, def: ModuleDef) => void;
   setName: (name: string) => void;
   setProject: (project: ProjectSettings) => void;
   setParam: (key: string, value: WidgetValue | undefined) => void;
@@ -465,6 +467,18 @@ export const createEditorStore = () =>
           { widgets: { ...node.data.widgets, [name]: value } },
           `widget:${id}:${name}`,
         );
+      },
+
+      switchModuleVersion: (id, def) => {
+        const node = get().nodes.find((n) => n.id === id);
+        if (!node) return;
+        const inputs = new Set(def.inputs.map((port) => port.name));
+        const widgets = Object.fromEntries(Object.entries(node.data.widgets).filter(([name]) => inputs.has(name)));
+        get().beginChange(`version:${id}`);
+        commit({
+          nodes: get().nodes.map((n) => (n.id === id ? { ...n, data: { ...n.data, moduleId: def.id, widgets } } : n)),
+          edges: get().edges.filter((e) => (e.target !== id || findPort(def, e.targetHandle, "in")) && (e.source !== id || findPort(def, e.sourceHandle, "out"))),
+        });
       },
 
       removeNodes: (ids) => {
