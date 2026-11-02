@@ -45,7 +45,7 @@ export function WorkbenchRuntimes({ notebooks, active }: { notebooks: NotebookSu
         })}
       </ul>
       {specs.data && !specs.data.available ? (
-        <p className="px-2 pt-1 text-[11px] leading-relaxed text-muted-foreground">没有检测到 Jupyter，单元格每次从头运行。</p>
+        <p className="px-2 pt-1 text-[11px] leading-relaxed text-muted-foreground">未检测到 Jupyter</p>
       ) : null}
     </section>
   );

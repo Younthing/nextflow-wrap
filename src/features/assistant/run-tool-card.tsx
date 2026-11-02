@@ -9,7 +9,7 @@ export function RunToolCard({ status, result }: { status: ToolCallStatus; result
   const waiting = status !== ToolCallStatus.Complete;
   return (
     <p className="text-sm text-foreground">
-      {waiting ? "等待你在对话框里确认。在你接受或拒绝之前不会执行。" : messageFromToolResult(result)}
+      {waiting ? "等待确认" : messageFromToolResult(result)}
     </p>
   );
 }

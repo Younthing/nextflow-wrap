@@ -54,7 +54,7 @@ function PortTooltip({
         )}
         {port.collect && (
           <div className="mt-1 text-primary">
-            可连接多个输出，会自动合并收集
+            可接多个输出（自动 collect）
           </div>
         )}
       </TooltipContent>
@@ -288,7 +288,7 @@ function SourceButton({ nodeId, def }: { nodeId: string; def: ModuleDef }) {
           <CodeXml className="size-3.5" />
         </button>
       </TooltipTrigger>
-      <TooltipContent side="top">在源笔记本中打开，带上这个节点的参数和输入文件</TooltipContent>
+      <TooltipContent side="top">在源笔记本中打开</TooltipContent>
     </Tooltip>
   );
 }

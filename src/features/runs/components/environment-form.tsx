@@ -125,7 +125,7 @@ export function EnvironmentForm({
       {!real && (
         <p className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm">
           <Badge variant="warning" className="mt-0.5">预览</Badge>
-          <span>预览环境不会连接真实的集群或云执行器。启动后由模拟运行展示流程和结果。</span>
+          <span>模拟运行，不连接真实执行器</span>
         </p>
       )}
       {remotes.length > 0 && (
@@ -133,7 +133,7 @@ export function EnvironmentForm({
           <Field
             label="从哪里启动 Nextflow"
             htmlFor={`${formId}-remote`}
-            hint={host ? `通过 SSH 在 ${host.host} 的登录节点上启动；断开连接或关掉电脑后继续运行。参数里的文件路径要写集群上的路径。` : "在这台电脑上启动"}
+            hint={host ? `SSH 到 ${host.host} 登录节点 · 路径写集群上的路径` : "在这台电脑上启动"}
           >
             <Select value={config.remote ?? "here"} onValueChange={(value) => chooseHost(value === "here" ? "" : value)}>
               <SelectTrigger id={`${formId}-remote`} className="sm:w-80"><SelectValue /></SelectTrigger>

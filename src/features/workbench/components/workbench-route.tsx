@@ -37,7 +37,6 @@ export function NoProject() {
       <div className="grid max-w-sm justify-items-center gap-3">
         <FolderOpen className="size-8 text-muted-foreground" aria-hidden />
         <h1 className="font-serif text-lg font-semibold">还没有打开项目</h1>
-        <p className="text-sm text-muted-foreground">工作台里的笔记本和文件都属于一个项目。先在欢迎页新建或打开一个。</p>
         <Button asChild><Link href="/">去欢迎页</Link></Button>
       </div>
     </div>

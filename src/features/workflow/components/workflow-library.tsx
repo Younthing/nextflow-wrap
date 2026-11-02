@@ -10,7 +10,6 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -229,10 +228,9 @@ function RenameWorkflowDialog({ workflow, onClose }: { workflow: WorkflowSummary
 
   return (
     <Dialog open onOpenChange={(open) => !open && !rename.isPending && onClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle>重命名流程</DialogTitle>
-          <DialogDescription>只改显示名称，画布内容保持不变。</DialogDescription>
         </DialogHeader>
         <form
           className="grid gap-3"

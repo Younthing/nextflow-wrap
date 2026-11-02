@@ -103,7 +103,7 @@ export function WorkbenchFiles({
       </div>
       <ul aria-label="项目里的笔记本" className="grid gap-px px-1">
         {loading ? <li className="px-2 py-1 text-xs text-muted-foreground">读取中…</li> : null}
-        {!loading && notebooks.length === 0 ? <li className="px-2 py-1 text-xs text-muted-foreground">还没有笔记本，点 + 新建一本。</li> : null}
+        {!loading && notebooks.length === 0 ? <li className="px-2 py-1 text-xs text-muted-foreground">暂无笔记本</li> : null}
         {notebooks.map((nb) => (
           <li key={nb.id}>
             <Link

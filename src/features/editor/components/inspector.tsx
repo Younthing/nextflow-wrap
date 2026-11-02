@@ -400,9 +400,6 @@ function NodeInspector({ node }: { node: FlowNode }) {
               </SelectContent>
             </Select>
           </FormField>
-          <p className="text-xs text-muted-foreground">
-            这里只改这一次用法，不改模块定义。改代码要回到笔记本，再发布新版本。
-          </p>
           <div className="grid gap-1 text-xs">
             <span className="text-muted-foreground">模块环境</span>
             <code className="whitespace-pre-wrap rounded bg-secondary px-2 py-1 font-mono text-[11px]">
@@ -616,13 +613,7 @@ function PipelineInspector() {
 
   return (
     <div className="grid gap-4 p-4">
-      <div>
-        <div className="font-serif text-lg font-semibold">流程参数</div>
-        <p className="text-sm text-muted-foreground">
-          与生成项目的 nextflow_schema.json
-          一致。选中画布中的节点可编辑节点配置。
-        </p>
-      </div>
+      <div className="font-serif text-lg font-semibold">流程参数</div>
       <SchemaForm schema={schema} values={params} onChange={setParam} />
     </div>
   );

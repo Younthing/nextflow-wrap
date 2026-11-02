@@ -20,7 +20,7 @@ export const CleanSession: Story = {
     const sessions = canvas.getAllByRole("listitem", { name: "PBMC 3k 单细胞 会话" });
     await userEvent.click(within(sessions[0]).getByRole("button", { name: /清理/ }));
     const dialog = within(canvasElement.ownerDocument.body).getByRole("dialog");
-    await expect(within(dialog).getByText(/不能再续跑/)).toBeInTheDocument();
+    await expect(within(dialog).getByText(/无法 -resume/)).toBeInTheDocument();
     await userEvent.click(within(dialog).getByRole("button", { name: /清理/ }));
     await expect(args.onClean).toHaveBeenCalledWith(expect.objectContaining({ workflowName: "PBMC 3k 单细胞" }), false);
   },

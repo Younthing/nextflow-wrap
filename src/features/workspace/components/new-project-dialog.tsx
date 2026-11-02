@@ -43,7 +43,7 @@ export function NewProjectDialog({
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>新建项目</DialogTitle>
-          <DialogDescription>项目就是磁盘上的一个文件夹。里面会建好 data/ 和 results/，笔记本也归在这个项目下。</DialogDescription>
+          <DialogDescription>将创建 data/ 和 results/</DialogDescription>
         </DialogHeader>
         <form
           className="grid gap-4"

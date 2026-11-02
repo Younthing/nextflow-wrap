@@ -22,13 +22,12 @@ export function DiagnosticsPanel() {
     <Card>
       <CardHeader>
         <CardTitle>导出诊断包</CardTitle>
-        <CardDescription>反馈问题时附上它。包里的密钥、token 和代理密码都已替换为“‹已隐藏›”，不含结果文件和 work 目录。</CardDescription>
+        <CardDescription>密钥和密码已脱敏，不含结果文件和 work 目录</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
           {CONTENTS.map((line) => <li key={line}>{line}</li>)}
         </ul>
-        <p className="text-xs text-muted-foreground">某次运行出错时，在运行页点“诊断包”，会额外带上这次运行的 Nextflow 日志、配置和任务列表。</p>
         <Button
           disabled={download.isPending}
           onClick={() => download.mutate(undefined, { onSuccess: (name) => toast.success(`已保存 ${name}`), onError: (error) => toast.error(error.message) })}

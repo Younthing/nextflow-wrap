@@ -24,7 +24,7 @@ type Story = StoryObj<typeof meta>;
 export const Default: Story = {
   play: async ({ args, canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByText("环境变量 NEXTFLOW_BIN 已设置，以它为准")).toBeInTheDocument();
+    await expect(canvas.getByText("由环境变量 NEXTFLOW_BIN 覆盖")).toBeInTheDocument();
     await expect(canvas.getByRole("button", { name: /保存设置/ })).toBeDisabled();
     await userEvent.type(canvas.getByLabelText("本机最多 CPU"), "8");
     await userEvent.type(canvas.getByLabelText("OpenAI API key"), "sk-test-123456");

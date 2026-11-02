@@ -98,8 +98,7 @@ export function KernelPicker({
           </div>
           {specs.data && !specs.data.available && (
             <p className="px-2.5 py-1.5 text-[11px] text-muted-foreground">
-              未检测到 Jupyter，单元格每次从头运行。安装后可用常驻内核：
-              <span className="font-mono">python3 -m pip install ipykernel</span>
+              未检测到 Jupyter：<span className="font-mono">python3 -m pip install ipykernel</span>
             </p>
           )}
           <div className="mt-1 border-t border-border pt-1">

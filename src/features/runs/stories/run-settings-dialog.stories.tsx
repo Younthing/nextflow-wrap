@@ -25,7 +25,7 @@ export const Ready: Story = {
     const dialog = within(await within(document.body).findByRole("dialog", { name: "运行设置" }));
     const command = dialog.getByText("启动命令（在项目目录中执行）");
     expect(command.parentElement).toHaveTextContent("nextflow run .");
-    await expect(dialog.getByText(/预览环境不会连接真实的集群或云执行器/)).toBeInTheDocument();
+    await expect(dialog.getByText(/模拟运行，不连接真实执行器/)).toBeInTheDocument();
     await expect(dialog.getByRole("button", { name: "保存设置" })).toBeEnabled();
   },
 };

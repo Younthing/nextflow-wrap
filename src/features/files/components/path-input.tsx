@@ -47,7 +47,7 @@ export function PathBrowserDialog({
       <DialogContent className="max-w-xl">
         <DialogHeader>
           <DialogTitle>{options.title ?? (options.kind === "directory" ? "选择文件夹" : "选择文件")}</DialogTitle>
-          <DialogDescription>浏览运行这些流程的电脑上的文件。大文件按路径引用，不会上传。</DialogDescription>
+          <DialogDescription className="sr-only">按路径引用，不上传</DialogDescription>
         </DialogHeader>
         <div className="flex items-center gap-1">
           <Button size="icon-sm" variant="ghost" aria-label="上一级" disabled={!listing.data?.parent} onClick={() => { setPath(listing.data?.parent); setSelected(undefined); }}><ArrowUp /></Button>

@@ -51,17 +51,11 @@ export function ExportMenu({
           <DropdownMenuLabel>文件</DropdownMenuLabel>
           <DropdownMenuItem onSelect={() => save(toIpynb(doc, outputs))}>
             <FileJson />
-            <span className="grid">
-              Jupyter 笔记本 (.ipynb)
-              <span className="text-[11px] text-muted-foreground">带上这次运行的输出，可在 JupyterLab 打开</span>
-            </span>
+            Jupyter 笔记本 (.ipynb)
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={() => { try { save(toScript(doc)); } catch (error) { toast.error(error instanceof Error ? error.message : "导出失败"); } }}>
             <FileCode2 />
-            <span className="grid">
-              {script}
-              <span className="text-[11px] text-muted-foreground">Jupytext percent 格式，能读回成笔记本</span>
-            </span>
+            {script}
           </DropdownMenuItem>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
@@ -72,7 +66,7 @@ export function ExportMenu({
             <span className="grid">
               导出为模块…
               <span className="text-[11px] text-muted-foreground">
-                {published ? `已发布 ${published} · ` : ""}{portSummary(ports.inputs, ports.outputs)}。可选，导出后能在流程编排里使用
+                {published ? `已发布 ${published} · ` : ""}{portSummary(ports.inputs, ports.outputs)}
               </span>
             </span>
           </DropdownMenuItem>

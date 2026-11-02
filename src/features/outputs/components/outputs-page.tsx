@@ -27,7 +27,6 @@ export function OutputsView({ rows, loading }: { rows: OutputRow[]; loading?: bo
       <header className="flex flex-wrap items-start gap-3">
         <div className="min-w-0 flex-1">
           <h1 className="font-serif text-xl font-semibold">产物</h1>
-          <p className="mt-1 text-sm text-muted-foreground">流程跑出来的结果，每个文件都记着来自哪次运行、哪个模块。过程和日志在「运行记录」里。</p>
         </div>
         <div className="w-64">
           <SearchField value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索文件、模块或运行" aria-label="搜索产物" />
@@ -40,7 +39,6 @@ export function OutputsView({ rows, loading }: { rows: OutputRow[]; loading?: bo
           <div className="grid max-w-sm justify-items-center gap-3">
             <FileOutput className="size-8 text-muted-foreground" aria-hidden />
             <p className="font-medium">还没有产物</p>
-            <p className="text-sm text-muted-foreground">流程成功跑完后，发布到结果目录的文件会出现在这里。</p>
             <Button asChild variant="glass" size="sm"><Link href="/workflows">去流程编排</Link></Button>
           </div>
         </div>

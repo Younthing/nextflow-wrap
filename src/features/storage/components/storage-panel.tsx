@@ -24,7 +24,7 @@ function CleanDialog({ session, onClose, onConfirm, pending }: { session: Sessio
         <DialogHeader>
           <DialogTitle>清理「{session.workflowName}」这次会话的 work 目录？</DialogTitle>
           <DialogDescription>
-            可释放约 {formatBytes(session.reclaimableBytes)}。已发布的结果是硬链接，不受影响。清理后下面这些运行都不能再续跑（-resume），只能重新运行：
+            释放约 {formatBytes(session.reclaimableBytes)}，以下运行将无法 -resume：
           </DialogDescription>
         </DialogHeader>
         <ul className="grid gap-1 font-mono text-xs">
@@ -50,7 +50,6 @@ export function StorageView({ report, onClean, cleaning }: { report: StorageRepo
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><HardDrive className="size-4" />磁盘占用</CardTitle>
-          <CardDescription>所有流程共用一个 work 目录，所以按 Nextflow 会话清理：一次运行和从它恢复的运行属于同一个会话，共用缓存的任务目录。</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-2 sm:grid-cols-4">
           {report.caches.map((cache) => (

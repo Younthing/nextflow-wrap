@@ -36,9 +36,6 @@ export function SetupWizardView({
       <Card>
         <CardHeader>
           <CardTitle className="font-serif text-xl">欢迎使用 Nextflow Studio</CardTitle>
-          <CardDescription>
-            先检查这台电脑上的运行环境。已经装好的会直接复用；缺少的可以一键安装到应用数据目录，下载文件都会校验 SHA-256。
-          </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <ToolChecklist tools={status.tools} onInstall={onInstall} installing={installing} />
@@ -62,9 +59,7 @@ export function SetupWizardView({
           <CardHeader>
             <CardTitle>已有的 conda 环境</CardTitle>
             <CardDescription>
-              装了 ipykernel 的环境可以在笔记本里选作内核；没有内核的环境运行
-              <code className="mx-1 font-mono">python -m ipykernel install --user --name 环境名</code>
-              后出现在内核列表里。
+              注册为内核：<code className="ml-1 font-mono">python -m ipykernel install --user --name 环境名</code>
             </CardDescription>
           </CardHeader>
           <CardContent>

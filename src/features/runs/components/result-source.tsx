@@ -56,7 +56,7 @@ export function ResultSource({ file, fullPath, workflow, tasks }: { file: Result
           size="sm"
           variant="ghost"
           className="h-7"
-          onClick={() => void navigator.clipboard.writeText(notebookSnippet(fullPath)).then(() => toast.success("已复制读取这个文件的代码，粘贴到笔记本的单元格里继续分析"), () => toast.error("无法写入剪贴板"))}
+          onClick={() => void navigator.clipboard.writeText(notebookSnippet(fullPath)).then(() => toast.success("已复制读取代码"), () => toast.error("无法写入剪贴板"))}
         >
           <ClipboardCopy />带回笔记本
         </Button>

@@ -82,14 +82,14 @@ function HostCard({ host, probe, testing, onChange, onRemove, onTest }: {
           <FormField label="私钥文件" htmlFor={field("identityFile")} hint="留空时用 ssh-agent 和 ~/.ssh/config">
             <PathInput id={field("identityFile")} className="h-8 text-xs" value={host.identityFile ?? ""} onChange={(value) => onChange({ identityFile: value || undefined })} />
           </FormField>
-          <FormField label="集群上的基础目录" htmlFor={field("baseDir")} hint="放启动目录、运行文件和默认 work 目录；要在计算节点也能访问的共享盘上">
+          <FormField label="集群上的基础目录" htmlFor={field("baseDir")} hint="需位于计算节点可访问的共享盘">
             <Input id={field("baseDir")} className="h-8 font-mono text-xs" value={host.baseDir} onChange={(event) => onChange({ baseDir: event.target.value.trim() })} />
           </FormField>
           <FormField label="Nextflow 命令" htmlFor={field("nextflow")}>
             <Input id={field("nextflow")} className="h-8 font-mono text-xs" placeholder="nextflow" value={host.nextflow ?? ""} onChange={(event) => onChange({ nextflow: event.target.value.trim() || undefined })} />
           </FormField>
         </div>
-        <FormField label="登录后先执行" htmlFor={field("setup")} hint="一行 shell 命令，在启动 Nextflow 前运行，例如加载模块或激活 conda 环境">
+        <FormField label="登录后先执行" htmlFor={field("setup")} hint="如 module load / conda activate">
           <Input id={field("setup")} className="h-8 font-mono text-xs" placeholder="module load java/17 nextflow" value={host.setup ?? ""} onChange={(event) => onChange({ setup: event.target.value || undefined })} />
         </FormField>
         {probe && <ProbeResult probe={probe} />}
@@ -130,8 +130,7 @@ export function RemoteHostsEditor({ hosts, onSave, onTest, saving }: {
         <CardHeader>
           <CardTitle>远程集群</CardTitle>
           <CardDescription>
-            运行时选一个集群，Nextflow 就通过 SSH 在它的登录节点上启动（关掉电脑也继续跑），再由它向 SLURM 等调度器提交任务。
-            需要免密登录：ssh-agent 里的密钥或下面填的私钥文件。参数里的输入文件要写集群上的路径；结果跑完后取回本机，超过 2 GB 时留在集群上。
+            通过 SSH 免密登录 · 输入路径写集群上的路径 · 结果超过 2 GB 留在集群
           </CardDescription>
         </CardHeader>
       </Card>

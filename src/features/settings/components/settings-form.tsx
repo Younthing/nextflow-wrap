@@ -60,7 +60,7 @@ export function SettingsForm({ view, onSave, saving }: { view: SettingsView; onS
   const runtime = (patch: Partial<StudioSettings["runtime"]>) => setDraft((current) => ({ ...current, runtime: { ...current.runtime, ...patch } }));
   const cloud = (patch: Partial<StudioSettings["cloud"]>) => setDraft((current) => ({ ...current, cloud: { ...current.cloud, ...patch } }));
   const assistant = (patch: Partial<StudioSettings["assistant"]>) => setDraft((current) => ({ ...current, assistant: { ...current.assistant, ...patch } }));
-  const overridden = (key: string) => view.environmentOverrides.includes(key) ? `环境变量 ${key} 已设置，以它为准` : undefined;
+  const overridden = (key: string) => view.environmentOverrides.includes(key) ? `由环境变量 ${key} 覆盖` : undefined;
   const dirty = JSON.stringify(draft) !== JSON.stringify(view.settings) || Object.keys(secrets).length > 0;
 
   return (
@@ -71,7 +71,6 @@ export function SettingsForm({ view, onSave, saving }: { view: SettingsView; onS
       <Card>
         <CardHeader>
           <CardTitle>新运行的默认值</CardTitle>
-          <CardDescription>还没有保存过运行设置的流程用这些值；每个流程在运行对话框里改过之后记住自己的设置。</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-3">
           <FormField label="运行时（-profile）" htmlFor="default-engine">
@@ -94,7 +93,7 @@ export function SettingsForm({ view, onSave, saving }: { view: SettingsView; onS
       <Card>
         <CardHeader>
           <CardTitle>工具位置</CardTitle>
-          <CardDescription>留空时自动查找：先找系统里已装的，再用设置向导装到数据目录的版本。Runner 重启后生效。</CardDescription>
+          <CardDescription>留空则自动查找 · 重启 Runner 后生效</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
           <FormField label="Java（JAVA_HOME）" htmlFor="java-home" hint={overridden("NEXTFLOW_JAVA_HOME")}>
@@ -106,7 +105,7 @@ export function SettingsForm({ view, onSave, saving }: { view: SettingsView; onS
           <FormField label="笔记本用的 Python（装有 jupyter_client）" htmlFor="jupyter-python" hint={overridden("NEXTFLOW_STUDIO_JUPYTER_PYTHON")}>
             <PathInput id="jupyter-python" className="h-8 text-xs" value={draft.runtime.jupyterPython ?? ""} onChange={(value) => runtime({ jupyterPython: value || undefined })} />
           </FormField>
-          <FormField label="HTTP 代理" htmlFor="http-proxy" hint={overridden("NEXTFLOW_HTTP_PROXY") ?? "Nextflow 下载插件、容器和 conda 包时使用"}>
+          <FormField label="HTTP 代理" htmlFor="http-proxy" hint={overridden("NEXTFLOW_HTTP_PROXY")}>
             <Input id="http-proxy" className="h-8 font-mono text-xs" placeholder="http://127.0.0.1:7890" value={draft.runtime.httpProxy ?? ""} onChange={(event) => runtime({ httpProxy: event.target.value || undefined })} />
           </FormField>
         </CardContent>
@@ -126,8 +125,7 @@ export function SettingsForm({ view, onSave, saving }: { view: SettingsView; onS
         <CardHeader>
           <CardTitle>AI 助手</CardTitle>
           <CardDescription>
-            自动模式优先用本机已 <code className="font-mono">codex login</code> 的 Codex；不可用时用下面的 API key。
-            {view.secretStorage === "keychain" ? "API key 用系统钥匙串保护的密钥加密保存。" : "API key 保存在只有当前用户可读的文件里。"}
+            自动：优先 Codex（<code className="font-mono">codex login</code>），否则 API key
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-3">
@@ -157,7 +155,7 @@ export function SettingsForm({ view, onSave, saving }: { view: SettingsView; onS
         <CardHeader>
           <CardTitle>云端凭据</CardTitle>
           <CardDescription>
-            AWS Batch、Google Batch 和 Azure Batch 运行时 Nextflow 从环境变量读取这些凭据；已经用 <code className="font-mono">aws configure</code> 或 <code className="font-mono">gcloud auth</code> 配好的可以留空。Runner 重启后生效。
+            用于 AWS / Google / Azure Batch · 已配置 CLI 可留空 · 重启 Runner 后生效
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
@@ -170,7 +168,7 @@ export function SettingsForm({ view, onSave, saving }: { view: SettingsView; onS
           {(["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"] as const).map((key) => (
             <SecretField key={key} name={key} saved={view.secrets[key]} value={secrets[key]} hint={overridden(key)} onChange={(value) => setSecrets((current) => ({ ...current, [key]: value }))} />
           ))}
-          <FormField label="Google 服务账号 JSON" htmlFor="google-credentials" hint={overridden("GOOGLE_APPLICATION_CREDENTIALS") ?? "GOOGLE_APPLICATION_CREDENTIALS；留空用 gcloud 的默认凭据"}>
+          <FormField label="Google 服务账号 JSON" htmlFor="google-credentials" hint={overridden("GOOGLE_APPLICATION_CREDENTIALS") ?? "留空用 gcloud 默认凭据"}>
             <PathInput id="google-credentials" className="h-8 text-xs" value={draft.cloud.googleCredentials ?? ""} onChange={(value) => cloud({ googleCredentials: value || undefined })} />
           </FormField>
           <div className="hidden sm:block" />
@@ -187,7 +185,7 @@ export function SettingsForm({ view, onSave, saving }: { view: SettingsView; onS
 
       <div className="flex items-center gap-3">
         <Button type="submit" disabled={!dirty || saving}><Save />保存设置</Button>
-        {view.runnerRestartNeeded && <span role="status" className="text-xs text-warning">工具位置或云端凭据已更改，重启 runner（桌面版重启应用）后生效</span>}
+        {view.runnerRestartNeeded && <span role="status" className="text-xs text-warning">重启 Runner 后生效</span>}
       </div>
     </form>
   );

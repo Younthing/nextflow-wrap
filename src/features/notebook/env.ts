@@ -61,12 +61,12 @@ export function tryRunEnvSummary(env: { condaYaml?: string; containerImage?: str
   const conda = env.condaYaml?.trim() ?? "";
   const image = env.containerImage?.trim() ?? "";
   if (!conda && !image) {
-    return "未填写Conda yaml和容器地址。可以保存，process 省略对应指令。试跑使用本机解释器。";
+    return "未填写Conda yaml和容器地址 · 试跑使用本机解释器";
   }
   if (!conda || !image) {
     const missing = !conda ? "Conda yaml" : "容器地址";
     const used = conda ? `conda ${conda}` : `container ${image}`;
-    return `未填写${missing}。process 省略未填的指令。试跑使用已填写的 ${used}。`;
+    return `未填写${missing} · 试跑使用 ${used}`;
   }
   return `试跑与 process 使用同一份 conda ${conda} 和 container ${image}。本机有容器运行时优先用容器，否则用 conda。`;
 }

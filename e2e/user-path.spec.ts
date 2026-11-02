@@ -331,7 +331,7 @@ async function runLanguage(page: Page, language: "python" | "r") {
   await waitForNotebookSaved(page);
   await page.goto(workflowUrl);
   await page.locator(".react-flow__node").filter({ hasText: alias }).evaluate((el) => (el as HTMLElement).click());
-  await expect(page.getByText(/源已改动：跟钉住的原版/)).toBeVisible();
+  await expect(page.getByText(/源笔记本已更新/)).toBeVisible();
   await shot(page, `e2e-${language}-drift.png`);
   await page.getByRole("link", { name: /打开最新/ }).click();
   await page.waitForURL(new RegExp(`/workbench/`));

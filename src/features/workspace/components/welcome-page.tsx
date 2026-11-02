@@ -56,16 +56,16 @@ export function WelcomeView({ projects, home, environment, busyId, onNew, onOpen
         <div className="grid gap-2">
           <button type="button" onClick={onNew} className={cn(actionClass, "border-transparent bg-primary text-primary-foreground shadow-action shadow-primary/50 hover:bg-primary/90")}>
             <Plus />
-            <span>新建项目<span className="block text-xs opacity-85">选一个位置，建好 data/ 和 results/</span></span>
+            新建项目
           </button>
           <button type="button" onClick={onOpenDirectory} className={actionClass}>
             <FolderOpen />
-            <span>打开目录<span className="block text-xs text-muted-foreground">已有的分析文件夹直接变成项目</span></span>
+            打开目录
           </button>
           {example ? (
             <button type="button" onClick={() => onOpen(example)} className={actionClass} disabled={busyId === example.id}>
               <BookOpen />
-              <span>从示例开始<span className="block text-xs text-muted-foreground">单细胞 · 分子对接的示例笔记本</span></span>
+              从示例开始
             </button>
           ) : null}
         </div>
@@ -100,10 +100,7 @@ export function WelcomeView({ projects, home, environment, busyId, onNew, onOpen
         </div>
         {projects.length === 0 ? (
           <div className="grid flex-1 place-items-center text-center">
-            <div className="grid max-w-sm gap-2">
-              <p className="font-medium">还没有项目</p>
-              <p className="text-sm text-muted-foreground">新建一个，或者打开一个已有的分析文件夹。打开过的项目会列在这里。</p>
-            </div>
+            <p className="text-sm text-muted-foreground">还没有项目</p>
           </div>
         ) : (
           <ul aria-label="最近的项目" className="-mx-2 grid min-h-0 gap-0.5 overflow-y-auto">
@@ -157,9 +154,6 @@ export function WelcomeView({ projects, home, environment, busyId, onNew, onOpen
             {visible.length === 0 ? <li className="px-3 py-6 text-sm text-muted-foreground">没有匹配「{query}」的项目</li> : null}
           </ul>
         )}
-        <p className="mt-auto text-xs leading-relaxed text-muted-foreground">
-          从列表移除只是不再显示，文件夹不会被删除。{onDropPath ? "也可以把文件夹拖到这里直接打开。" : null}
-        </p>
       </main>
     </div>
   );

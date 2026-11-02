@@ -127,7 +127,6 @@ export function ModuleLibrary({
     >
       <div className="flex flex-col gap-2 border-b border-border p-3">
         <div className="text-sm font-semibold">模块库</div>
-        <p className="text-[11px] text-muted-foreground">已发布模块 · 试跑通过的自定义 + 内置</p>
         <SearchField
           size="compact"
           value={query}

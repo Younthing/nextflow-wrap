@@ -84,9 +84,7 @@ export function ExportProjectDialog({
       <DialogContent className="flex h-[min(860px,90vh)] flex-col gap-4 sm:max-w-5xl">
         <DialogHeader>
           <DialogTitle className="font-serif">导出 Nextflow 项目</DialogTitle>
-          <DialogDescription>
-            画布对应的标准 Nextflow 项目。下载后在项目目录里执行下面的命令，也能在别的机器上跑。
-          </DialogDescription>
+          <DialogDescription className="sr-only">画布对应的标准 Nextflow 项目</DialogDescription>
         </DialogHeader>
 
         <LabeledCode

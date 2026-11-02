@@ -39,7 +39,7 @@ export function StopRunButton({
           <DialogHeader>
             <DialogTitle>停止运行</DialogTitle>
             <DialogDescription>
-              确认停止「{runName}」？正在执行的任务会被中止，已经完成的结果会保留。
+              停止「{runName}」？已完成的结果会保留。
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

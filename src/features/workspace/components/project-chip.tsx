@@ -70,7 +70,7 @@ export function ProjectChip({ collapsed = false }: { collapsed?: boolean }) {
           })}
         >
           <LogOut />
-          关闭项目，回到欢迎页
+          关闭项目
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

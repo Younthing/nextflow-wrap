@@ -190,10 +190,6 @@ function PortBinding({
         <p className="font-mono text-xs text-muted-foreground">{activeSample.label}</p>
       )}
 
-      {draft.source === "path" && file && (
-        <p className="text-[11px] text-muted-foreground">本机路径。文件存在时复制进试跑目录，命令行使用文件名。</p>
-      )}
-
       <p role={preview.ok && !readError ? "status" : "alert"} className={cn("text-[11px]", preview.ok && !readError ? "text-muted-foreground" : "text-destructive")}>
         {readError ?? (preview.ok ? preview.line : preview.message)}
       </p>

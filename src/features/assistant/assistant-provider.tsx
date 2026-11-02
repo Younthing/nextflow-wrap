@@ -12,10 +12,10 @@ const RUNTIME_URL = "/api/copilotkit";
 const LABELS = {
   modalHeaderTitle: "AI 助手",
   welcomeMessageText:
-    "我可以帮你搭流程、启动运行，或者解释一次运行为什么失败。启动、停止和恢复都会先请你确认。",
+    "搭建流程 · 启动运行 · 排查失败",
   chatInputPlaceholder: "描述你想做的事…",
   chatDisclaimerText:
-    "AI 可能出错，运行前请检查流程。启动、停止和恢复需要你确认。画布改动都能撤销。",
+    "AI 可能出错，运行前请检查",
   chatToggleOpenLabel: "打开 AI 助手",
   chatToggleCloseLabel: "关闭 AI 助手",
   chatInputToolbarSendButtonLabel: "发送",

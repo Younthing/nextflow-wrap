@@ -51,13 +51,13 @@ function Preview({ runId, file, outdir }: { runId: string; file: ResultFile; out
   );
 
   if (!file.preview) {
-    if (file.path.endsWith("/")) return <DirectoryPlaceholder path={fullPath} description="这是一个目录。打开其中的文件后再预览。" />;
+    if (file.path.endsWith("/")) return <DirectoryPlaceholder path={fullPath} description="目录" />;
     return (
       <AsyncPlaceholder
         status="empty"
         className="flex-1"
         icon={<PackageOpen />}
-        description={`二进制文件，${formatBytes(file.size)}，无法在浏览器里预览`}
+        description={`二进制文件 · ${formatBytes(file.size)}`}
       >
         <code className="rounded bg-secondary px-2 py-1 font-mono text-xs">{fullPath}</code>
       </AsyncPlaceholder>
@@ -130,7 +130,7 @@ export function RunResults({ runId, active, outdir, workflow, tasks = [], remote
           status="empty"
           className="flex-1"
           icon={<PackageOpen />}
-          description={remote?.resultsLeftRemote ? "结果留在集群上" : active ? "任务完成后，发布到 outdir 的文件会出现在这里" : "这次运行没有发布任何文件"}
+          description={remote?.resultsLeftRemote ? "结果留在集群上" : active ? "暂无结果" : "未发布文件"}
         />
       </div>
     );
@@ -208,11 +208,11 @@ export function RunResults({ runId, active, outdir, workflow, tasks = [], remote
               </div>
               <ResultSource file={current} fullPath={`${outdir.replace(/\/$/, "")}/${current.path}`} workflow={workflow} tasks={tasks} />
               {health.data?.mocked === false && <Button asChild variant="outline" size="sm" className="self-start"><a href={`/api/runs/${runId}/results/content?download=1&path=${encodeURIComponent(current.path)}`}>下载原始文件</a></Button>}
-              {current.preview === "html" && <p className="text-xs text-muted-foreground">静态预览；交互图表请下载报告后查看。</p>}
+              {current.preview === "html" && <p className="text-xs text-muted-foreground">静态预览</p>}
               <Preview key={current.path} runId={runId} file={current} outdir={outdir} />
             </>
           ) : (
-            <DirectoryPlaceholder path={outdir} description="这个目录里还没有可预览的文件" />
+            <DirectoryPlaceholder path={outdir} description="无可预览的文件" />
           )}
         </div>
       </div>

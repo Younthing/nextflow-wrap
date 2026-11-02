@@ -19,7 +19,7 @@ type Story = StoryObj<typeof meta>;
 export const Local: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByText(/预览环境不会连接真实的集群或云执行器/)).toBeInTheDocument();
+    await expect(canvas.getByText(/模拟运行，不连接真实执行器/)).toBeInTheDocument();
     expect(canvas.getAllByText("预览")).toHaveLength(1);
   },
 };
@@ -27,7 +27,7 @@ export const RealRunner: Story = {
   args: { real: true },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    expect(canvas.queryByText(/预览环境不会连接/)).toBeNull();
+    expect(canvas.queryByText(/模拟运行，不连接/)).toBeNull();
     expect(canvas.getByLabelText("工作目录（workDir）")).toBeDisabled();
     const hq = canvas.getByRole("radio", { name: /HyperQueue/ });
     expect(hq).toBeEnabled();
@@ -56,7 +56,7 @@ export const OnCluster: Story = {
     // The listbox keeps the form aria-hidden until it has closed.
     await expect(await canvas.findByRole("radio", { name: /^登录节点/ })).toHaveAttribute("aria-checked", "true");
     expect(canvas.queryByRole("radio", { name: /AWS Batch/ })).toBeNull();
-    await expect(canvas.getByText(/参数里的文件路径要写集群上的路径/)).toBeInTheDocument();
+    await expect(canvas.getByText(/路径写集群上的路径/)).toBeInTheDocument();
     await expect(canvas.getByLabelText("工作目录（workDir）")).toBeEnabled();
     await expect(canvas.getByText("填 work 时用 ~/nextflow-studio/work")).toBeInTheDocument();
     const slurm = canvas.getByRole("radio", { name: /^SLURM/ });

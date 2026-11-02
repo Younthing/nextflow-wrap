@@ -21,10 +21,9 @@ export function SourceDriftBanner({
   const changes = cellChanges > 0 ? `（${cellChanges} 处单元格变动）` : "";
   return (
     <div className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm">
-      <div className="font-medium">源已改动：跟钉住的原版 r{pinnedRev}，还是跟最新 r{currentRev}？</div>
+      <div className="font-medium">源笔记本已更新</div>
       <p className="mt-1 text-muted-foreground">
-        {version ? `${version} ` : ""}钉住 sourceNotebookRev r{pinnedRev}；笔记本「{notebookName}」之后改到 r{currentRev}
-        {changes}。打开原版是只读，打开最新不改已发布模块。
+        {version ? `${version} · ` : ""}「{notebookName}」r{pinnedRev} → r{currentRev}{changes}
       </p>
       <div className="mt-3 flex flex-wrap gap-2">
         <Button asChild variant="outline" size="sm">

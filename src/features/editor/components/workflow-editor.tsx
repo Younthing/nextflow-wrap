@@ -286,12 +286,8 @@ function Editor({ workflowId }: { workflowId: string }) {
           {nodes.length === 0 && (
             <div className="pointer-events-none absolute inset-0 grid place-items-center">
               <div className="glass max-w-sm rounded-xl px-8 py-6 text-center">
-                <div className="font-serif text-lg font-semibold">
-                  从空白画布开始
-                </div>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  从左侧模块库拖入模块，或双击画布搜索（{searchKeys}
-                  ）。先拖入一个文件或文件夹作为输入。
+                <p className="text-sm text-muted-foreground">
+                  拖入模块，或双击搜索（{searchKeys}）
                 </p>
               </div>
             </div>

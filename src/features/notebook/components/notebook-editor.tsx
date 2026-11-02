@@ -605,7 +605,7 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
 
       {readOnly && (
         <div className="flex flex-wrap items-center gap-2 border-b border-warning/40 bg-warning/10 px-4 py-2 text-sm">
-          正在查看钉住的原版 r{live.rev}。这一页只读，改最新笔记本不会改写这个修订。
+          只读 · 原版 r{live.rev}
           <Button asChild size="sm" variant="outline" className="ml-auto">
             <Link href={`/workbench/${notebookId}`}>打开最新 r{notebook.data.rev}</Link>
           </Button>
@@ -625,13 +625,12 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
                     <code className="font-mono text-xs">{item.name} = {item.literal}</code>
                   </React.Fragment>
                 ))}
-                。运行单元格就会用这些值。
               </>
             ) : (
-              <>画布节点 <span className="font-mono">{fromCanvas.from}</span> 没有可以填入的值。</>
+              <>画布节点 <span className="font-mono">{fromCanvas.from}</span> 无可填入的值</>
             )}
             {fromCanvas.skipped.length > 0 && (
-              <span className="text-muted-foreground"> 笔记本里没有输入 {fromCanvas.skipped.join("、")}，已跳过。</span>
+              <span className="text-muted-foreground"> · 已跳过 {fromCanvas.skipped.join("、")}</span>
             )}
           </span>
           {fromCanvas.applied.length > 0 && (
@@ -667,7 +666,6 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
                 {live.librarySourceNotebookRev !== undefined ? ` r${live.librarySourceNotebookRev}` : ""}
               </>
             ) : null}
-            。改这本不会改源笔记本，也不会改已发布的模块。
           </span>
         </div>
       )}

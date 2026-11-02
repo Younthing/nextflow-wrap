@@ -16,7 +16,6 @@ import { defaultInputDraft, SOURCE_LABEL, type InputDraft } from "@/features/not
 import { latestModuleForNotebook } from "@/features/notebook/library";
 import { nextModuleVersion } from "@/features/notebook/publish";
 import { useNotebook, usePublishNotebook, useScriptModules, useTryRunNotebook } from "@/features/notebook/queries";
-import { kernelLabel } from "@/features/notebook/types";
 import { cn } from "@/lib/utils";
 import { ModuleEnvFields, ModuleEnvPreview } from "./module-env-form";
 import { bindingsFromDrafts, TryRunBindingTable, TryRunInputs } from "./try-run-inputs";
@@ -130,7 +129,6 @@ function PublishWizardScreen({ notebookId }: { notebookId: string }) {
         <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(0,1fr)_18rem]">
           <section className="glass min-h-0 overflow-auto rounded-xl p-4">
             <h2 className="text-sm font-semibold">生成的命令行</h2>
-            <p className="mt-1 text-xs text-muted-foreground">只读 · 从笔记本自动转出。说明和自由探索单元格不会进入脚本。</p>
             {converted?.ok ? (
               <>
                 <pre className="mt-3 overflow-auto rounded-lg bg-secondary/60 p-3 font-mono text-xs">{converted.value.commandPreview}</pre>
@@ -166,7 +164,6 @@ function PublishWizardScreen({ notebookId }: { notebookId: string }) {
         <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[24rem_minmax(0,1fr)]">
           <section className="glass space-y-3 overflow-auto rounded-xl p-4">
             <h2 className="text-sm font-semibold">试跑参数</h2>
-            <p className="text-xs text-muted-foreground">每个输入端口绑定上传文件、本机路径，或该类型已有的样例。笔记本内核 {kernelLabel(doc.kernel)} 不参与试跑。下面的 conda／容器与第③步写入模块的是同一份。</p>
             <ModuleEnvFields
               idPrefix="publish-env"
               condaYaml={condaYaml}
@@ -261,7 +258,6 @@ function PublishWizardScreen({ notebookId }: { notebookId: string }) {
             <p>源笔记本 <span className="font-mono">{doc.name}</span> · 钉住 rev r{doc.rev}</p>
             <p>命令行 <span className="font-mono">{converted?.ok ? converted.value.entry : "—"}</span></p>
             <p>端口 {converted?.ok ? `${converted.value.inputs.length} 输入 · ${converted.value.outputs.length} 输出` : "—"}</p>
-            <p>笔记本内核 <span className="font-mono">{kernelLabel(doc.kernel)}</span>，不写入 conda／容器。试跑日志里的环境与下面这份相同。</p>
             <ModuleEnvPreview condaYaml={condaYaml} containerImage={containerImage} />
             {passed && receipt?.bindings?.length ? (
               <ul className="grid gap-1 font-mono text-xs">
@@ -276,11 +272,8 @@ function PublishWizardScreen({ notebookId }: { notebookId: string }) {
                 : !staged.ok
                   ? staged.message
                   : envChanged
-                    ? "环境已改，按当前 conda／容器重新试跑后才能保存。"
-                    : "还没有通过当前修订的试跑"}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              保存这一版的 jupytext 库副本（完整笔记本和命令行脚本）。源笔记本保持不动。之后可在模块库里把这一版重建成一本新的可编辑笔记本。
+                    ? "环境已改，需重新试跑"
+                    : "当前修订未试跑通过"}
             </p>
           </section>
         </div>

@@ -61,9 +61,6 @@ export function ModuleEnvPreview({
   const missing = missingEnvLabels({ condaYaml, containerImage });
   return (
     <div className="grid content-start gap-2 text-xs">
-      <p className="rounded-md border border-dashed border-border bg-secondary/50 px-3 py-2 text-muted-foreground">
-        手填两项 → 写入 ModuleDef → 生成 process 的 conda / container，试跑使用同一份
-      </p>
       <table className="w-full text-left">
         <tbody>
           <tr className="border-b border-border">

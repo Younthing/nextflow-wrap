@@ -89,9 +89,6 @@ export function ModuleCatalog() {
             <span> / 模块库</span>
           </div>
           <h1 className="mt-1 font-serif text-xl font-semibold">模块库</h1>
-          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-            已发布模块，挂在「流程」之下：自定义（笔记本发布）和内置功能节点。新模块请在笔记本里发布。
-          </p>
         </div>
         <Button asChild>
           <Link href="/workbench">去笔记本发布</Link>
@@ -114,9 +111,7 @@ export function ModuleCatalog() {
       </div>
 
       <div className="min-h-0 flex-1 space-y-4 overflow-auto">
-        {envModule ? <ModuleEnvEditor key={envModule.id} module={envModule} /> : scripts.data ? (
-          <p className="text-xs text-muted-foreground">点一个自定义模块，手填它的 Conda yaml 和容器。这两项写入 ModuleDef，并出现在生成的 process 里。</p>
-        ) : null}
+        {envModule ? <ModuleEnvEditor key={envModule.id} module={envModule} /> : null}
         {scripts.isPending ? (
           <AsyncPlaceholder status="pending" className="h-40" />
         ) : scripts.error ? (
@@ -223,7 +218,7 @@ export function ModuleCatalog() {
         <div className="rounded-lg border border-border px-3 py-2 text-sm">
           <span className="font-medium">{selected.name} · {selected.version}</span>
           <span className="text-muted-foreground">
-            {" "}的库副本可以重建成一本新的可编辑笔记本。源笔记本「{selected.sourceNotebookName}」保持原路径，不会被改写。
+            {" "}· 源笔记本「{selected.sourceNotebookName}」
           </span>
         </div>
       )}
@@ -240,10 +235,6 @@ export function ModuleCatalog() {
           version={selected.version}
         />
       )}
-
-      <p className="text-xs text-muted-foreground">
-        每个自定义模块记录 sourceNotebookId 与 sourceNotebookRev，并保存一份 jupytext 库副本。「从库重建」按那一版新建可编辑笔记本，不改源笔记本。试跑不通过的版本留在这里，标成「不可拖入画布」，不会出现在画布抽屉。内置节点随产品提供。
-      </p>
 
       <Dialog open={!!contract} onOpenChange={(open) => !open && setContract(null)}>
         <DialogContent>
