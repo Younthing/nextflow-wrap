@@ -93,7 +93,7 @@ export function ModuleCatalog() {
           </p>
         </div>
         <Button asChild>
-          <Link href="/notebooks">去笔记本发布</Link>
+          <Link href="/workbench">去笔记本发布</Link>
         </Button>
       </header>
 
@@ -193,7 +193,7 @@ export function ModuleCatalog() {
                                 event.stopPropagation();
                                 setReopenError(null);
                                 reopen.mutate(script.id, {
-                                  onSuccess: (doc) => router.push(`/notebooks/${doc.id}`),
+                                  onSuccess: (doc) => router.push(`/workbench/${doc.id}`),
                                   onError: (error) => setReopenError(error instanceof Error ? error.message : "无法从库重建"),
                                 });
                               }}
@@ -202,7 +202,7 @@ export function ModuleCatalog() {
                               从库重建
                             </Button>
                             <Button asChild variant="outline" size="sm" onClick={(event) => event.stopPropagation()}>
-                              <Link href={`/notebooks/${script.sourceNotebookId}`}>在笔记本中打开源</Link>
+                              <Link href={`/workbench/${script.sourceNotebookId}`}>在笔记本中打开源</Link>
                             </Button>
                           </>
                         ) : (

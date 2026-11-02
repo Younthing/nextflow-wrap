@@ -13,7 +13,7 @@ export function versionNumber(version: string | undefined): number {
   return match ? Number(match[1]) : 0;
 }
 
-/** Builtins listed on `/workflows/modules` next to the published modules. */
+/** Builtins listed on `/modules` next to the published modules. */
 export function isCatalogBuiltin(def: ModuleDef): boolean {
   return def.id === SAMPLESHEET_ID || def.id === REFERENCE_ID || CATALOG_BUILTIN_IDS.has(def.id);
 }

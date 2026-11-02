@@ -328,7 +328,7 @@ function NodeInspector({ node }: { node: FlowNode }) {
           <span className="text-xs text-muted-foreground">{def.category}</span>
           {origin === "script" && def.sourceNotebookId && (
             <Link
-              href={`/notebooks/${def.sourceNotebookId}`}
+              href={`/workbench/${def.sourceNotebookId}`}
               className="ml-auto flex items-center gap-1 text-xs text-primary hover:underline"
             >
               在笔记本中打开源
@@ -449,7 +449,7 @@ function NodeInspector({ node }: { node: FlowNode }) {
             <code className="whitespace-pre-wrap rounded bg-secondary px-2 py-1 font-mono text-[11px]">
               {scriptEnvDirectives(def).join("\n") || "未填写 conda / container"}
             </code>
-            <Link href="/workflows/modules" className="text-primary hover:underline">在模块库修改环境</Link>
+            <Link href="/modules" className="text-primary hover:underline">在模块库修改环境</Link>
           </div>
         </Section>
       ) : (

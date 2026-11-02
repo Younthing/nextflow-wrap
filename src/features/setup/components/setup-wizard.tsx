@@ -96,7 +96,7 @@ export function SetupWizardView({
           </Button>
         )}
         <Button asChild className="ml-auto" disabled={!status.ready}>
-          <Link href="/workflows" aria-disabled={!status.ready}>
+          <Link href="/" aria-disabled={!status.ready}>
             {status.ready ? "开始使用" : "必需的工具就绪后可以开始"}
             <ArrowRight />
           </Link>

@@ -80,11 +80,14 @@ export function displayPath(path: string, home?: string): string {
   return path.startsWith(`${base}/`) ? `~${path.slice(base.length)}` : path;
 }
 
-/** One character and a hue for the project's avatar, stable for a given name. */
-export function projectBadge(name: string): { initial: string; hue: number } {
+/** Theme tones a project badge can take; `projectBadge` picks one per name. */
+export const BADGE_TONES = ["primary", "path", "file", "meta", "value", "destructive"] as const;
+export type BadgeTone = (typeof BADGE_TONES)[number];
+
+/** One character and a tone for the project's avatar, stable for a given name. */
+export function projectBadge(name: string): { initial: string; tone: BadgeTone } {
   const initial = Array.from(name.trim())[0]?.toUpperCase() ?? "?";
-  const hues = [255, 310, 155, 70, 200, 25];
-  return { initial, hue: hues[parseInt(fnv(name, 0x811c9dc5).slice(0, 4), 16) % hues.length] };
+  return { initial, tone: BADGE_TONES[parseInt(fnv(name, 0x811c9dc5).slice(0, 4), 16) % BADGE_TONES.length] };
 }
 
 /** "10 分钟前", "昨天", "10 月 21 日". */
