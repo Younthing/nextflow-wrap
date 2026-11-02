@@ -124,8 +124,11 @@ export async function installWsl(): Promise<{ ok: true } | { ok: false; error: s
   return { ok: false, error: /cancel|取消/i.test(result.stderr) ? "已取消安装" : `安装 WSL 失败：${result.stderr.split("\n").slice(-2).join(" ")}` };
 }
 
-/** `sh` in the distro, script on stdin: no Windows command-line quoting to get wrong. */
-const wsl = (distro: string, script: string, args: string[] = [], timeoutMs?: number) => run("wsl.exe", ["-d", distro, "--", "sh", "-l", "-s", "--", ...args], script, timeoutMs);
+/**
+ * `sh` in the distro, script on stdin. `--exec` runs it directly: with `--`, wsl.exe hands the joined command line
+ * to the login shell, which eats the backslashes of Windows paths passed as arguments.
+ */
+const wsl = (distro: string, script: string, args: string[] = [], timeoutMs?: number) => run("wsl.exe", ["-d", distro, "--exec", "sh", "-l", "-s", "--", ...args], script, timeoutMs);
 
 async function ensureInstalled(context: BackendContext, probe: () => Promise<Run>, install: (pkg: { name: string; file: string }) => Promise<Run>, where: string) {
   context.status(`检查${where}上的服务端…`);
@@ -173,7 +176,7 @@ async function startWsl(connection: Extract<Connection, { kind: "wsl" }>, contex
   );
   const launch = async () => {
     context.status(`启动 WSL（${distro}）里的服务端…`);
-    const child = spawn("wsl.exe", ["-d", distro, "--", "sh", "-l", "-s"], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
+    const child = spawn("wsl.exe", ["-d", distro, "--exec", "sh", "-l", "-s"], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
     child.stdin.end(WSL_SERVE_COMMAND);
     return { child, ready: await readyFrom(child, context.log("wsl")) };
   };
