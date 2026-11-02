@@ -11,7 +11,7 @@ import { addReference, artifactDirs, connect, extend, notebookModule, runWithShe
  * runtime. The run must publish a score table and a best pose that opens in the Mol* view.
  *
  * Inputs come from scripts/make-docking-demo.py: DOCKING_RECEPTOR_PDBQT, else a synthetic pocket.
- * Needs python3 with vina, meeko, rdkit and ipykernel.
+ * Needs python3 with vina, meeko (plus gemmi and scipy, which it imports but does not declare), rdkit and ipykernel.
  */
 
 const dataDir = process.env.NEXTFLOW_STUDIO_DATA_DIR ?? "/tmp/nextflow-studio-e2e";

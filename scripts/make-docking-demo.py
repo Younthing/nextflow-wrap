@@ -10,7 +10,7 @@ Receptor source:
    biological meaning; it gives Vina a cavity so the pipeline, the scores and the 3D view are exercised offline.
 
 Only the standard library is needed here. Docking itself needs vina, meeko and rdkit
-(python3 -m pip install vina meeko rdkit).
+(python3 -m pip install vina meeko gemmi scipy rdkit).
 """
 
 import json

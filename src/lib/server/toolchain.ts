@@ -48,7 +48,7 @@ export const TOOLCHAIN = {
   notebookEnv: {
     label: "笔记本环境（ipykernel、scanpy、RDKit、Vina）",
     name: "nextflow-studio",
-    packages: ["python=3.12", "ipykernel", "matplotlib", "scanpy", "python-igraph", "leidenalg", "rdkit", "meeko", "vina"],
+    packages: ["python=3.12", "ipykernel", "matplotlib", "scanpy", "python-igraph", "leidenalg", "rdkit", "meeko", "gemmi", "scipy", "vina"],
   },
 } as const;
 

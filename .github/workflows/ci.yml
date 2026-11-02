@@ -58,7 +58,7 @@ jobs:
         run: bash scripts/install-nextflow.sh
       - name: Install Jupyter kernel, scanpy, docking tools and R
         run: |
-          python3 -m pip install ipykernel matplotlib scanpy igraph leidenalg vina meeko rdkit
+          python3 -m pip install ipykernel matplotlib scanpy igraph leidenalg vina meeko gemmi scipy rdkit
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y r-base-core
       - name: Toolchain

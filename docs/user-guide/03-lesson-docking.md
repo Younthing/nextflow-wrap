@@ -15,7 +15,7 @@ python3 scripts/make-docking-demo.py ~/nfs-demo/docking
 DOCKING_RECEPTOR_PDBQT=/path/receptor.pdbqt DOCKING_BOX="12.5,8.0,-3.2,22" python3 scripts/make-docking-demo.py ~/nfs-demo/docking
 ```
 
-需要 Python 里有 `vina`、`meeko`、`rdkit`（首次启动向导的「创建笔记本环境」已包含；自己装用 `python3 -m pip install vina meeko rdkit`）。
+需要 Python 里有 `vina`、`meeko`、`rdkit`（首次启动向导的「创建笔记本环境」已包含；自己装用 `python3 -m pip install vina meeko gemmi scipy rdkit`）。
 
 ## 1. 配体准备笔记本 `rdkit_ligands`
 
