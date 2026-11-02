@@ -7,6 +7,8 @@ import { FolderOpen } from "lucide-react";
 
 import { AsyncPlaceholder } from "@/components/ui/async-placeholder";
 import { Button } from "@/components/ui/button";
+import { PANELS, useLayoutStore, usePanel } from "@/components/layout/layout-store";
+import { ResizeHandle } from "@/components/layout/resize-handle";
 import { PanelLoading } from "@/components/ui/panel-notice";
 import { NotebookEditor } from "@/features/notebook/components/notebook-editor";
 import { PublishWizard } from "@/features/notebook/components/publish-wizard";
@@ -16,6 +18,7 @@ import { closeTab, openTab, pruneTabs, tabsPrefKey, workbenchView } from "@/feat
 import { useCurrentProject } from "@/features/workspace/queries";
 import type { Project } from "@/features/workspace/types";
 import { usePref } from "@/lib/local-pref";
+import { shownWidth } from "@/lib/panel-size";
 import { toast } from "@/lib/toast";
 import { WorkbenchFiles } from "./workbench-files";
 import { WorkbenchRuntimes } from "./workbench-runtimes";
@@ -78,6 +81,19 @@ function WorkbenchFrame({ project, path }: { project: Project; path?: string[] }
     );
   };
 
+  const explorer = usePanel("explorer");
+  const togglePanel = useLayoutStore((state) => state.togglePanel);
+  // Ctrl/Cmd+B shows or hides the explorer, as in VS Code.
+  React.useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key.toLowerCase() !== "b" || !(event.ctrlKey || event.metaKey) || event.shiftKey || event.altKey) return;
+      event.preventDefault();
+      togglePanel("explorer");
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [togglePanel]);
+
   const close = (id: string) => {
     const result = closeTab(tabs, id, activeId);
     setStored(result.tabs);
@@ -85,19 +101,26 @@ function WorkbenchFrame({ project, path }: { project: Project; path?: string[] }
   };
 
   return (
-    <div className="grid size-full min-h-0 grid-cols-[15.5rem_minmax(0,1fr)] gap-3">
-      <aside aria-label="笔记本、文件与运行时" className="glass flex min-h-0 flex-col gap-2 rounded-xl px-1.5 pt-3 pb-2">
-        <WorkbenchFiles
-          project={project}
-          notebooks={list}
-          loading={notebooks.isPending}
-          activeId={activeId}
-          creating={create.isPending}
-          onCreate={() => createNotebook()}
-        />
-        <WorkbenchRuntimes notebooks={list} active={active} />
-      </aside>
-      <div className="flex min-h-0 min-w-0 flex-col gap-3">
+    <div className="flex size-full min-h-0">
+      <div
+        className="panel-animate flex min-h-0 shrink-0 overflow-hidden"
+        style={{ width: shownWidth(PANELS.explorer, explorer) }}
+        inert={explorer.collapsed}
+      >
+        <aside aria-label="笔记本、文件与运行时" className="glass flex min-h-0 w-full min-w-[200px] flex-col gap-2 rounded-xl px-1.5 pt-3 pb-2">
+          <WorkbenchFiles
+            project={project}
+            notebooks={list}
+            loading={notebooks.isPending}
+            activeId={activeId}
+            creating={create.isPending}
+            onCreate={() => createNotebook()}
+          />
+          <WorkbenchRuntimes notebooks={list} active={active} />
+        </aside>
+      </div>
+      <ResizeHandle panel="explorer" />
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
         {view.kind === "publish" ? (
           <PublishWizard notebookId={view.id} />
         ) : (

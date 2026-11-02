@@ -3,11 +3,12 @@ import { execFile } from "node:child_process";
 import { createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync, type WriteStream } from "node:fs";
 import { createServer } from "node:net";
 import { join } from "node:path";
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, safeStorage, session, shell, Tray, utilityProcess, type UtilityProcess } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, safeStorage, session, shell, Tray, utilityProcess, type MenuItemConstructorOptions, type UtilityProcess } from "electron";
 
+import { readProjectMenuState } from "../../src/features/desktop/project-menu";
 import { SESSION_COOKIE } from "../../src/features/desktop/session-guard";
 import { parseEnvBlock, quitPrompt, RestartTracker, SHELL_ENV_KEYS } from "../../src/features/desktop/supervisor";
-import type { DesktopNotification, PickPathOptions } from "../../src/lib/desktop";
+import type { DesktopMenuAction, DesktopNotification, PickPathOptions, ProjectMenuState } from "../../src/lib/desktop";
 import { setupUpdates } from "./updates";
 
 /**
@@ -29,6 +30,7 @@ let mainWindow: BrowserWindow | undefined;
 let tray: Tray | undefined;
 let activeRuns = 0;
 let quitting = false;
+let projectMenu: ProjectMenuState = { recent: [] };
 const children = new Map<string, UtilityProcess>();
 
 async function freePort(): Promise<number> {
@@ -215,6 +217,71 @@ function updateTray() {
   ]));
 }
 
+/** Menu commands run in the page, through the same code as its own buttons. */
+function sendMenu(action: DesktopMenuAction) {
+  showWindow();
+  mainWindow?.webContents.send("studio:menu", action);
+}
+
+/**
+ * The application menu. File holds the project: which one is open, new / open folder / recent, reveal and close.
+ * Rebuilt whenever the page reports a change to the project list.
+ */
+function buildAppMenu() {
+  const mac = process.platform === "darwin";
+  const { current, recent } = projectMenu;
+  const file: MenuItemConstructorOptions[] = [
+    { label: current ? `当前项目：${current.name}` : "没有打开的项目", enabled: false },
+    ...(current ? [{ label: current.path, enabled: false }] : []),
+    { type: "separator" },
+    { label: "新建项目…", accelerator: "CmdOrCtrl+Shift+N", click: () => sendMenu({ type: "new-project" }) },
+    { label: "打开目录…", accelerator: "CmdOrCtrl+O", click: () => sendMenu({ type: "open-folder" }) },
+    {
+      label: "最近的项目",
+      submenu: recent.length
+        ? recent.map((project) => ({
+          label: project.name,
+          sublabel: project.path,
+          toolTip: project.path,
+          type: "checkbox" as const,
+          checked: project.id === current?.id,
+          click: () => sendMenu({ type: "open-project", id: project.id }),
+        }))
+        : [{ label: "还没有项目", enabled: false }],
+    },
+    { type: "separator" },
+    { label: mac ? "在 Finder 中显示" : "在文件管理器中显示", enabled: Boolean(current), click: () => { if (current && existsSync(current.path)) shell.showItemInFolder(current.path); } },
+    { label: "关闭项目", enabled: Boolean(current), click: () => sendMenu({ type: "close-project" }) },
+    { type: "separator" },
+    mac ? { role: "close", label: "关闭窗口" } : { role: "quit", label: "退出" },
+  ];
+  const template: MenuItemConstructorOptions[] = [
+    ...(mac ? [{ role: "appMenu" as const }] : []),
+    { label: "File", submenu: file },
+    { role: "editMenu" },
+    {
+      label: "View",
+      submenu: [
+        { label: "切换导航栏", click: () => sendMenu({ type: "toggle-panel", panel: "nav" }) },
+        // The page handles Ctrl/Cmd+B itself (also in a browser); the menu only shows the shortcut.
+        { label: "切换资源栏", accelerator: "CmdOrCtrl+B", registerAccelerator: false, click: () => sendMenu({ type: "toggle-panel", panel: "explorer" }) },
+        { type: "separator" },
+        { role: "reload" },
+        { role: "forceReload" },
+        { role: "toggleDevTools" },
+        { type: "separator" },
+        { role: "resetZoom" },
+        { role: "zoomIn" },
+        { role: "zoomOut" },
+        { type: "separator" },
+        { role: "togglefullscreen" },
+      ],
+    },
+    { role: "windowMenu" },
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
 function registerIpc() {
   ipcMain.handle("studio:pick-path", async (_event, options: PickPathOptions) => {
     const result = await dialog.showOpenDialog(mainWindow!, {
@@ -235,6 +302,10 @@ function registerIpc() {
       if (notification.runId) void mainWindow?.loadURL(`http://127.0.0.1:${port}/runs/${encodeURIComponent(notification.runId)}`);
     });
     native.show();
+  });
+  ipcMain.on("studio:project-menu", (_event, state: unknown) => {
+    projectMenu = readProjectMenuState(state);
+    buildAppMenu();
   });
   ipcMain.on("studio:active-runs", (_event, count: number) => {
     activeRuns = Number.isInteger(count) && count >= 0 ? count : 0;
@@ -290,6 +361,7 @@ app.whenReady().then(async () => {
   const origin = `http://127.0.0.1:${port}`;
   await session.defaultSession.cookies.set({ url: origin, name: SESSION_COOKIE, value: token, httpOnly: true, sameSite: "strict" });
   registerIpc();
+  buildAppMenu();
   const serverDir = await appServerDirectory();
   const env = serviceEnv({ PORT: String(port), HOSTNAME: "127.0.0.1", NEXTFLOW_STUDIO_SESSION_TOKEN: token });
   supervise("web", join(serverDir, "server.js"), [], env, serverDir);

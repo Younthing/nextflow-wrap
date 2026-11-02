@@ -3,12 +3,19 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Boxes, ChevronRight, FolderOutput, History, NotebookText, Settings, Workflow, Waypoints } from "lucide-react";
+import { Boxes, ChevronRight, FolderOutput, History, NotebookText, PanelLeftClose, PanelLeftOpen, Settings, Workflow, Waypoints } from "lucide-react";
 
+import { AssistantButton } from "@/features/assistant/assistant-button";
 import { isActive, useRuns } from "@/features/runs/queries";
+import { ProjectChip } from "@/features/workspace/components/project-chip";
 import { usePref } from "@/lib/local-pref";
+import { useIsDesktop } from "@/lib/use-desktop";
 import { cn } from "@/lib/utils";
+import { BackendStatus } from "./backend-status";
+import { useLayoutStore } from "./layout-store";
 import { FLOW_NAV, FLOW_SUMMARY, flowGroupOpen, isFlowRoute, isNavActive, SETTINGS_NAV, WORKBENCH_NAV, type FlowNavHref } from "./nav";
+import { sidebarItemClass as itemClass } from "./sidebar-item";
+import { ThemeToggle } from "./theme-toggle";
 
 const FLOW_ICONS = {
   "/workflows": Waypoints,
@@ -19,18 +26,27 @@ const FLOW_ICONS = {
 
 const FLOW_GROUP_KEY = "nf-studio.sidebar.flow-open";
 
-const itemClass = (active: boolean) =>
-  cn(
-    "flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
-    "focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-none [&_svg]:size-[18px] [&_svg]:shrink-0",
-    active && "bg-glass-strong font-medium text-primary shadow-sm hover:bg-glass-strong hover:text-primary",
+function RunningBadge({ count, collapsed }: { count: number; collapsed: boolean }) {
+  if (count <= 0) return null;
+  return (
+    <span
+      className={cn(
+        "rounded-full bg-primary/15 px-1.5 text-[11px] font-medium text-primary",
+        collapsed ? "absolute -top-0.5 right-0.5 bg-primary px-1 text-[10px] leading-4 text-primary-foreground" : "ml-auto",
+      )}
+      aria-label={`${count} 个运行中`}
+    >
+      {count}
+    </span>
   );
+}
 
 /**
- * Narrow labelled sidebar: 工作台 for everyday analysis, a collapsible 流程 group for everything that exists
- * for Nextflow pipelines, 设置 at the bottom. Newcomers see two items until they open the group.
+ * Labelled sidebar: 工作台 for everyday analysis, a collapsible 流程 group for everything that exists for
+ * Nextflow pipelines, and at the bottom the backend status, AI assistant, theme and 设置. Newcomers see two items
+ * until they open the group. Collapsed, it is an icon rail with every page one click away.
  */
-export function Sidebar() {
+export function Sidebar({ collapsed = false }: { collapsed?: boolean }) {
   const pathname = usePathname();
   const [stored, setStored] = usePref<boolean>(FLOW_GROUP_KEY);
   const onFlowPage = isFlowRoute(pathname);
@@ -38,76 +54,115 @@ export function Sidebar() {
   const runs = useRuns(undefined, { idlePollMs: 15_000 });
   const running = runs.data?.filter((run) => isActive(run.status)).length ?? 0;
   const groupId = React.useId();
+  const desktop = useIsDesktop();
+  const toggle = useLayoutStore((state) => state.togglePanel);
+
+  const flowLinks = (
+    <ul id={groupId} className="grid gap-0.5">
+      {FLOW_NAV.map(({ href, label }) => {
+        const Icon = FLOW_ICONS[href];
+        const active = isNavActive(href, pathname);
+        return (
+          <li key={href}>
+            <Link
+              href={href}
+              aria-current={active ? "page" : undefined}
+              aria-label={collapsed ? label : undefined}
+              title={collapsed ? label : undefined}
+              className={cn(itemClass(active, collapsed), !collapsed && "h-8 pl-5 text-[13px] [&_svg]:size-4")}
+            >
+              <Icon />
+              {collapsed ? null : label}
+              {href === "/runs" ? <RunningBadge count={running} collapsed={collapsed} /> : null}
+            </Link>
+          </li>
+        );
+      })}
+    </ul>
+  );
 
   return (
-    <nav aria-label="主导航" className="glass flex w-48 shrink-0 flex-col gap-0.5 rounded-xl px-2.5 py-3.5">
-      <Link
-        href="/"
-        className="mb-3 flex items-center gap-2.5 rounded-lg px-1.5 py-1 focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-none"
-        title="回到欢迎页"
-      >
-        <span aria-hidden className="grid size-8 place-items-center rounded-[10px] bg-primary font-mono text-xs font-bold text-primary-foreground shadow-sm">nf</span>
-        <span className="font-serif text-[15px] font-bold">Studio<span className="sr-only">，回到欢迎页</span></span>
-      </Link>
+    <nav aria-label="主导航" className={cn("glass flex size-full min-w-0 flex-col gap-0.5 overflow-hidden rounded-xl py-3.5", collapsed ? "px-2" : "px-2.5")}>
+      <div className={cn("mb-3 flex items-center gap-1", collapsed && "flex-col")}>
+        <Link
+          href="/"
+          className="flex min-w-0 items-center gap-2.5 rounded-lg px-1.5 py-1 focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-none"
+          title="回到欢迎页"
+        >
+          <span aria-hidden className="grid size-8 shrink-0 place-items-center rounded-[10px] bg-primary font-mono text-xs font-bold text-primary-foreground shadow-sm">nf</span>
+          <span className={cn("font-serif text-[15px] font-bold", collapsed && "sr-only")}>Studio<span className="sr-only">，回到欢迎页</span></span>
+        </Link>
+        <button
+          type="button"
+          aria-label={collapsed ? "展开导航栏" : "收起导航栏"}
+          title={collapsed ? "展开导航栏" : "收起导航栏"}
+          onClick={() => toggle("nav")}
+          className={cn(
+            "grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-none [&_svg]:size-4",
+            !collapsed && "ml-auto",
+          )}
+        >
+          {collapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
+        </button>
+      </div>
+
+      {/* The desktop app shows the project in its File menu. */}
+      {desktop ? null : <div className="mb-2"><ProjectChip collapsed={collapsed} /></div>}
 
       <Link
         href={WORKBENCH_NAV.href}
         aria-current={isNavActive(WORKBENCH_NAV.href, pathname) ? "page" : undefined}
-        className={itemClass(isNavActive(WORKBENCH_NAV.href, pathname))}
+        aria-label={collapsed ? WORKBENCH_NAV.label : undefined}
+        title={collapsed ? WORKBENCH_NAV.label : undefined}
+        className={itemClass(isNavActive(WORKBENCH_NAV.href, pathname), collapsed)}
       >
         <NotebookText />
-        {WORKBENCH_NAV.label}
+        {collapsed ? null : WORKBENCH_NAV.label}
       </Link>
 
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-controls={groupId}
-        // On a pipeline page the group cannot hide the page you are on; the toggle only remembers the choice.
-        onClick={() => setStored(!open)}
-        className={cn(itemClass(!open && onFlowPage), "mt-1")}
-      >
-        <Workflow />
-        流程
-        {!open && running > 0 ? (
-          <span className="ml-auto rounded-full bg-primary/15 px-1.5 text-[11px] font-medium text-primary" aria-label={`${running} 个运行中`}>
-            {running}
-          </span>
-        ) : null}
-        <ChevronRight className={cn("!size-3.5 transition-transform", !open || running === 0 ? "ml-auto" : "", open && "rotate-90")} aria-hidden />
-      </button>
-      {open ? (
-        <ul id={groupId} className="grid gap-0.5">
-          {FLOW_NAV.map(({ href, label }) => {
-            const Icon = FLOW_ICONS[href];
-            const active = isNavActive(href, pathname);
-            return (
-              <li key={href}>
-                <Link href={href} aria-current={active ? "page" : undefined} className={cn(itemClass(active), "h-8 pl-5 text-[13px] [&_svg]:size-4")}>
-                  <Icon />
-                  {label}
-                  {href === "/runs" && running > 0 ? (
-                    <span className="ml-auto rounded-full bg-primary/15 px-1.5 text-[11px] font-medium text-primary" aria-label={`${running} 个运行中`}>
-                      {running}
-                    </span>
-                  ) : null}
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
+      {collapsed ? (
+        <>
+          <span aria-hidden className="mx-2 my-1.5 h-px bg-border" />
+          {flowLinks}
+        </>
       ) : (
-        <p id={groupId} className="pr-1 pl-[38px] text-[11px] leading-relaxed text-muted-foreground">{FLOW_SUMMARY}</p>
+        <>
+          <button
+            type="button"
+            aria-expanded={open}
+            aria-controls={groupId}
+            // On a pipeline page the group cannot hide the page you are on; the toggle only remembers the choice.
+            onClick={() => setStored(!open)}
+            className={cn(itemClass(!open && onFlowPage), "mt-1")}
+          >
+            <Workflow />
+            流程
+            {!open ? <RunningBadge count={running} collapsed={false} /> : null}
+            <ChevronRight className={cn("!size-3.5 transition-transform", !open || running === 0 ? "ml-auto" : "", open && "rotate-90")} aria-hidden />
+          </button>
+          {open ? flowLinks : (
+            <p id={groupId} className="pr-1 pl-[38px] text-[11px] leading-relaxed text-muted-foreground">{FLOW_SUMMARY}</p>
+          )}
+        </>
       )}
 
-      <Link
-        href={SETTINGS_NAV.href}
-        aria-current={isNavActive(SETTINGS_NAV.href, pathname) ? "page" : undefined}
-        className={cn(itemClass(isNavActive(SETTINGS_NAV.href, pathname)), "mt-auto")}
-      >
-        <Settings />
-        {SETTINGS_NAV.label}
-      </Link>
+      <div className="mt-auto grid gap-0.5 pt-3">
+        <div className={cn("pb-1.5", !collapsed && "px-1.5")}>
+          <BackendStatus collapsed={collapsed} />
+        </div>
+        <AssistantButton collapsed={collapsed} />
+        <ThemeToggle collapsed={collapsed} />
+        <Link
+          href={SETTINGS_NAV.href}
+          aria-current={isNavActive(SETTINGS_NAV.href, pathname) ? "page" : undefined}
+          aria-label={collapsed ? SETTINGS_NAV.label : undefined}
+          title={collapsed ? SETTINGS_NAV.label : undefined}
+          className={itemClass(isNavActive(SETTINGS_NAV.href, pathname), collapsed)}
+        >
+          <Settings />
+          {collapsed ? null : SETTINGS_NAV.label}
+        </Link>
+      </div>
     </nav>
   );
 }

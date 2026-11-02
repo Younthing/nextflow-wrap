@@ -190,6 +190,19 @@
   }
 }
 
+/*
+ * Side panels animate when opened or closed, but not on the first paint (stored widths load after mount) and not
+ * while their edge is dragged, so the width tracks the pointer.
+ */
+body[data-layout-ready]:not([data-resizing]) .panel-animate {
+  transition: width 200ms ease-out;
+}
+
+body[data-resizing] {
+  cursor: col-resize;
+  user-select: none;
+}
+
 /* Honor the OS preference for overlays and canvas/status transitions. */
 @media (prefers-reduced-motion: reduce) {
   *,

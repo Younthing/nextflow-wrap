@@ -2,31 +2,33 @@
 
 import { Sparkles } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { sidebarItemClass } from "@/components/layout/sidebar-item";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAssistantPanel } from "./assistant-provider";
 
-/** Header button for the AI sidebar; says why when no model is configured. */
-export function AssistantButton() {
+/** Sidebar row that opens the AI panel; says why when no model is configured. */
+export function AssistantButton({ collapsed = false }: { collapsed?: boolean }) {
   const { status, open, setOpen } = useAssistantPanel();
   const button = (
-    <Button
-      variant={open ? "default" : "ghost"}
-      size="sm"
+    <button
+      type="button"
       aria-pressed={open}
+      aria-label={collapsed ? "AI 助手" : undefined}
       disabled={!status.enabled}
+      className={sidebarItemClass(open, collapsed)}
       onClick={() => setOpen(!open)}
     >
-      <Sparkles /> AI 助手
-    </Button>
+      <Sparkles />
+      {collapsed ? null : "AI 助手"}
+    </button>
   );
   const hint = status.enabled ? status.detail : status.message;
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        {status.enabled ? button : <span tabIndex={0}>{button}</span>}
+        {status.enabled ? button : <span tabIndex={0} className="block">{button}</span>}
       </TooltipTrigger>
-      <TooltipContent side="bottom">{hint}</TooltipContent>
+      <TooltipContent side="right">{collapsed ? `AI 助手 · ${hint}` : hint}</TooltipContent>
     </Tooltip>
   );
 }

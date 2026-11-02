@@ -3,10 +3,11 @@
 import * as React from "react";
 import { Moon, Sun } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
 import { applyTheme, type Theme } from "@/lib/theme";
+import { sidebarItemClass } from "./sidebar-item";
 
-export function ThemeToggle() {
+/** Sidebar row that flips between light and dark. */
+export function ThemeToggle({ collapsed = false }: { collapsed?: boolean }) {
   const [theme, setTheme] = React.useState<Theme | null>(null);
 
   React.useEffect(() => {
@@ -18,18 +19,22 @@ export function ThemeToggle() {
   }, []);
 
   const next: Theme = theme === "dark" ? "light" : "dark";
+  const label = next === "dark" ? "深色模式" : "浅色模式";
 
   return (
-    <Button
-      variant="ghost"
-      size="icon-sm"
-      aria-label={next === "dark" ? "切换到深色" : "切换到浅色"}
+    <button
+      type="button"
+      // Open, the visible text names it; folded to an icon, the label does.
+      aria-label={collapsed ? label : undefined}
+      title={collapsed ? label : undefined}
+      className={sidebarItemClass(false, collapsed)}
       onClick={() => {
         applyTheme(next);
         setTheme(next);
       }}
     >
       {theme === "dark" ? <Sun /> : <Moon />}
-    </Button>
+      {collapsed ? null : label}
+    </button>
   );
 }

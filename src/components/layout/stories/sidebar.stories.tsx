@@ -68,3 +68,17 @@ export const RunningCount: Story = {
 };
 
 export const Dark: Story = { globals: { theme: "dark" } };
+
+/** Folded to an icon rail: every page, the status and the controls stay one click away, named for screen readers. */
+export const Collapsed: Story = {
+  args: { collapsed: true },
+  decorators: [(Story) => <div className="h-full w-14"><Story /></div>],
+  parameters: { nextjs: { navigation: { pathname: "/runs" } } },
+  play: async ({ canvasElement }) => {
+    const nav = within(canvasElement).getByRole("navigation", { name: "主导航" });
+    await expect(within(nav).getByRole("link", { name: "运行记录" })).toHaveAttribute("aria-current", "page");
+    await expect(within(nav).getByRole("link", { name: "设置" })).toBeVisible();
+    await expect(within(nav).getByRole("button", { name: "展开导航栏" })).toBeVisible();
+    await expect(within(nav).getByRole("button", { name: /深色模式|浅色模式/ })).toBeVisible();
+  },
+};

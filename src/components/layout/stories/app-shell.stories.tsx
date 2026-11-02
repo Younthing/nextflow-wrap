@@ -17,15 +17,15 @@ const meta = {
 } satisfies Meta<typeof AppShell>;
 export default meta;
 type Story = StoryObj<typeof meta>;
+/** The sidebar carries the backend status; in the mocked build it says so inside the same badge. */
 export const Light: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const version = await canvas.findByText(new RegExp(`Nextflow ${NEXTFLOW_VERSION.replaceAll(".", "\\.")}`));
-    const simulated = canvas.getByText("模拟");
-    const versionBox = version.closest("[data-slot='badge']")?.getBoundingClientRect();
-    const simulatedBox = simulated.closest("[data-slot='badge']")?.getBoundingClientRect();
-    expect(versionBox && simulatedBox).toBeTruthy();
-    expect(Math.abs((versionBox?.top ?? 0) - (simulatedBox?.top ?? 0))).toBeLessThan(4);
+    const badge = version.closest("[data-slot='badge']");
+    expect(badge).toBeTruthy();
+    expect(badge?.textContent).toContain("模拟");
+    expect(within(canvas.getByRole("navigation", { name: "主导航" })).getByRole("button", { name: /深色模式|浅色模式/ })).toBeVisible();
   },
 };
 export const Dark: Story = { globals: { theme: "dark" } };
