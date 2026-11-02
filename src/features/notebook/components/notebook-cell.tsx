@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { Loader2, Play, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { ArrowDown, ArrowUp, Check, Eraser, Loader2, Pencil, Play, Trash2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import type { CellOutputModel } from "@/features/notebook/outputs";
+import { segmentsOf, type CellOutputModel } from "@/features/notebook/outputs";
 import type { NotebookCell, NotebookCellRole, NotebookLanguage } from "@/features/notebook/types";
 import { cn } from "@/lib/utils";
 import { CellOutputView } from "./cell-output";
@@ -22,6 +22,65 @@ export const CELL_ROLE_LABEL: Record<NotebookCellRole, string> = {
   explore: "自由探索",
 };
 
+const LANGUAGE_LABEL: Record<NotebookLanguage, string> = {
+  python: "Python",
+  r: "R",
+};
+
+function failed(output: CellOutputModel): boolean {
+  if (output.error) return true;
+  return segmentsOf(output).some((segment) => segment.outputType === "error");
+}
+
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${Math.max(0, Math.round(ms))}ms`;
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
+  return `${Math.floor(ms / 60_000)}m ${Math.round((ms % 60_000) / 1000)}s`;
+}
+
+function ToolbarButton({
+  label,
+  hint,
+  onClick,
+  disabled,
+  danger,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  onClick: () => void;
+  disabled?: boolean;
+  danger?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label={label}
+          disabled={disabled}
+          className={cn("size-7 rounded-sm text-muted-foreground hover:text-foreground", danger && "hover:text-destructive")}
+          onClick={(event) => {
+            event.stopPropagation();
+            onClick();
+          }}
+        >
+          {children}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{hint ?? label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+/**
+ * One notebook cell laid out like VS Code's Jupyter editor: a gutter with the
+ * run button and execution count, a bordered editor with its language in the
+ * corner, a floating toolbar on hover or selection, and outputs underneath.
+ */
 export function NotebookCellCard({
   cell,
   index,
@@ -31,11 +90,16 @@ export function NotebookCellCard({
   runDisabled,
   canDelete,
   output,
+  durationMs,
   onSelect,
   onRun,
   onChange,
   onRole,
   onDelete,
+  onMove,
+  onClearOutput,
+  canMoveUp = false,
+  canMoveDown = false,
   language,
   completionScope = "",
   deleteArmed = false,
@@ -55,11 +119,17 @@ export function NotebookCellCard({
   runDisabled: boolean;
   canDelete: boolean;
   output?: CellOutputModel;
+  /** Wall time of the last single-cell run, shown next to the status mark. */
+  durationMs?: number;
   onSelect: () => void;
   onRun: (intent: { advance: boolean }) => void;
   onChange: (source: string) => void;
   onRole: (role: NotebookCellRole) => void;
   onDelete: () => void;
+  onMove?: (delta: -1 | 1) => void;
+  onClearOutput?: () => void;
+  canMoveUp?: boolean;
+  canMoveDown?: boolean;
   language?: NotebookLanguage;
   completionScope?: string;
   deleteArmed?: boolean;
@@ -79,12 +149,17 @@ export function NotebookCellCard({
   const markdown = cell.role === "markdown";
   const [markdownEditing, setMarkdownEditing] = useState(false);
   const [menu, setMenu] = useState(false);
+  const [toolbarMenu, setToolbarMenu] = useState(false);
   const sourceRef = useRef<HTMLTextAreaElement>(null);
   const commandRef = useRef<HTMLButtonElement>(null);
   if ((readOnly || !selected) && markdownEditing) setMarkdownEditing(false);
   const showEditor = markdown && !readOnly && (markdownEditing || markdownOpen);
   const showPreview = markdown && !showEditor && (readOnly || cell.source.trim().length > 0);
   const highlighted = !markdown && language !== undefined;
+  const shownOutput = executable && output ? output : undefined;
+  const status = shownOutput && !showRunning ? (failed(shownOutput) ? "error" : "ok") : null;
+  const languageLabel = markdown ? "Markdown" : language ? LANGUAGE_LABEL[language] : "";
+  const raised = menu || toolbarMenu;
 
   useEffect(() => {
     if (markdown && markdownEditing) sourceRef.current?.focus();
@@ -99,6 +174,13 @@ export function NotebookCellCard({
     if (!commandFocusToken) return;
     commandRef.current?.focus();
   }, [commandFocusToken]);
+
+  const openMarkdown = () => {
+    if (readOnly) return;
+    onSelect();
+    onEnterEdit?.();
+    setMarkdownEditing(true);
+  };
 
   const handleSourceKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (onEditKey?.(event)) {
@@ -124,82 +206,122 @@ export function NotebookCellCard({
     if (onCommandKey?.(event)) event.preventDefault();
   };
 
+  const roleChip = cell.role !== "code" && cell.role !== "markdown";
+
   return (
     <article
       aria-label={`单元格 ${number}`}
       aria-current={selected ? "true" : undefined}
       data-selected={selected ? "true" : "false"}
-      className={cn(
-        "group/cell relative rounded-xl transition-colors",
-        menu ? "z-20 overflow-visible" : "overflow-hidden",
-        selected ? "bg-primary/[0.06] ring-1 ring-primary/35" : "hover:bg-accent/40",
-      )}
+      className={cn("group/cell relative flex", raised && "z-20")}
       onClick={(event) => {
         onSelect();
         const target = event.target;
         if (!(target instanceof Element)) return;
-        if (target.closest("textarea, input, button, a, select, [data-markdown-preview]")) return;
+        if (target.closest("textarea, input, button, a, select, [role=listbox], [data-markdown-preview]")) return;
         onEnterCommand?.();
       }}
     >
-      <span aria-hidden className={cn("absolute inset-y-2 left-0 w-1 rounded-full", selected ? "bg-primary" : "bg-transparent")} />
-      <div className="flex pl-1.5">
-        <div className="flex w-11 shrink-0 flex-col items-center gap-1 py-2">
-          {executable ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={showRunning ? `正在运行单元格 ${number}` : `运行单元格 ${number}`}
-                  disabled={!canRun}
-                  onClick={(event) => {
-                    event.stopPropagation();
+      {/* Selection bar: VS Code marks the focused cell with a strip on the left edge. */}
+      <span
+        aria-hidden
+        className={cn(
+          "absolute inset-y-0 left-0 w-0.5 rounded-full transition-colors",
+          selected ? "bg-primary" : "bg-transparent group-hover/cell:bg-border",
+        )}
+      />
+
+      <div className="flex w-12 shrink-0 flex-col items-center gap-0.5 pt-1">
+        {executable ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label={showRunning ? `正在运行单元格 ${number}` : `运行单元格 ${number}`}
+                disabled={!canRun}
+                className={cn(
+                  "size-7 rounded-sm transition-opacity",
+                  !selected && !showRunning && "opacity-0 group-hover/cell:opacity-100 focus-visible:opacity-100",
+                )}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onSelect();
+                  onRun({ advance: false });
+                }}
+              >
+                {showRunning ? <Loader2 className="animate-spin" /> : <Play />}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              运行单元格
+              <span className="ml-2 font-mono text-muted-foreground">Ctrl+Enter</span>
+            </TooltipContent>
+          </Tooltip>
+        ) : (
+          <span className="size-7" />
+        )}
+        <button
+          ref={commandRef}
+          type="button"
+          tabIndex={-1}
+          aria-label={`单元格 ${number} 命令模式`}
+          className={cn(
+            "rounded-sm font-mono text-[10px] leading-none text-muted-foreground outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+            !executable && "sr-only",
+            deleteArmed && selected && "text-destructive",
+          )}
+          onMouseDown={() => {
+            onSelect();
+            onEnterCommand?.();
+          }}
+          onKeyDown={handleCommandKeyDown}
+        >
+          {/* A persistent kernel numbers executions the way Jupyter does; blank until the cell runs. */}
+          {showRunning ? "[*]" : shownOutput?.executionCount !== undefined ? `[${shownOutput.executionCount}]` : "[ ]"}
+        </button>
+      </div>
+
+      <div className="relative min-w-0 flex-1 pr-1">
+        {!readOnly ? (
+          <div
+            role="toolbar"
+            aria-label={`单元格 ${number} 操作`}
+            className={cn(
+              "glass-strong absolute -top-4 right-3 z-10 flex items-center gap-0.5 rounded-md p-0.5 transition-opacity",
+              selected || toolbarMenu
+                ? "opacity-100"
+                : "pointer-events-none opacity-0 group-hover/cell:pointer-events-auto group-hover/cell:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100",
+            )}
+          >
+            {markdown && cell.source.trim().length > 0 ? (
+              showPreview ? (
+                <ToolbarButton label={`编辑单元格 ${number}`} hint="编辑（双击说明也可以）" onClick={openMarkdown}>
+                  <Pencil />
+                </ToolbarButton>
+              ) : (
+                <ToolbarButton
+                  label={`预览单元格 ${number}`}
+                  hint="完成编辑并预览"
+                  onClick={() => {
                     onSelect();
-                    onRun({ advance: false });
+                    setMarkdownEditing(false);
+                    onEnterCommand?.();
                   }}
                 >
-                  {showRunning ? <Loader2 className="animate-spin" /> : <Play />}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                运行此单元格并留在原地
-                <span className="ml-2 font-mono text-muted-foreground">Ctrl+Enter</span>
-              </TooltipContent>
-            </Tooltip>
-          ) : (
-            <span className="size-8" />
-          )}
-          <button
-            ref={commandRef}
-            type="button"
-            tabIndex={-1}
-            aria-label={`单元格 ${number} 命令模式`}
-            className={cn(
-              "rounded-sm font-mono text-[10px] leading-none text-muted-foreground outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
-              deleteArmed && selected && "text-destructive",
-            )}
-            onMouseDown={() => {
-              onSelect();
-              onEnterCommand?.();
-            }}
-            onKeyDown={handleCommandKeyDown}
-          >
-            {/* A persistent kernel numbers executions the way Jupyter does; otherwise show the position. */}
-            {showRunning ? "[*]" : `[${executable && output?.executionCount !== undefined ? output.executionCount : number}]`}
-          </button>
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex h-8 items-center gap-1.5 pr-2 text-xs text-muted-foreground">
-            <Select value={cell.role} disabled={readOnly} onValueChange={(role) => onRole(role as NotebookCellRole)}>
+                  <Check />
+                </ToolbarButton>
+              )
+            ) : null}
+            <Select
+              value={cell.role}
+              onValueChange={(role) => onRole(role as NotebookCellRole)}
+              onOpenChange={setToolbarMenu}
+            >
               <SelectTrigger
                 size="sm"
-                className={cn(
-                  "h-6 w-auto gap-1 border-transparent bg-transparent px-1.5 text-[11px] shadow-none hover:bg-accent",
-                  cell.role !== "code" && cell.role !== "markdown" && "bg-primary/10 text-primary",
-                  cell.role === "code" && !selected && "opacity-0 group-hover/cell:opacity-100 focus-visible:opacity-100",
-                )}
+                className="h-7 w-auto gap-1 border-transparent bg-transparent px-1.5 text-[11px] text-muted-foreground shadow-none hover:bg-accent hover:text-foreground"
                 aria-label={`单元格 ${number} 类型`}
                 onFocus={onSelect}
               >
@@ -211,118 +333,126 @@ export function NotebookCellCard({
                 ))}
               </SelectContent>
             </Select>
-            {deleteArmed && selected && <span role="status" className="text-destructive">再按 D 删除</span>}
-            {markdown && !readOnly && cell.source.trim().length > 0 && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="ml-auto"
-                aria-label={showPreview ? `编辑单元格 ${number}` : `预览单元格 ${number}`}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onSelect();
-                  if (showPreview) {
-                    onEnterEdit?.();
-                    setMarkdownEditing(true);
-                    return;
-                  }
-                  setMarkdownEditing(false);
-                  onEnterCommand?.();
-                }}
-              >
-                {showPreview ? "编辑" : "预览"}
-              </Button>
-            )}
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              aria-label={`删除单元格 ${number}`}
-              title="删除单元格（命令模式下按两次 D）"
-              className={cn(
-                "size-6 text-muted-foreground hover:text-destructive",
-                markdown && !readOnly && cell.source.trim().length > 0 ? undefined : "ml-auto",
-                !selected && "opacity-0 group-hover/cell:opacity-100 focus-visible:opacity-100",
-              )}
-              disabled={readOnly || !canDelete}
-              onClick={(event) => {
-                event.stopPropagation();
-                onDelete();
-              }}
+            {onMove ? (
+              <>
+                <ToolbarButton label={`上移单元格 ${number}`} disabled={!canMoveUp} onClick={() => onMove(-1)}>
+                  <ArrowUp />
+                </ToolbarButton>
+                <ToolbarButton label={`下移单元格 ${number}`} disabled={!canMoveDown} onClick={() => onMove(1)}>
+                  <ArrowDown />
+                </ToolbarButton>
+              </>
+            ) : null}
+            {onClearOutput && shownOutput ? (
+              <ToolbarButton label={`清除单元格 ${number} 输出`} onClick={onClearOutput}>
+                <Eraser />
+              </ToolbarButton>
+            ) : null}
+            <ToolbarButton
+              label={`删除单元格 ${number}`}
+              hint="删除单元格（命令模式下按两次 D）"
+              danger
+              disabled={!canDelete}
+              onClick={onDelete}
             >
               <Trash2 />
-            </Button>
+            </ToolbarButton>
           </div>
-          {showPreview ? (
-            <section
-              aria-label={`单元格 ${number} 说明预览`}
-              className="min-h-28 cursor-text px-3 py-2"
-              data-markdown-preview
-              onClick={(event) => {
-                if (readOnly) return;
-                const target = event.target;
-                if (target instanceof Element && target.closest("a, button, input")) return;
-                event.stopPropagation();
-                onSelect();
-                onEnterEdit?.();
-                setMarkdownEditing(true);
-              }}
-              onKeyDown={(event) => {
-                if (readOnly || event.target !== event.currentTarget) return;
-                if (event.key !== "Enter" && event.key !== " ") return;
-                event.preventDefault();
-                setMarkdownEditing(true);
-              }}
-              tabIndex={readOnly ? undefined : 0}
-            >
-              {cell.source.trim() ? (
-                <MarkdownView source={cell.source} />
-              ) : (
-                <p className="text-sm text-muted-foreground">空的说明。点击编辑。</p>
-              )}
-            </section>
-          ) : highlighted && language ? (
-            <div className="mr-3 rounded-lg border border-border bg-background/70">
-            <CellSourceEditor
-              cellId={cell.id}
-              value={cell.source}
-              language={language}
-              scope={completionScope}
-              disabled={readOnly}
-              label={`单元格 ${number} 源码`}
-              inputRef={sourceRef}
-              onChange={onChange}
-              onKeyDown={handleSourceKeyDown}
-              onFocus={() => {
-                onSelect();
-                onEnterEdit?.();
-              }}
-              onMenu={setMenu}
-            />
+        ) : null}
+
+        {showPreview ? (
+          <section
+            aria-label={`单元格 ${number} 说明预览`}
+            className={cn("min-h-10 rounded-md px-3 py-2", !readOnly && "cursor-default")}
+            data-markdown-preview
+            title={readOnly ? undefined : "双击编辑"}
+            onClick={() => onSelect()}
+            onDoubleClick={(event) => {
+              const target = event.target;
+              if (target instanceof Element && target.closest("a, button, input")) return;
+              event.stopPropagation();
+              openMarkdown();
+            }}
+            onKeyDown={(event) => {
+              if (readOnly || event.target !== event.currentTarget) return;
+              if (event.key !== "Enter" && event.key !== " ") return;
+              event.preventDefault();
+              setMarkdownEditing(true);
+            }}
+            tabIndex={readOnly ? undefined : 0}
+          >
+            {cell.source.trim() ? (
+              <MarkdownView source={cell.source} />
+            ) : (
+              <p className="text-sm text-muted-foreground">空的说明。</p>
+            )}
+          </section>
+        ) : (
+          <div
+            className={cn(
+              "relative rounded-md border bg-muted/30 transition-colors",
+              selected ? "border-border" : "border-border/70",
+              "focus-within:border-primary/60",
+            )}
+          >
+            {highlighted && language ? (
+              <CellSourceEditor
+                cellId={cell.id}
+                value={cell.source}
+                language={language}
+                scope={completionScope}
+                disabled={readOnly}
+                label={`单元格 ${number} 源码`}
+                inputRef={sourceRef}
+                onChange={onChange}
+                onKeyDown={handleSourceKeyDown}
+                onFocus={() => {
+                  onSelect();
+                  onEnterEdit?.();
+                }}
+                onMenu={setMenu}
+              />
+            ) : (
+              <Textarea
+                ref={sourceRef}
+                value={cell.source}
+                disabled={readOnly}
+                spellCheck={false}
+                placeholder={markdown ? "用 Markdown 写说明…" : undefined}
+                aria-label={`单元格 ${number} 源码`}
+                onFocus={() => {
+                  onSelect();
+                  if (!markdown) onEnterEdit?.();
+                }}
+                onChange={(event) => onChange(event.target.value)}
+                onKeyDown={handleSourceKeyDown}
+                className={cn(
+                  "min-h-16 rounded-md border-0 bg-transparent shadow-none focus-visible:ring-0",
+                  markdown ? "text-sm" : "font-mono text-xs",
+                )}
+              />
+            )}
+            <div className="pointer-events-none flex h-5 items-center gap-2 px-2.5 pb-1 text-[11px] text-muted-foreground">
+              {roleChip ? <span className="rounded-sm bg-primary/10 px-1.5 text-primary">{CELL_ROLE_LABEL[cell.role]}</span> : null}
+              {deleteArmed && selected ? <span role="status" className="text-destructive">再按 D 删除</span> : null}
+              <span className="ml-auto">{languageLabel}</span>
             </div>
-          ) : (
-            <Textarea
-              ref={sourceRef}
-              value={cell.source}
-              disabled={readOnly}
-              spellCheck={false}
-              aria-label={`单元格 ${number} 源码`}
-              onFocus={() => {
-                onSelect();
-                if (!markdown) onEnterEdit?.();
-              }}
-              onChange={(event) => onChange(event.target.value)}
-              onKeyDown={handleSourceKeyDown}
-              className={cn(
-                "min-h-28 rounded-none border-0 bg-transparent shadow-none",
-                markdown ? "text-sm" : "font-mono text-xs",
-              )}
-            />
-          )}
-          {executable && output && <div className="mr-3 pb-1"><CellOutputView output={output} /></div>}
-          {!output || !executable ? <div className="h-2" aria-hidden /> : null}
-        </div>
+          </div>
+        )}
+
+        {shownOutput ? (
+          <div className="relative mt-1">
+            <div className="absolute top-2 -left-12 flex w-12 flex-col items-center gap-0.5 text-[10px] leading-none text-muted-foreground">
+              {status === "ok" ? (
+                <Check className="size-3.5 text-success" aria-label="运行成功" />
+              ) : status === "error" ? (
+                <X className="size-3.5 text-destructive" aria-label="运行出错" />
+              ) : null}
+              {status && durationMs !== undefined ? <span className="font-mono">{formatDuration(durationMs)}</span> : null}
+            </div>
+            <CellOutputView output={shownOutput} />
+          </div>
+        ) : null}
       </div>
     </article>
   );

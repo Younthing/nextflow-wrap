@@ -135,7 +135,7 @@ export const MarkdownPreview: Story = {
     await expect(within(preview).getByRole("link", { name: "站点" })).toHaveAttribute("href", "https://example.com");
     await expect(preview).not.toHaveTextContent("javascript:");
 
-    await userEvent.click(within(preview).getByRole("heading", { name: "结果" }));
+    await userEvent.dblClick(within(preview).getByRole("heading", { name: "结果" }));
     const source = canvas.getByRole("textbox", { name: "单元格 1 源码" });
     await expect(source).toHaveValue(markdownSource);
 

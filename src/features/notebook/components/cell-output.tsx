@@ -38,10 +38,10 @@ function OutputSegment({ segment }: { segment: CellOutput }) {
 export function CellOutputView({ output }: { output: CellOutputModel }) {
   const segments = segmentsOf(output);
   if (segments.length === 0) {
-    return <div className="border-t border-border px-3 py-2 font-mono text-xs text-muted-foreground">（无输出）</div>;
+    return <div className="px-3 py-1.5 font-mono text-xs text-muted-foreground">（无输出）</div>;
   }
   return (
-    <div className="grid gap-2 border-t border-border px-3 py-2">
+    <div className="grid gap-2 px-3 py-1.5">
       {segments.map((segment, index) => (
         <OutputSegment key={index} segment={segment} />
       ))}
