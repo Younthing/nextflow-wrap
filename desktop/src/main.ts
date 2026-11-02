@@ -8,7 +8,7 @@ import { ConnectionError, readConnection, type Connection } from "../../src/feat
 import { readProjectMenuState } from "../../src/features/desktop/project-menu";
 import { SESSION_COOKIE } from "../../src/features/desktop/session-guard";
 import { parseEnvBlock, quitPrompt, RestartTracker, SHELL_ENV_KEYS } from "../../src/features/desktop/supervisor";
-import type { DesktopMenuAction, DesktopNotification, PickPathOptions, ProjectMenuState } from "../../src/lib/desktop";
+import type { DesktopMenuAction, DesktopNotification, ProjectMenuState } from "../../src/lib/desktop";
 import { freePort, installWsl, startBackend, waitForHealth, wslDistros, type BackendContext, type RunningBackend } from "./backends";
 import { connectionToken, loadConnections, rememberLast, removeConnection, saveConnection } from "./connection-store";
 import { setupUpdates } from "./updates";
@@ -283,7 +283,6 @@ function buildAppMenu() {
         : [{ label: "还没有项目", enabled: false }],
     },
     { type: "separator" },
-    { label: mac ? "在 Finder 中显示" : "在文件管理器中显示", enabled: Boolean(current && backend?.paths.toLocal(current.path)), click: () => { const local = current && backend?.paths.toLocal(current.path); if (local && existsSync(local)) shell.showItemInFolder(local); } },
     { label: "关闭项目", enabled: Boolean(current), click: () => sendMenu({ type: "close-project" }) },
     { type: "separator" },
     { label: backend ? `切换后端…（当前：${backend.info.label}）` : "连接后端…", click: () => void switchBackend() },
@@ -318,35 +317,6 @@ function buildAppMenu() {
 }
 
 function registerIpc() {
-  ipcMain.handle("studio:pick-path", async (_event, options: PickPathOptions) => {
-    const paths = backend?.paths;
-    if (!paths || !backend?.info.nativePaths) return [];
-    const result = await dialog.showOpenDialog(mainWindow!, {
-      title: options.title,
-      defaultPath: options.defaultPath ? paths.toLocal(options.defaultPath) : undefined,
-      properties: [options.kind === "directory" ? "openDirectory" : "openFile", ...(options.multiple ? ["multiSelections" as const] : []), "showHiddenFiles"],
-      filters: options.kind === "file" && options.extensions?.length ? [{ name: options.extensions.join(", "), extensions: options.extensions }, { name: "所有文件", extensions: ["*"] }] : undefined,
-    });
-    if (result.canceled) return [];
-    const mapped = result.filePaths.map((path) => paths.toServer(path));
-    // A Windows folder outside WSL's reach (a network share) has no path inside the distro.
-    if (mapped.some((path) => path === undefined)) {
-      void dialog.showMessageBox(mainWindow!, { type: "warning", message: "服务端无法访问这个位置", detail: result.filePaths.join("\n") });
-    }
-    return mapped.filter((path): path is string => Boolean(path));
-  });
-  ipcMain.handle("studio:show-item", (_event, path: string) => {
-    const local = typeof path === "string" ? backend?.paths.toLocal(path) : undefined;
-    if (local && existsSync(local)) shell.showItemInFolder(local);
-  });
-  ipcMain.handle("studio:open-path", (_event, path: string) => {
-    const local = typeof path === "string" ? backend?.paths.toLocal(path) : undefined;
-    return local ? shell.openPath(local) : "这台电脑上打不开这个路径";
-  });
-  ipcMain.on("studio:backend", (event) => {
-    const connection = backend?.connection;
-    event.returnValue = backend ? { ...backend.info, ...(connection?.kind === "wsl" ? { distro: connection.distro } : {}) } : null;
-  });
   ipcMain.on("studio:notify", (_event, notification: DesktopNotification) => {
     if (!Notification.isSupported()) return;
     const native = new Notification({ title: notification.title, body: notification.body });

@@ -1,24 +1,22 @@
 "use client";
 
 import Link from "next/link";
-import { ClipboardCopy, ExternalLink, FolderSearch, NotebookText, Workflow } from "lucide-react";
+import { ClipboardCopy, NotebookText, Workflow } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { useModuleCatalog } from "@/features/workflow/queries";
 import type { WorkflowDoc } from "@/features/workflow/types";
-import { nativeFiles } from "@/lib/desktop";
 import { toast } from "@/lib/toast";
 import { notebookSnippet, traceResult } from "../trace";
 import type { ResultFile, TaskRecord } from "../types";
 
 /**
  * Under a result preview: which node, module version and notebook revision produced the file, and actions that
- * take it further (Finder, the default app, a snippet that loads it in a notebook).
+ * take it further (a snippet that loads it in a notebook).
  */
 export function ResultSource({ file, fullPath, workflow, tasks }: { file: ResultFile; fullPath: string; workflow?: WorkflowDoc; tasks: TaskRecord[] }) {
   const catalog = useModuleCatalog();
   const source = workflow ? traceResult(file, workflow, catalog.data?.index, tasks) : undefined;
-  const bridge = nativeFiles();
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground" aria-label="结果来源">
       {source && (
@@ -42,16 +40,6 @@ export function ResultSource({ file, fullPath, workflow, tasks }: { file: Result
         </>
       )}
       <span className="ml-auto flex gap-1">
-        {bridge && (
-          <>
-            <Button size="sm" variant="ghost" className="h-7" onClick={() => void bridge.showItemInFolder(fullPath)}>
-              <FolderSearch />{bridge.platform === "darwin" ? "在 Finder 中显示" : "在文件夹中显示"}
-            </Button>
-            <Button size="sm" variant="ghost" className="h-7" onClick={() => void bridge.openPath(fullPath).then((error) => { if (error) toast.error(error); })}>
-              <ExternalLink />用默认程序打开
-            </Button>
-          </>
-        )}
         <Button
           size="sm"
           variant="ghost"

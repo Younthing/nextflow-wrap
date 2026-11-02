@@ -30,7 +30,7 @@ export const BrowseOnWeb: Story = {
 
 /** In a browser (or with a remote backend) a dropped file is uploaded to the project's data/ and its server path filled in. */
 export const DropUploadsOnWeb: Story = {
-  args: { upload: true },
+  args: { workspace: true },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const field = canvas.getByLabelText("输入文件");
@@ -43,7 +43,7 @@ export const DropUploadsOnWeb: Story = {
 
 /** Pasting a file into the field uploads it too; pasted text is left to the input. */
 export const PasteUploadsOnWeb: Story = {
-  args: { upload: true },
+  args: { workspace: true },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const field = canvas.getByLabelText("输入文件");

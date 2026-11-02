@@ -4,28 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { windowsToWsl, wslPaths, wslToWindows } from "./backend-paths";
 import {
   installCommand, needsInstall, parseProbe, STOP_SCRIPT, parseWslList, PROBE_SCRIPT, readConnection, readStore, serverArch, serverPackageName,
   SSH_START_SCRIPT, sshArgs,
 } from "./connections";
 import { parseReadyLine } from "@/features/server/serve-config";
-
-describe("WSL paths", () => {
-  it("maps drives and the distro's own files both ways", () => {
-    expect(windowsToWsl("C:\\Users\\me\\reads.fq", "Ubuntu")).toBe("/mnt/c/Users/me/reads.fq");
-    expect(windowsToWsl("D:\\", "Ubuntu")).toBe("/mnt/d");
-    expect(windowsToWsl("\\\\wsl.localhost\\Ubuntu\\home\\me\\data", "ubuntu")).toBe("/home/me/data");
-    expect(windowsToWsl("\\\\wsl$\\Ubuntu\\home\\me\\", "Ubuntu")).toBe("/home/me");
-    expect(windowsToWsl("\\\\wsl.localhost\\Debian\\home\\me", "Ubuntu")).toBeUndefined();
-    expect(windowsToWsl("\\\\nas\\share\\x", "Ubuntu")).toBeUndefined();
-    expect(wslToWindows("/mnt/c/Users/me/reads.fq", "Ubuntu")).toBe("C:\\Users\\me\\reads.fq");
-    expect(wslToWindows("/home/me/proj", "Ubuntu")).toBe("\\\\wsl.localhost\\Ubuntu\\home\\me\\proj");
-    expect(wslToWindows("relative/path", "Ubuntu")).toBeUndefined();
-    const map = wslPaths("Ubuntu");
-    expect(map.toServer(map.toLocal("/home/me/a b.txt")!)).toBe("/home/me/a b.txt");
-  });
-});
 
 describe("connections", () => {
   it("accepts the four kinds and fills labels", () => {

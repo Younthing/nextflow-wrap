@@ -16,7 +16,6 @@ import { useHealthStatus } from "@/features/runs/queries";
 import { displayPath, filterProjects, openedLabel } from "@/features/workspace/projects";
 import { useCreateProject, useForgetProject, useOpenProject, useProjects, useReopenProject } from "@/features/workspace/queries";
 import type { CreateProjectRequest, Project } from "@/features/workspace/types";
-import { nativeDialogs, nativeFiles } from "@/lib/desktop";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import { NewProjectDialog } from "./new-project-dialog";
@@ -31,14 +30,11 @@ export interface WelcomeViewProps {
   onOpenDirectory: () => void;
   onOpen: (project: Project) => void;
   onForget: (project: Project) => void;
-  /** Desktop only: a folder dragged in from the file manager. */
-  onDropPath?: (path: string) => void;
 }
 
 /** Presentational welcome page: actions on the left, recent projects on the right. */
-export function WelcomeView({ projects, home, environment, busyId, onNew, onOpenDirectory, onOpen, onForget, onDropPath }: WelcomeViewProps) {
+export function WelcomeView({ projects, home, environment, busyId, onNew, onOpenDirectory, onOpen, onForget }: WelcomeViewProps) {
   const [query, setQuery] = React.useState("");
-  const [dragging, setDragging] = React.useState(false);
   const visible = filterProjects(projects, query);
   const example = projects.find((project) => project.example);
   const actionClass = "flex w-full items-center gap-3 rounded-xl border border-glass-border bg-glass px-3.5 py-3 text-left text-sm transition-colors hover:bg-glass-strong focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-none disabled:opacity-60 [&_svg]:size-[18px] [&_svg]:shrink-0";
@@ -76,21 +72,7 @@ export function WelcomeView({ projects, home, environment, busyId, onNew, onOpen
       </aside>
 
       <main
-        className={cn("glass flex min-w-0 flex-1 flex-col gap-4 rounded-2xl px-8 py-9", dragging && "ring-2 ring-primary/60")}
-        onDragOver={(event) => {
-          if (!onDropPath || !event.dataTransfer.types.includes("Files")) return;
-          event.preventDefault();
-          setDragging(true);
-        }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={(event) => {
-          setDragging(false);
-          const file = event.dataTransfer.files[0];
-          if (!onDropPath || !file) return;
-          event.preventDefault();
-          const path = nativeFiles()?.pathForFile(file);
-          if (path) onDropPath(path);
-        }}
+        className="glass flex min-w-0 flex-1 flex-col gap-4 rounded-2xl px-8 py-9"
       >
         <div className="flex flex-wrap items-center gap-3">
           <h2 className="font-serif text-xl font-bold">最近的项目</h2>
@@ -137,12 +119,6 @@ export function WelcomeView({ projects, home, environment, busyId, onNew, onOpen
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    {nativeFiles() ? (
-                      <DropdownMenuItem onSelect={() => void nativeFiles()?.showItemInFolder(project.path)}>
-                        <FolderOpen />
-                        在文件管理器中显示
-                      </DropdownMenuItem>
-                    ) : null}
                     <DropdownMenuItem onSelect={() => onForget(project)}>
                       <Trash2 />
                       从列表移除
@@ -175,12 +151,6 @@ export function WelcomePage() {
   const enter = () => router.push("/workbench");
   const fail = (error: Error) => toast.error(error.message);
 
-  const openDirectory = async () => {
-    const bridge = nativeDialogs();
-    if (!bridge) { setBrowsing(true); return; }
-    const [picked] = await bridge.pickPath({ kind: "directory", title: "打开目录作为项目" });
-    if (picked) openPath.mutate(picked, { onSuccess: enter, onError: fail });
-  };
 
   if (projects.isPending) return <PanelLoading />;
   const environment = health.data
@@ -194,13 +164,12 @@ export function WelcomePage() {
         environment={environment}
         busyId={reopen.isPending ? reopen.variables : undefined}
         onNew={() => { create.reset(); setCreating(true); }}
-        onOpenDirectory={() => void openDirectory()}
+        onOpenDirectory={() => setBrowsing(true)}
         onOpen={(project) => reopen.mutate(project.id, { onSuccess: enter, onError: fail })}
         onForget={(project) => forget.mutate(project.id, {
           onSuccess: () => toast.info(`已从列表移除「${project.name}」，文件夹还在 ${project.path}`),
           onError: fail,
         })}
-        onDropPath={nativeFiles() ? (path) => openPath.mutate(path, { onSuccess: enter, onError: fail }) : undefined}
       />
       <NewProjectDialog
         open={creating}

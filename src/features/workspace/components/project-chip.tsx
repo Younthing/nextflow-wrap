@@ -6,7 +6,6 @@ import { ChevronDown, FolderOpen, LogOut } from "lucide-react";
 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useCloseProject, useCurrentProject } from "@/features/workspace/queries";
-import { nativeFiles } from "@/lib/desktop";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import { ProjectBadge } from "./project-badge";
@@ -34,7 +33,6 @@ export function ProjectChip({ collapsed = false }: { collapsed?: boolean }) {
       </Link>
     );
   }
-  const bridge = nativeFiles();
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -57,12 +55,6 @@ export function ProjectChip({ collapsed = false }: { collapsed?: boolean }) {
           <span className="block truncate font-mono text-[11px]" title={project.path}>{project.path}</span>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        {bridge ? (
-          <DropdownMenuItem onSelect={() => void bridge.showItemInFolder(project.path)}>
-            <FolderOpen />
-            在文件管理器中显示
-          </DropdownMenuItem>
-        ) : null}
         <DropdownMenuItem
           onSelect={() => close.mutate(undefined, {
             onSuccess: () => router.push("/"),

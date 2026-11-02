@@ -73,6 +73,6 @@ center_x, center_y, center_z, size, exhaustiveness = 0, 0, 0, 18, 8
 
 - `scores.csv`：每个配体的最佳结合能（kcal/mol，越低越好）。
 - `best_pose.pdbqt` / `poses.pdbqt`：在 Mol* 3D 视图中打开，拖动旋转、滚轮缩放。
-- 在桌面版里「在 Finder 中显示」可以把构象交给 PyMOL、ChimeraX 等工具。
+- 下载构象文件后可以交给 PyMOL、ChimeraX 等工具。
 
 换一批配体只需要改 `ligands.csv` 后点「续跑」：受体网格不变，已对接过的配体会命中缓存。

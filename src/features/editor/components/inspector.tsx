@@ -156,7 +156,7 @@ function BuiltinSettings({ node, def }: { node: FlowNode; def: ModuleDef }) {
       <Section title={folder ? "文件夹输入" : "文件输入"}>
         <FormField label={folder ? "文件夹" : "文件"} htmlFor="input-path" hint={`流程参数 --${inputParamName(node.data.alias)}，由别名决定`}>
           <PathInput
-          upload
+          workspace
             id="input-path"
             kind={folder ? "directory" : "file"}
             value={String(settings.path ?? "")}

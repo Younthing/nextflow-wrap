@@ -4,7 +4,6 @@ import { createServer } from "node:net";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 
-import { noPaths, sharedPaths, wslPaths, type PathMap } from "../../src/features/desktop/backend-paths";
 import {
   type Connection, ConnectionError, installCommand, needsInstall, parseProbe, parseWslList, PROBE_SCRIPT, serverArch,
   serverPackageName, SSH_START_SCRIPT, sshArgs, STOP_SCRIPT, WSL_SERVE_COMMAND,
@@ -12,18 +11,16 @@ import {
 import { SESSION_HEADER } from "../../src/features/desktop/session-guard";
 import { parseReadyLine, type ReadyLine } from "../../src/features/server/serve-config";
 import { API_VERSION, type HealthStatus } from "../../src/lib/api-types";
-import type { DesktopBackend } from "../../src/lib/desktop";
 
 /**
  * A server the window can talk to, started or reached through one `Connection`. The shell only needs its origin
- * and token, how paths map between this computer and the server, and how to let it go.
+ * and token, and how to let it go: files are always the server's, whichever kind of backend it is.
  */
 export interface RunningBackend {
   connection: Connection;
   origin: string;
   token: string;
-  info: DesktopBackend;
-  paths: PathMap;
+  info: { kind: Connection["kind"]; label: string };
   /** The server stops when the app quits (local, WSL); a remote one keeps running. */
   stopsWithApp: boolean;
   /** Called once if the backend goes away on its own (WSL exits, the tunnel cannot be restored). */
@@ -208,8 +205,7 @@ async function startWsl(connection: Extract<Connection, { kind: "wsl" }>, contex
     connection,
     origin,
     token: ready.token,
-    info: { kind: "wsl", label: connection.label, nativePaths: true },
-    paths: wslPaths(distro),
+    info: { kind: "wsl", label: connection.label },
     stopsWithApp: true,
     onLost: (listener) => { lost.push(listener); },
     stop: async () => {
@@ -278,8 +274,7 @@ async function startSsh(connection: Extract<Connection, { kind: "ssh" }>, contex
     connection,
     origin,
     token: ready.token,
-    info: { kind: "ssh", label: connection.label, nativePaths: false },
-    paths: noPaths,
+    info: { kind: "ssh", label: connection.label },
     stopsWithApp: false,
     onLost: (listener) => { lost.push(listener); },
     // The server keeps running on the remote machine (kernels, runs); only the tunnel closes.
@@ -298,8 +293,7 @@ async function attachUrl(connection: Extract<Connection, { kind: "url" }>, token
     connection,
     origin: connection.url,
     token,
-    info: { kind: "url", label: connection.label, nativePaths: false },
-    paths: noPaths,
+    info: { kind: "url", label: connection.label },
     stopsWithApp: false,
     onLost: () => {},
     stop: async () => {},
@@ -315,7 +309,7 @@ export async function startBackend(connection: Connection, context: BackendConte
     case "local": {
       if (process.platform === "win32") throw new ConnectionError("Windows 上请用 WSL 或远程服务器运行服务端");
       const local = await options.startLocal(context);
-      return { connection, ...local, info: { kind: "local", label: connection.label, nativePaths: true }, paths: sharedPaths, stopsWithApp: true, onLost: () => {} };
+      return { connection, ...local, info: { kind: "local", label: connection.label }, stopsWithApp: true, onLost: () => {} };
     }
     case "wsl": return startWsl(connection, context);
     case "ssh": return startSsh(connection, context);

@@ -2,16 +2,15 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ChevronRight, File, Folder, Loader2, NotebookText, Plus, RefreshCw } from "lucide-react";
+import { ChevronRight, File, Folder, Loader2, NotebookText, Plus, RefreshCw, Upload } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { Button } from "@/components/ui/button";
-import { useFsListing } from "@/features/files/queries";
+import { useFileIntake, useFsListing } from "@/features/files/queries";
 import type { FsEntry } from "@/features/files/types";
 import type { NotebookSummary } from "@/features/notebook/types";
 import { formatBytes } from "@/features/runs/format";
 import type { Project } from "@/features/workspace/types";
-import { nativeFiles } from "@/lib/desktop";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 
@@ -62,9 +61,8 @@ function Listing({ project, path, depth }: { project: Project; path: string; dep
               type="button"
               className={rowClass}
               style={{ paddingLeft: `${26 + depth * 14}px` }}
-              title={`${relativeToProject(project, entry.path)} · ${formatBytes(entry.size)}\n单击复制完整路径${nativeFiles() ? "，双击用默认程序打开" : ""}`}
+              title={`${relativeToProject(project, entry.path)} · ${formatBytes(entry.size)}\n单击复制完整路径`}
               onClick={() => copyPath(project, entry)}
-              onDoubleClick={() => { void nativeFiles()?.openPath(entry.path); }}
             >
               <File className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
               <span className="truncate">{entry.name}</span>
@@ -93,6 +91,9 @@ export function WorkbenchFiles({
   onCreate: () => void;
 }) {
   const qc = useQueryClient();
+  const intake = useFileIntake();
+  const fileInput = React.useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = React.useState(false);
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-center gap-1 px-2 pb-1">
@@ -123,11 +124,36 @@ export function WorkbenchFiles({
 
       <div className="mt-4 flex items-center gap-1 px-2 pb-1">
         <h2 className="text-[11px] font-bold tracking-[0.1em] text-muted-foreground">文件</h2>
-        <Button type="button" size="icon-sm" variant="ghost" className="ml-auto size-6" aria-label="刷新文件" onClick={() => void qc.invalidateQueries({ queryKey: ["fs"] })}>
+        <Button type="button" size="icon-sm" variant="ghost" className="ml-auto size-6" aria-label="上传到 data/" title="上传到 data/" onClick={() => fileInput.current?.click()}>
+          <Upload />
+        </Button>
+        <input
+          ref={fileInput}
+          type="file"
+          multiple
+          hidden
+          aria-label="选择要上传的文件"
+          onChange={(event) => {
+            if (event.target.files?.length) void intake(event.target.files);
+            event.target.value = "";
+          }}
+        />
+        <Button type="button" size="icon-sm" variant="ghost" className="size-6" aria-label="刷新文件" onClick={() => void qc.invalidateQueries({ queryKey: ["fs"] })}>
           <RefreshCw />
         </Button>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-1 pb-2">
+      {/* The workspace is where notebooks and workflows read files: drop files or folders here to upload them. */}
+      <div
+        className={cn("min-h-0 flex-1 overflow-y-auto rounded-md px-1 pb-2", dragging && "ring-2 ring-primary/60")}
+        onDragOver={(event) => { if (event.dataTransfer.types.includes("Files")) { event.preventDefault(); setDragging(true); } }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={(event) => {
+          setDragging(false);
+          if (!event.dataTransfer.files.length) return;
+          event.preventDefault();
+          void intake(event.dataTransfer);
+        }}
+      >
         <Listing project={project} path={project.path} depth={0} />
       </div>
     </div>

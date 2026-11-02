@@ -7,9 +7,8 @@ import { toast } from "@/lib/toast";
 import { formatBytes } from "@/features/runs/format";
 import { projectsQuery } from "@/features/workspace/queries";
 import { api } from "@/lib/api";
-import { nativeFiles } from "@/lib/desktop";
 import type { FsListing } from "./types";
-import { collectItems, uploadItems } from "./upload";
+import { collectItems, uploadItems, type UploadItem } from "./upload";
 
 export function useFsListing(path: string | undefined, enabled: boolean) {
   return useQuery({
@@ -24,29 +23,18 @@ export function useFsListing(path: string | undefined, enabled: boolean) {
 export interface IntakePath { path: string; folder: boolean }
 
 /**
- * Turns dropped or pasted files into server paths. With native paths (desktop app, server on this computer or in
- * WSL) the files are used where they are; otherwise they are uploaded into the open project's `data/`.
+ * Uploads dropped, pasted or chosen files (folders included) into the open project's `data/`, and returns their
+ * paths on the server. The same everywhere: a browser, or the desktop app with any backend, never reads this
+ * computer's paths. As in ComfyUI's upload, a taken name gets a ` (1)` suffix.
  *
  * Call `intake` synchronously inside the drop or paste handler: the browser empties the transfer afterwards.
  */
 export function useFileIntake() {
   const qc = useQueryClient();
-  return React.useCallback((transfer: DataTransfer, options: { upload?: boolean } = {}): Promise<IntakePath[]> => {
-    const bridge = nativeFiles();
-    if (bridge) {
-      const native = Array.from(transfer.items).filter((item) => item.kind === "file").flatMap((item) => {
-        const file = item.getAsFile();
-        const path = file ? bridge.pathForFile(file) : undefined;
-        return path ? [{ path, folder: item.webkitGetAsEntry?.()?.isDirectory === true }] : [];
-      });
-      if (native.length) return Promise.resolve(native);
-    }
-    // Settings and other configuration need a path that already exists on the server, not a copy in data/.
-    if (options.upload === false) {
-      if (transfer.files.length) toast.warning("这里需要服务端上的路径，请点浏览选择");
-      return Promise.resolve([]);
-    }
-    const collected = collectItems(transfer);
+  return React.useCallback((source: DataTransfer | FileList): Promise<IntakePath[]> => {
+    const collected = source instanceof FileList
+      ? Promise.resolve(Array.from(source).map((file): UploadItem => ({ name: file.name, kind: "file", files: [{ path: "", file }] })))
+      : collectItems(source);
     return (async () => {
       const items = (await collected).filter((item) => item.kind === "directory" || item.files.length);
       if (!items.length) return [];
@@ -63,6 +51,7 @@ export function useFileIntake() {
           progress.update(`上传 ${label} · ${formatBytes(loaded)} / ${formatBytes(total)}`);
         });
         progress.success(`已上传到 data/：${uploaded.map((item) => item.path.slice(item.path.lastIndexOf("/") + 1)).join("、")}`);
+        void qc.invalidateQueries({ queryKey: ["fs"] });
         return uploaded.map((item) => ({ path: item.path, folder: item.kind === "directory" }));
       } catch (error) {
         progress.error(error instanceof Error ? error.message : "上传失败");

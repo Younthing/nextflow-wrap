@@ -233,7 +233,7 @@ function InputNodeBody({ id, def, data }: { id: string; def: ModuleDef; data: Fl
     <>
       <div className="nodrag grid gap-1.5 px-3 pt-2.5 pb-1">
         <PathInput
-          upload
+          workspace
           kind={folder ? "directory" : "file"}
           value={path}
           placeholder={folder ? "选择文件夹…" : "选择文件…"}

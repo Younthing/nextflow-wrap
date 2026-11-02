@@ -1,17 +1,3 @@
-/**
- * What the Electron preload script exposes as `window.studioDesktop`. In a plain browser it is absent and every
- * helper here falls back to what the web page can do on its own.
- */
-export interface PickPathOptions {
-  kind: "file" | "directory";
-  title?: string;
-  /** Start in this folder or next to this file. */
-  defaultPath?: string;
-  /** File name extensions without dots, e.g. `["h5ad", "loom"]`. */
-  extensions?: string[];
-  multiple?: boolean;
-}
-
 export interface DesktopNotification { title: string; body: string; runId?: string }
 
 /** What the File menu lists. The page sends it whenever the project list changes. */
@@ -30,27 +16,13 @@ export type DesktopMenuAction =
   | { type: "toggle-panel"; panel: "nav" | "explorer" };
 
 /**
- * Where the server this window talks to runs. `nativePaths` is false when paths on this computer mean nothing to
- * the server (a remote machine): native dialogs, dropped-file paths and "show in folder" are then unavailable and
- * the page browses the server and uploads instead. WSL maps paths both ways, so it keeps them.
+ * What the Electron preload script exposes as `window.studioDesktop`: the parts of the app that belong to the
+ * desktop window itself (menu, notifications, menu bar run count). Files never go through it: the server owns them,
+ * pickers browse the server and dropped files are uploaded, the same in a browser and in every kind of backend.
  */
-export interface DesktopBackend {
-  kind: "local" | "wsl" | "ssh" | "url";
-  label: string;
-  nativePaths: boolean;
-}
-
 export interface StudioDesktop {
   version: string;
   platform: string;
-  /** Missing in shells from before remote backends; those always run the server locally. */
-  backend?: DesktopBackend;
-  /** Native open dialog. Resolves to absolute paths, empty when cancelled. */
-  pickPath: (options: PickPathOptions) => Promise<string[]>;
-  /** Absolute path of a file dragged in from Finder or a file manager. */
-  pathForFile: (file: File) => string | undefined;
-  showItemInFolder: (path: string) => Promise<void>;
-  openPath: (path: string) => Promise<string>;
   notify: (notification: DesktopNotification) => void;
   /** Running-run count shown in the menu bar / tray and used by the quit prompt. */
   setActiveRuns: (count: number) => void;
@@ -67,21 +39,3 @@ declare global {
 export const desktop = (): StudioDesktop | undefined => (typeof window === "undefined" ? undefined : window.studioDesktop);
 export const isDesktop = () => desktop() !== undefined;
 
-/**
- * The bridge, when this computer's paths can be turned into server paths and back: real paths of dropped files,
- * show in folder and open with the default app. True for a local server and for WSL; `undefined` in a browser and
- * for a remote backend (drops are uploaded there).
- */
-export const nativeFiles = (): StudioDesktop | undefined => {
-  const bridge = desktop();
-  return bridge && bridge.backend?.nativePaths !== false ? bridge : undefined;
-};
-
-/**
- * The bridge, when choosing a server path (a Python, a project folder, a key file) can use the native dialog:
- * only when the server runs on this computer. Everywhere else, picking a path browses the server itself.
- */
-export const nativeDialogs = (): StudioDesktop | undefined => {
-  const bridge = desktop();
-  return bridge && (!bridge.backend || bridge.backend.kind === "local") ? bridge : undefined;
-};

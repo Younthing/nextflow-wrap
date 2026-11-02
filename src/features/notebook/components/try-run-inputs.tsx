@@ -167,7 +167,7 @@ function PortBinding({
 
       {draft.source === "path" && file && (
         <PathInput
-          upload
+          workspace
           id={`arg-${input.name}`}
           aria-label={`${input.name} 路径`}
           value={draft.path}

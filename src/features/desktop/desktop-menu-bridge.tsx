@@ -9,7 +9,7 @@ import { useFsListing } from "@/features/files/queries";
 import { NewProjectDialog } from "@/features/workspace/components/new-project-dialog";
 import { useCloseProject, useCreateProject, useOpenProject, useProjects, useReopenProject } from "@/features/workspace/queries";
 import type { CreateProjectRequest } from "@/features/workspace/types";
-import { desktop, nativeDialogs, type DesktopMenuAction } from "@/lib/desktop";
+import { desktop, type DesktopMenuAction } from "@/lib/desktop";
 import { toast } from "@/lib/toast";
 import { useIsDesktop } from "@/lib/use-desktop";
 import { projectMenuState } from "./project-menu";
@@ -50,11 +50,8 @@ function MenuBridge() {
         setCreating(true);
         return;
       case "open-folder": {
-        // Unless the server runs on this computer, the folder is chosen on the server.
-        const bridge = nativeDialogs();
-        if (!bridge) { setBrowsing(true); return; }
-        const [picked] = await bridge.pickPath({ kind: "directory", title: "打开目录作为项目" });
-        if (picked) openPath.mutate(picked, { onSuccess: enter, onError: fail });
+        // The folder is chosen on the server, like everywhere else.
+        setBrowsing(true);
         return;
       }
       case "open-project":

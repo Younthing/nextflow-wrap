@@ -7,7 +7,7 @@ Electron 外壳。服务端（界面、`/api`、笔记本内核和 Nextflow runn
 | 连接 | 服务端在哪 | 说明 |
 | ---- | ---- | ---- |
 | 本机 | 这台电脑 | 下表的 web 和 runner 由主进程托管。macOS、Linux 首次启动默认用它；Windows 不提供（Nextflow 不支持 Windows） |
-| WSL | WSL 发行版 | 首次连接时把 `resources/server/` 里的 Linux 服务端包装到 `~/.local/share/nextflow-studio/server/`，用 `wsl.exe` 启动 `nextflow-studio serve`。路径双向映射（`C:\` ↔ `/mnt/c`，`\\wsl.localhost\<发行版>\` ↔ `/`），原生对话框和拖入文件照常可用。退出应用时停止 |
+| WSL | WSL 发行版 | 首次连接时把 `resources/server/` 里的 Linux 服务端包装到 `~/.local/share/nextflow-studio/server/`，用 `wsl.exe` 启动 `nextflow-studio serve`。退出应用时停止 |
 | SSH | 远程 Linux | 用系统的 `ssh`（需要免密登录）检查版本，必要时通过 ssh 传输并安装服务端包，在后台启动 `serve`，再建 `-L` 隧道。首次连接会记住主机密钥。退出应用只断开隧道，服务端继续运行，下次直接接上 |
 | 地址 | 任意 | 连接已经在运行的服务端（见 [docs/server.md](../docs/server.md)），需要它的令牌。令牌用系统钥匙串加密保存 |
 
@@ -15,7 +15,7 @@ Windows 上没有 WSL 时，连接页的「安装 WSL」以管理员身份运行
 
 连接页（`src/connect/index.html`）随应用打包，没有后端时显示；上次的连接在启动时自动连接。File 菜单的「切换后端…」回到连接页。连接保存在 userData 的 `connections.json`。
 
-远程后端（SSH、地址）上，本机路径对服务端没有意义：拖入或粘贴的文件上传到项目的 `data/`，「打开目录」浏览服务端的文件，「在文件夹中显示」隐藏。
+文件只归服务端管，所有后端都一样（参考 ComfyUI 的 `input/`）：笔记本和流程用的文件放在当前工作区（项目文件夹），拖入、粘贴或点上传，文件进入工作区的 `data/`；数据输入的选择器只浏览工作区，配置路径（Python、Java、私钥、项目位置）浏览服务端。桌面端不读取本机路径，也不打开本机文件。
 
 ## 本机后端
 
@@ -25,7 +25,7 @@ Windows 上没有 WSL 时，连接页的「安装 WSL」以管理员身份运行
 | ---- | ---- | ---- |
 | web | `.next/standalone/server.js` | 界面和 `/api`，也负责笔记本的 Jupyter 内核。只监听 `127.0.0.1` 的随机端口，每次启动生成会话令牌，窗口带 cookie 访问，`src/proxy.ts` 拒绝没有令牌或 Host 不是回环地址的请求 |
 | runner | `scripts/runner.ts` → `resources/runner/runner.mjs` | 排队、启动和监视 Nextflow |
-| 窗口 / 菜单栏 | `desktop/src/main.ts` | 原生文件对话框、拖入文件取路径、「在 Finder 中显示」、系统通知、菜单栏显示运行数 |
+| 窗口 / 菜单栏 | `desktop/src/main.ts` | 系统通知、菜单栏显示运行数 |
 
 Nextflow head 在独立进程组里运行。关窗口时有运行中的流程，应用留在菜单栏继续发通知；退出时会问「后台继续 / 停止运行并退出」。选后台继续时 Nextflow 照常跑完，下次打开应用由新的 runner 接管。
 
