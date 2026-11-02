@@ -13,18 +13,23 @@ files:
   - dist/**
   - package.json
 extraResources:
-  # The standalone server as an archive: electron-builder drops node_modules folders from extra resources.
-  - from: resources/app-server.tar.gz
-    to: app-server.tar.gz
-  - from: resources/runner
-    to: runner
-  - from: resources/plugins
-    to: plugins
+  # Linux server packages that the WSL and SSH backends install on the target (scripts/build-server.mjs).
+  - from: resources/server
+    to: server
   - from: build/trayTemplate.png
     to: trayTemplate.png
 asar: true
 mac:
   category: public.app-category.developer-tools
+  extraResources:
+    # The bundled local server. The standalone server ships as an archive: electron-builder drops node_modules
+    # folders from extra resources.
+    - from: resources/app-server.tar.gz
+      to: app-server.tar.gz
+    - from: resources/runner
+      to: runner
+    - from: resources/plugins
+      to: plugins
   target:
     - target: dmg
       arch: [arm64, x64]
@@ -38,10 +43,27 @@ mac:
   notarize: true
 linux:
   category: Science
+  extraResources:
+    # The bundled local server. The standalone server ships as an archive: electron-builder drops node_modules
+    # folders from extra resources.
+    - from: resources/app-server.tar.gz
+      to: app-server.tar.gz
+    - from: resources/runner
+      to: runner
+    - from: resources/plugins
+      to: plugins
   target:
     - target: AppImage
       arch: [x64]
   maintainer: Nextflow Studio
+# Windows has no local server (Nextflow does not run on Windows): the app connects to WSL or a remote machine.
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+nsis:
+  oneClick: false
+  perMachine: false
 dmg:
   sign: false
 publish:

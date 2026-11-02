@@ -3,16 +3,19 @@
 //   app-server/   Next.js standalone server (+ .next/static and public/), also packed as app-server.tar.gz
 //   runner/       scripts/runner.ts bundled to one ESM file
 //   plugins/      nf-weblog unpacked by `nextflow plugin install`, so live progress works offline
-// and compiles the Electron main and preload scripts to dist/.
+//   server/       the Linux server package (scripts/build-server.mjs) that WSL and SSH backends install
+// and compiles the Electron main and preload scripts, with the connect page, to dist/.
 //
 //   node scripts/bundle.mjs              full build
 //   node scripts/bundle.mjs --skip-next  reuse the last Next.js build (main/preload/runner only)
-import { rmSync, writeFileSync } from "node:fs";
+//   --skip-server                         leave resources/server/ as it is
+//   --server-arm64                        also build the linux-arm64 server package
+import { cpSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 
-import { buildStandalone, bundleScript, prefetchWeblog, run } from "../../scripts/build-parts.mjs";
+import { buildStandalone, bundleScript, prefetchWeblog, root, run } from "../../scripts/build-parts.mjs";
 
 const desktop = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const resources = join(desktop, "resources");
@@ -39,6 +42,20 @@ await build({
   external: ["electron", "electron-updater"],
   logLevel: "info",
 });
+
+cpSync(join(desktop, "src", "connect"), join(desktop, "dist", "connect"), { recursive: true });
+
+// Server packages for WSL and SSH backends, from the Next.js build above. Linux x64 always; arm64 on request.
+if (!process.argv.includes("--skip-server")) {
+  const packages = join(resources, "server");
+  rmSync(packages, { recursive: true, force: true });
+  mkdirSync(packages, { recursive: true });
+  const arches = process.argv.includes("--server-arm64") ? ["x64", "arm64"] : ["x64"];
+  for (const arch of arches) run("node", [join(root, "scripts", "build-server.mjs"), "--skip-next", "--arch", arch]);
+  const { version } = JSON.parse(readFileSync(join(desktop, "package.json"), "utf8"));
+  const current = (name) => name.startsWith(`nextflow-studio-server-${version}-linux-`) && name.endsWith(".tar.gz");
+  for (const file of readdirSync(join(root, "dist-server")).filter(current)) cpSync(join(root, "dist-server", file), join(packages, file));
+}
 
 prefetchWeblog(join(resources, "plugins"));
 writeFileSync(join(resources, "BUILD"), `${new Date().toISOString()}\n`);

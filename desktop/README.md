@@ -1,6 +1,23 @@
 # Nextflow Studio 桌面版
 
-Electron 外壳，复用同一份 Next.js 应用和 Nextflow runner。主进程托管三样东西，崩溃时按退避自动重启：
+Electron 外壳。服务端（界面、`/api`、笔记本内核和 Nextflow runner）可以跑在本机、WSL 或远程机器上，桌面端只负责连接它。
+
+## 后端
+
+| 连接 | 服务端在哪 | 说明 |
+| ---- | ---- | ---- |
+| 本机 | 这台电脑 | 下表的 web 和 runner 由主进程托管。macOS、Linux 首次启动默认用它；Windows 不提供（Nextflow 不支持 Windows） |
+| WSL | WSL 发行版 | 首次连接时把 `resources/server/` 里的 Linux 服务端包装到 `~/.local/share/nextflow-studio/server/`，用 `wsl.exe` 启动 `nextflow-studio serve`。路径双向映射（`C:\` ↔ `/mnt/c`，`\\wsl.localhost\<发行版>\` ↔ `/`），原生对话框和拖入文件照常可用。退出应用时停止 |
+| SSH | 远程 Linux | 用系统的 `ssh`（需要免密登录）检查版本，必要时通过 ssh 传输并安装服务端包，在后台启动 `serve`，再建 `-L` 隧道。首次连接会记住主机密钥。退出应用只断开隧道，服务端继续运行，下次直接接上 |
+| 地址 | 任意 | 连接已经在运行的服务端（见 [docs/server.md](../docs/server.md)），需要它的令牌。令牌用系统钥匙串加密保存 |
+
+连接页（`src/connect/index.html`）随应用打包，没有后端时显示；上次的连接在启动时自动连接。File 菜单的「切换后端…」回到连接页。连接保存在 userData 的 `connections.json`。
+
+远程后端（SSH、地址）上，本机路径对服务端没有意义：拖入或粘贴的文件上传到项目的 `data/`，「打开目录」浏览服务端的文件，「在文件夹中显示」隐藏。
+
+## 本机后端
+
+主进程托管三样东西，崩溃时按退避自动重启：
 
 | 进程 | 来源 | 说明 |
 | ---- | ---- | ---- |
@@ -17,11 +34,14 @@ macOS 上的 GUI 应用拿不到 shell 的 `PATH`，启动时会从登录 shell 
 ```bash
 pnpm install                         # 仓库根目录：web 应用依赖
 pnpm --dir desktop install           # 桌面外壳依赖（Electron 只装在这里）
-pnpm --dir desktop bundle            # standalone 服务、runner、main/preload，预取 nf-weblog
+pnpm --dir desktop bundle            # standalone 服务、runner、Linux 服务端包、main/preload、连接页，预取 nf-weblog
 pnpm --dir desktop dev               # 用本地 Electron 打开（不打包）
 pnpm --dir desktop dist:mac          # 未签名的 .dmg / .zip（arm64 + x64）
 pnpm --dir desktop dist:linux        # AppImage
+pnpm --dir desktop exec electron-builder --win   # Windows NSIS 安装包（只含连接 WSL / SSH / 地址所需的部分）
 ```
+
+`bundle --server-arm64` 额外打包 linux-arm64 服务端（ARM 服务器、ARM 版 Windows 的 WSL）。`bundle --skip-server` 跳过服务端包。
 
 `bundle` 会用 `nextflow plugin install nf-weblog@1.2.0` 把插件解到 `resources/plugins/`，打进安装包；首次启动时复制到数据目录的 `toolchain/plugins/`，离线也有实时进度。构建机连不上插件仓库时只打印警告，应用首次启动再装；都装不上时 runner 改为每 3 秒读 trace 文件。
 

@@ -107,8 +107,9 @@ async function main(options: ServeOptions) {
     wait();
   };
 
-  const supervise = (name: string, modulePath: string, childEnv: NodeJS.ProcessEnv) => {
+  const supervise = (name: string, modulePath: string, childEnv: NodeJS.ProcessEnv, keepTrying = false) => {
     const restarts = new RestartTracker();
+    let givenUp = false;
     const log = serviceLog(logs, name);
     const start = () => {
       log.write(`--- ${new Date().toISOString()} start ${name} ${version}\n`);
@@ -116,19 +117,25 @@ async function main(options: ServeOptions) {
       children.set(name, child);
       child.stdout?.on("data", (chunk: Buffer) => { log.write(chunk); process.stderr.write(`[${name}] ${chunk}`); });
       child.stderr?.on("data", (chunk: Buffer) => { log.write(chunk); process.stderr.write(`[${name}] ${chunk}`); });
-      const healthy = setTimeout(() => restarts.healthy(), 60_000);
+      const healthy = setTimeout(() => { restarts.healthy(); givenUp = false; }, 60_000);
       child.once("exit", (code, signal) => {
         log.write(`--- ${new Date().toISOString()} ${name} exited with ${code ?? signal}\n`);
         clearTimeout(healthy);
         children.delete(name);
         if (stopping) return;
         const delay = restarts.crash(Date.now());
-        if (delay === undefined) {
+        if (delay !== undefined) { setTimeout(start, delay); return; }
+        // Without the web server there is nothing to serve.
+        if (!keepTrying) {
           console.error(`${name} 反复退出（最后一次 ${code ?? signal}），停止服务。日志：${join(logs, `${name}.log`)}`);
           stop(1);
           return;
         }
-        setTimeout(start, delay);
+        // The runner fails until Java and Nextflow exist; the setup page installs them, so keep checking.
+        if (!givenUp) console.error(`${name} 反复退出（最后一次 ${code ?? signal}），每 30 秒重试。日志：${join(logs, `${name}.log`)}`);
+        givenUp = true;
+        restarts.healthy();
+        setTimeout(start, 30_000);
       });
     };
     start();
@@ -139,7 +146,7 @@ async function main(options: ServeOptions) {
   process.once("SIGHUP", () => stop(0));
 
   supervise("web", serverJs, webEnv);
-  supervise("runner", runnerJs, env);
+  supervise("runner", runnerJs, env, true);
   try {
     await waitForHealth(`http://${probeHost(options)}:${port}`, token);
   } catch (error) {

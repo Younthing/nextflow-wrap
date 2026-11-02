@@ -1,48 +1,42 @@
 import { randomBytes } from "node:crypto";
 import { execFile } from "node:child_process";
 import { createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync, type WriteStream } from "node:fs";
-import { createServer } from "node:net";
 import { join } from "node:path";
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, safeStorage, session, shell, Tray, utilityProcess, type MenuItemConstructorOptions, type UtilityProcess } from "electron";
 
+import { ConnectionError, readConnection, type Connection } from "../../src/features/desktop/connections";
 import { readProjectMenuState } from "../../src/features/desktop/project-menu";
 import { SESSION_COOKIE } from "../../src/features/desktop/session-guard";
 import { parseEnvBlock, quitPrompt, RestartTracker, SHELL_ENV_KEYS } from "../../src/features/desktop/supervisor";
 import type { DesktopMenuAction, DesktopNotification, PickPathOptions, ProjectMenuState } from "../../src/lib/desktop";
+import { freePort, startBackend, waitForHealth, wslDistros, type BackendContext, type RunningBackend } from "./backends";
+import { connectionToken, loadConnections, rememberLast, removeConnection, saveConnection } from "./connection-store";
 import { setupUpdates } from "./updates";
 
 /**
- * Nextflow Studio desktop: the main process hosts three things and restarts them when they crash.
+ * Nextflow Studio desktop: a shell around a server that may run here, in WSL or on another machine.
  *
- * - the Next.js standalone server (web UI + `/api`, which also owns the notebook Jupyter kernels), on 127.0.0.1 at
- *   a random port, guarded by a per-launch session token (see src/proxy.ts);
- * - the Nextflow runner (scripts/runner.ts bundled to runner.mjs), which queues and supervises runs;
- * - the window, the menu bar / tray item and native dialogs.
+ * - The server (web UI + `/api` + notebook kernels, and the Nextflow runner) comes from a saved connection
+ *   (backends.ts). A local one is the Next.js standalone server and runner.mjs hosted here, on 127.0.0.1 at a
+ *   random port, guarded by a per-launch session token (see src/proxy.ts), and restarted when they crash.
+ * - Before a backend answers, the window shows the bundled connect page (connect/index.html).
+ * - The shell owns the window, the menu bar / tray item and native dialogs, mapping paths for WSL.
  *
  * Nextflow heads run in their own process groups, so closing the app can leave them running ("后台继续"); the
  * next runner adopts them.
  */
 const dev = process.argv.includes("--dev");
 const resources = app.isPackaged ? process.resourcesPath : join(__dirname, "..", "resources");
-const token = randomBytes(32).toString("hex");
-let port = 0;
+let backend: RunningBackend | undefined;
+/** Bumped on every start and stop of the local server, so its old processes are not restarted. */
+let localGeneration = 0;
+let connectError: string | undefined;
 let mainWindow: BrowserWindow | undefined;
 let tray: Tray | undefined;
 let activeRuns = 0;
 let quitting = false;
 let projectMenu: ProjectMenuState = { recent: [] };
 const children = new Map<string, UtilityProcess>();
-
-async function freePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const server = createServer();
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address();
-      server.close(() => (typeof address === "object" && address ? resolve(address.port) : reject(new Error("no port"))));
-    });
-  });
-}
 
 /** GUI apps on macOS do not inherit the shell PATH; ask the login shell once at start. */
 async function shellEnvironment(): Promise<Record<string, string>> {
@@ -122,6 +116,7 @@ async function appServerDirectory(): Promise<string> {
 
 /** Start a hosted process and keep it alive: crash → backoff restart, too many → tell the user. */
 function supervise(name: string, modulePath: string, args: string[], env: NodeJS.ProcessEnv, cwd?: string) {
+  const generation = localGeneration;
   const restarts = new RestartTracker();
   const log = serviceLog(name);
   const start = () => {
@@ -134,8 +129,9 @@ function supervise(name: string, modulePath: string, args: string[], env: NodeJS
     child.once("exit", (code) => {
       log.write(`--- ${new Date().toISOString()} ${name} exited with ${code}\n`);
       clearTimeout(healthyTimer);
-      children.delete(name);
-      if (quitting) return;
+      if (children.get(name) === child) children.delete(name);
+      // Quitting, or this local server was stopped (another backend was picked): no restart.
+      if (quitting || generation !== localGeneration) return;
       const delay = restarts.crash(Date.now());
       if (delay === undefined) {
         dialog.showErrorBox(`Nextflow Studio：${name} 反复退出`, `最后一次退出码 ${code}。请在设置页导出诊断包，或重启应用。`);
@@ -147,25 +143,47 @@ function supervise(name: string, modulePath: string, args: string[], env: NodeJS
   start();
 }
 
-async function waitForServer(url: string, timeoutMs = 60_000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try {
-      const response = await fetch(`${url}/api/health`, { headers: { cookie: `${SESSION_COOKIE}=${token}` } });
-      if (response.ok) return;
-    } catch { /* Not listening yet. */ }
-    await new Promise((resolve) => setTimeout(resolve, 250));
-  }
-  throw new Error("Web 服务没有在 60 秒内启动");
+/** The bundled server and runner on this computer: the original desktop setup, now one kind of backend. */
+async function startLocal(context: BackendContext) {
+  localGeneration++;
+  const token = randomBytes(32).toString("hex");
+  const secret = keychainSecret();
+  if (secret) baseEnv = { ...baseEnv, NEXTFLOW_STUDIO_SECRET_KEY: secret };
+  const port = await freePort();
+  const origin = `http://127.0.0.1:${port}`;
+  context.status("启动本机服务端…");
+  const serverDir = await appServerDirectory();
+  const env = serviceEnv({ PORT: String(port), HOSTNAME: "127.0.0.1", NEXTFLOW_STUDIO_SESSION_TOKEN: token });
+  supervise("web", join(serverDir, "server.js"), [], env, serverDir);
+  supervise("runner", join(resources, "runner", "runner.mjs"), [], serviceEnv(), join(resources, "runner"));
+  await waitForHealth(origin, token);
+  return {
+    origin,
+    token,
+    // SIGTERM lets the runner leave started Nextflow heads running and the web server shut kernels down.
+    stop: async () => {
+      localGeneration++;
+      const running = [...children.values()];
+      await Promise.all(running.map((child) => new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, 15_000);
+        child.once("exit", () => { clearTimeout(timer); resolve(); });
+        child.kill();
+      })));
+    },
+  };
 }
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`http://127.0.0.1:${port}/api${path}`, { ...init, headers: { "content-type": "application/json", cookie: `${SESSION_COOKIE}=${token}`, origin: `http://127.0.0.1:${port}`, ...init?.headers } });
+  if (!backend) throw new Error("没有连接后端");
+  const response = await fetch(`${backend.origin}/api${path}`, { ...init, headers: { "content-type": "application/json", cookie: `${SESSION_COOKIE}=${backend.token}`, origin: backend.origin, ...init?.headers } });
   if (!response.ok) throw new Error(`${path}: ${response.status}`);
   return response.status === 204 ? undefined as T : await response.json() as T;
 }
 
-function createWindow(path: string) {
+const connectPage = () => join(__dirname, "connect", "index.html");
+const fromConnectPage = (event: Electron.IpcMainInvokeEvent) => event.senderFrame?.url.startsWith("file:") === true;
+
+function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -176,14 +194,14 @@ function createWindow(path: string) {
     backgroundColor: "#0b1020",
     webPreferences: { preload: join(__dirname, "preload.js"), contextIsolation: true, sandbox: true, nodeIntegration: false },
   });
-  const origin = `http://127.0.0.1:${port}`;
+  const inApp = (url: string) => Boolean(backend && (url === backend.origin || url.startsWith(`${backend.origin}/`)));
   // Links to other sites open in the default browser; the window stays on the app.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (!url.startsWith(origin)) void shell.openExternal(url);
-    return { action: url.startsWith(origin) ? "allow" : "deny" };
+    if (!inApp(url)) void shell.openExternal(url);
+    return { action: inApp(url) ? "allow" : "deny" };
   });
   mainWindow.webContents.on("will-navigate", (event, url) => {
-    if (!url.startsWith(origin)) { event.preventDefault(); void shell.openExternal(url); }
+    if (!inApp(url)) { event.preventDefault(); void shell.openExternal(url); }
   });
   // Closing the window with runs going keeps the app in the menu bar so notifications still arrive.
   mainWindow.on("close", (event) => {
@@ -192,12 +210,28 @@ function createWindow(path: string) {
     mainWindow?.hide();
   });
   mainWindow.on("closed", () => { mainWindow = undefined; });
-  void mainWindow.loadURL(`${origin}${path}`);
+  return mainWindow;
+}
+
+/** Shows a page of the connected server, or the connect page when there is none. */
+function openApp(path = "/") {
+  const window = mainWindow ?? createWindow();
+  if (backend) void window.loadURL(`${backend.origin}${path}`);
+  else void window.loadFile(connectPage());
+  window.show();
+  window.focus();
+}
+
+/** The connect page; `auto` connects to that saved connection right away. */
+function showConnect(auto?: string) {
+  const window = mainWindow ?? createWindow();
+  void window.loadFile(connectPage(), auto ? { query: { auto } } : undefined);
+  window.show();
 }
 
 function showWindow() {
   if (mainWindow) { mainWindow.show(); mainWindow.focus(); }
-  else createWindow("/");
+  else openApp();
 }
 
 function updateTray() {
@@ -211,7 +245,7 @@ function updateTray() {
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: activeRuns ? `${activeRuns} 个运行中` : "没有运行中的流程", enabled: false },
     { label: "打开 Nextflow Studio", click: showWindow },
-    { label: "运行记录", click: () => { showWindow(); void mainWindow?.loadURL(`http://127.0.0.1:${port}/runs`); } },
+    { label: "运行记录", enabled: Boolean(backend), click: () => openApp("/runs") },
     { type: "separator" },
     { label: "退出", click: () => app.quit() },
   ]));
@@ -250,8 +284,10 @@ function buildAppMenu() {
         : [{ label: "还没有项目", enabled: false }],
     },
     { type: "separator" },
-    { label: mac ? "在 Finder 中显示" : "在文件管理器中显示", enabled: Boolean(current), click: () => { if (current && existsSync(current.path)) shell.showItemInFolder(current.path); } },
+    { label: mac ? "在 Finder 中显示" : "在文件管理器中显示", enabled: Boolean(current && backend?.paths.toLocal(current.path)), click: () => { const local = current && backend?.paths.toLocal(current.path); if (local && existsSync(local)) shell.showItemInFolder(local); } },
     { label: "关闭项目", enabled: Boolean(current), click: () => sendMenu({ type: "close-project" }) },
+    { type: "separator" },
+    { label: backend ? `切换后端…（当前：${backend.info.label}）` : "连接后端…", click: () => void switchBackend() },
     { type: "separator" },
     mac ? { role: "close", label: "关闭窗口" } : { role: "quit", label: "退出" },
   ];
@@ -284,23 +320,38 @@ function buildAppMenu() {
 
 function registerIpc() {
   ipcMain.handle("studio:pick-path", async (_event, options: PickPathOptions) => {
+    const paths = backend?.paths;
+    if (!paths || !backend?.info.nativePaths) return [];
     const result = await dialog.showOpenDialog(mainWindow!, {
       title: options.title,
-      defaultPath: options.defaultPath,
+      defaultPath: options.defaultPath ? paths.toLocal(options.defaultPath) : undefined,
       properties: [options.kind === "directory" ? "openDirectory" : "openFile", ...(options.multiple ? ["multiSelections" as const] : []), "showHiddenFiles"],
       filters: options.kind === "file" && options.extensions?.length ? [{ name: options.extensions.join(", "), extensions: options.extensions }, { name: "所有文件", extensions: ["*"] }] : undefined,
     });
-    return result.canceled ? [] : result.filePaths;
+    if (result.canceled) return [];
+    const mapped = result.filePaths.map((path) => paths.toServer(path));
+    // A Windows folder outside WSL's reach (a network share) has no path inside the distro.
+    if (mapped.some((path) => path === undefined)) {
+      void dialog.showMessageBox(mainWindow!, { type: "warning", message: "服务端无法访问这个位置", detail: result.filePaths.join("\n") });
+    }
+    return mapped.filter((path): path is string => Boolean(path));
   });
-  ipcMain.handle("studio:show-item", (_event, path: string) => { if (typeof path === "string" && existsSync(path)) shell.showItemInFolder(path); });
-  ipcMain.handle("studio:open-path", (_event, path: string) => (typeof path === "string" ? shell.openPath(path) : "无效路径"));
+  ipcMain.handle("studio:show-item", (_event, path: string) => {
+    const local = typeof path === "string" ? backend?.paths.toLocal(path) : undefined;
+    if (local && existsSync(local)) shell.showItemInFolder(local);
+  });
+  ipcMain.handle("studio:open-path", (_event, path: string) => {
+    const local = typeof path === "string" ? backend?.paths.toLocal(path) : undefined;
+    return local ? shell.openPath(local) : "这台电脑上打不开这个路径";
+  });
+  ipcMain.on("studio:backend", (event) => {
+    const connection = backend?.connection;
+    event.returnValue = backend ? { ...backend.info, ...(connection?.kind === "wsl" ? { distro: connection.distro } : {}) } : null;
+  });
   ipcMain.on("studio:notify", (_event, notification: DesktopNotification) => {
     if (!Notification.isSupported()) return;
     const native = new Notification({ title: notification.title, body: notification.body });
-    native.on("click", () => {
-      showWindow();
-      if (notification.runId) void mainWindow?.loadURL(`http://127.0.0.1:${port}/runs/${encodeURIComponent(notification.runId)}`);
-    });
+    native.on("click", () => openApp(notification.runId ? `/runs/${encodeURIComponent(notification.runId)}` : "/"));
     native.show();
   });
   ipcMain.on("studio:project-menu", (_event, state: unknown) => {
@@ -311,10 +362,78 @@ function registerIpc() {
     activeRuns = Number.isInteger(count) && count >= 0 ? count : 0;
     updateTray();
   });
+
+  // The connect page (bundled file) only.
+  ipcMain.handle("connect:state", (event) => {
+    if (!fromConnectPage(event)) return null;
+    const auto = new URL(event.senderFrame!.url).searchParams.get("auto") ?? undefined;
+    const error = connectError;
+    connectError = undefined;
+    return { ...loadConnections(), platform: process.platform, localAvailable: process.platform !== "win32", auto, error };
+  });
+  ipcMain.handle("connect:distros", (event) => (fromConnectPage(event) ? wslDistros() : []));
+  ipcMain.handle("connect:remove", (event, id: unknown) => (fromConnectPage(event) && typeof id === "string" ? removeConnection(id) : loadConnections()));
+  ipcMain.handle("connect:start", async (event, input: unknown, token: unknown) => {
+    if (!fromConnectPage(event)) return { ok: false, error: "不允许" };
+    try {
+      const connection = readConnection(input);
+      await connect(connection, typeof token === "string" && token ? token : undefined);
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
 }
 
-/** Ask what to do with active runs, then stop the hosted processes. */
-async function confirmQuit(): Promise<boolean> {
+const context = (): BackendContext => ({
+  appVersion: app.getVersion(),
+  serverPackages: join(resources, "server"),
+  log: serviceLog,
+  status: (message) => mainWindow?.webContents.send("connect:status", message),
+});
+
+/** Starts or reaches the server of `connection`, then shows the app in the window. */
+async function connect(connection: Connection, token?: string) {
+  if (backend) await disconnect();
+  const next = await startBackend(connection, context(), { token: token ?? connectionToken(connection.id), startLocal });
+  await session.defaultSession.cookies.set({ url: next.origin, name: SESSION_COOKIE, value: next.token, httpOnly: true, sameSite: "strict", secure: next.origin.startsWith("https:") });
+  backend = next;
+  saveConnection(connection, connection.kind === "url" ? token : undefined);
+  rememberLast(connection.id);
+  next.onLost((reason) => {
+    if (backend !== next) return;
+    backend = undefined;
+    connectError = reason;
+    buildAppMenu();
+    updateTray();
+    showConnect();
+  });
+  buildAppMenu();
+  updateTray();
+  // A machine without Java or Nextflow starts on the setup page.
+  const setup = await api<{ ready: boolean }>("/setup").catch(() => ({ ready: true }));
+  openApp(setup.ready ? "/" : "/setup");
+}
+
+async function disconnect() {
+  const current = backend;
+  if (!current) return;
+  backend = undefined;
+  activeRuns = 0;
+  await current.stop();
+  buildAppMenu();
+  updateTray();
+}
+
+async function switchBackend() {
+  if (backend && !(await confirmStop())) return;
+  await disconnect();
+  showConnect();
+}
+
+/** Before stopping a server that holds active runs (local, WSL): keep them going or cancel them. */
+async function confirmStop(): Promise<boolean> {
+  if (!backend?.stopsWithApp) return true;
   const prompt = quitPrompt(activeRuns);
   if (!prompt.needed) return true;
   const { response } = await dialog.showMessageBox({ type: "question", message: prompt.message, detail: prompt.detail, buttons: prompt.buttons.map((b) => b.label), defaultId: 0, cancelId: 2 });
@@ -337,11 +456,11 @@ async function confirmQuit(): Promise<boolean> {
 app.on("before-quit", (event) => {
   if (quitting) return;
   event.preventDefault();
-  void confirmQuit().then((ok) => {
+  void confirmStop().then(async (ok) => {
     if (!ok) return;
     quitting = true;
-    // SIGTERM lets the runner leave started Nextflow heads running and the web server shut kernels down.
-    for (const child of children.values()) child.kill();
+    // A local or WSL server stops (runs keep going); a remote one keeps running and only the tunnel closes.
+    await disconnect().catch(() => undefined);
     app.quit();
   });
 });
@@ -355,24 +474,22 @@ if (!app.requestSingleInstanceLock()) app.quit();
 else app.on("second-instance", showWindow);
 
 app.whenReady().then(async () => {
-  const secret = keychainSecret();
-  baseEnv = { ...process.env, ...(await shellEnvironment()), ...(secret ? { NEXTFLOW_STUDIO_SECRET_KEY: secret } : {}) };
-  port = await freePort();
-  const origin = `http://127.0.0.1:${port}`;
-  await session.defaultSession.cookies.set({ url: origin, name: SESSION_COOKIE, value: token, httpOnly: true, sameSite: "strict" });
+  baseEnv = { ...process.env, ...(await shellEnvironment()) };
   registerIpc();
   buildAppMenu();
-  const serverDir = await appServerDirectory();
-  const env = serviceEnv({ PORT: String(port), HOSTNAME: "127.0.0.1", NEXTFLOW_STUDIO_SESSION_TOKEN: token });
-  supervise("web", join(serverDir, "server.js"), [], env, serverDir);
-  supervise("runner", join(resources, "runner", "runner.mjs"), [], serviceEnv(), join(resources, "runner"));
-  await waitForServer(origin);
-  // A machine without Java or Nextflow starts on the setup page.
-  const setup = await api<{ ready: boolean }>("/setup").catch(() => ({ ready: true }));
-  createWindow(setup.ready ? "/" : "/setup");
   updateTray();
   if (!dev) setupUpdates();
+  const store = loadConnections();
+  const last = store.connections.find((item) => item.id === store.last);
+  if (last) { showConnect(last.id); return; }
+  // First start on macOS and Linux: the bundled server, as before. Windows has no local server: pick one.
+  if (process.platform !== "win32" && !store.connections.length) {
+    const local: Connection = { id: "local", kind: "local", label: "本机" };
+    try { await connect(local); return; }
+    catch (error) { connectError = error instanceof Error ? error.message : String(error); }
+  }
+  showConnect();
 }).catch((error: unknown) => {
-  dialog.showErrorBox("Nextflow Studio 无法启动", error instanceof Error ? error.message : String(error));
+  dialog.showErrorBox("Nextflow Studio 无法启动", error instanceof ConnectionError || error instanceof Error ? error.message : String(error));
   app.exit(1);
 });
