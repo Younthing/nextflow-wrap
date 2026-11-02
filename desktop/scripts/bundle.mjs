@@ -42,7 +42,7 @@ if (!process.argv.includes("--skip-server")) {
   const arches = process.argv.includes("--server-arm64") ? ["x64", "arm64"] : ["x64"];
   for (const arch of arches) run("node", [join(root, "scripts", "build-server.mjs"), "--skip-next", "--arch", arch]);
   const { version } = JSON.parse(readFileSync(join(desktop, "package.json"), "utf8"));
-  const current = (name) => name.startsWith(`nextflow-studio-server-${version}-linux-`) && name.endsWith(".tar.gz");
+  const current = (name) => name.startsWith(`nextflow-studio-server-${version}-linux-`) && (name.endsWith(".tar.gz") || name.endsWith(".build"));
   for (const file of readdirSync(join(root, "dist-server")).filter(current)) cpSync(join(root, "dist-server", file), join(packages, file));
 }
 

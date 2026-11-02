@@ -9,14 +9,14 @@
 //     runner/runner.mjs     Nextflow runner (scripts/runner.ts)
 //     plugins/              nf-weblog, for offline live progress
 //     node/                 Node.js runtime (omitted with --no-node; the system `node` is used then)
-//     VERSION
+//     VERSION, BUILD        app version, and an id unique to this build (desktop shells reinstall when it changes)
 //   dist-server/nextflow-studio-server-<version>-linux-<arch>.tar.gz
 //
 //   node scripts/build-server.mjs                 linux-x64 with Node
 //   node scripts/build-server.mjs --arch arm64
 //   node scripts/build-server.mjs --skip-next     reuse the last Next.js standalone build
 //   node scripts/build-server.mjs --no-node       rely on Node >= 22.5 on the target
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -49,6 +49,8 @@ await bundleScript("serve.ts", join(target, "serve.mjs"));
 prefetchWeblog(join(cache, "plugins"));
 if (existsSync(join(cache, "plugins"))) cpSync(join(cache, "plugins"), join(target, "plugins"), { recursive: true });
 writeFileSync(join(target, "VERSION"), `${version}\n`);
+const build = `${new Date().toISOString().replace(/[-:.TZ]/g, "")}-${randomBytes(3).toString("hex")}`;
+writeFileSync(join(target, "BUILD"), `${build}\n`);
 
 mkdirSync(join(target, "bin"), { recursive: true });
 writeFileSync(join(target, "bin", "nextflow-studio"), `#!/bin/sh
@@ -85,5 +87,7 @@ function fetchNode() {
 if (!flag("--no-node")) fetchNode();
 
 rmSync(`${target}.tar.gz`, { force: true });
+// Next to the archive, so a shell can tell whether the installed server is this build without unpacking it.
+writeFileSync(`${target}.build`, `${build}\n`);
 run("tar", ["-czf", `${target}.tar.gz`, "-C", out, name]);
 console.log(`\n${target}.tar.gz`);

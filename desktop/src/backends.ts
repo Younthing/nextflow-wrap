@@ -6,8 +6,8 @@ import { createInterface } from "node:readline";
 
 import { noPaths, sharedPaths, wslPaths, type PathMap } from "../../src/features/desktop/backend-paths";
 import {
-  type Connection, ConnectionError, installCommand, parseProbe, parseWslList, PROBE_SCRIPT, serverArch, serverPackageName,
-  SSH_START_SCRIPT, sshArgs, WSL_SERVE_COMMAND,
+  type Connection, ConnectionError, installCommand, needsInstall, parseProbe, parseWslList, PROBE_SCRIPT, serverArch,
+  serverPackageName, SSH_START_SCRIPT, sshArgs, STOP_SCRIPT, WSL_SERVE_COMMAND,
 } from "../../src/features/desktop/connections";
 import { SESSION_HEADER } from "../../src/features/desktop/session-guard";
 import { parseReadyLine, type ReadyLine } from "../../src/features/server/serve-config";
@@ -95,11 +95,15 @@ function run(command: string, args: string[], input?: string | Buffer, timeoutMs
 
 const failure = (what: string, result: Run) => new ConnectionError(`${what}失败：${result.stderr.split("\n").slice(-3).join(" ") || `退出码 ${result.code}`}`);
 
-function serverPackage(context: BackendContext, arch: "x64" | "arm64"): { name: string; file: string } {
+interface ServerPackage { name: string; file: string; build?: string }
+
+/** The bundled server package for `arch`, with its build id; undefined when the app does not carry one. */
+function serverPackage(context: BackendContext, arch: "x64" | "arm64"): ServerPackage | undefined {
   const name = serverPackageName(context.appVersion, arch);
   const file = join(context.serverPackages, `${name}.tar.gz`);
-  if (!existsSync(file)) throw new ConnectionError(`安装包里没有 ${name}，请按 docs/server.md 在目标机器上手动安装`);
-  return { name, file };
+  if (!existsSync(file)) return undefined;
+  const buildFile = join(context.serverPackages, `${name}.build`);
+  return { name, file, build: existsSync(buildFile) ? readFileSync(buildFile, "utf8").trim() || undefined : undefined };
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -130,17 +134,24 @@ export async function installWsl(): Promise<{ ok: true } | { ok: false; error: s
  */
 const wsl = (distro: string, script: string, args: string[] = [], timeoutMs?: number) => run("wsl.exe", ["-d", distro, "--exec", "sh", "-l", "-s", "--", ...args], script, timeoutMs);
 
-async function ensureInstalled(context: BackendContext, probe: () => Promise<Run>, install: (pkg: { name: string; file: string }) => Promise<Run>, where: string) {
+/**
+ * Installs the bundled server package when the target has another version or another build of it. A server still
+ * running from the old files is stopped first, so the next start runs the new ones.
+ */
+async function ensureInstalled(context: BackendContext, probe: () => Promise<Run>, install: (pkg: ServerPackage) => Promise<Run>, stop: () => Promise<Run>, where: string) {
   context.status(`检查${where}上的服务端…`);
   const probed = await probe();
   if (probed.code !== 0) throw failure(`连接${where}`, probed);
-  const { version, arch } = parseProbe(probed.stdout.toString());
-  if (version === context.appVersion) return;
-  const packageArch = serverArch(arch ?? "");
-  if (!packageArch) throw new ConnectionError(`${where}的架构 ${arch ?? "未知"} 不受支持`);
-  context.status(version ? `更新${where}上的服务端 ${version} → ${context.appVersion}…` : `在${where}上安装服务端 ${context.appVersion}…`);
-  const installed = await install(serverPackage(context, packageArch));
-  if (installed.code !== 0) throw failure("安装服务端", installed);
+  const installed = parseProbe(probed.stdout.toString());
+  const packageArch = serverArch(installed.arch ?? "");
+  const pkg = packageArch ? serverPackage(context, packageArch) : undefined;
+  if (!needsInstall(installed, { version: context.appVersion, build: pkg?.build })) return;
+  if (!packageArch) throw new ConnectionError(`${where}的架构 ${installed.arch ?? "未知"} 不受支持`);
+  if (!pkg) throw new ConnectionError(`安装包里没有 ${serverPackageName(context.appVersion, packageArch)}，请按 docs/server.md 在目标机器上手动安装`);
+  context.status(installed.version === context.appVersion ? `更新${where}上的服务端…` : installed.version ? `更新${where}上的服务端 ${installed.version} → ${context.appVersion}…` : `在${where}上安装服务端 ${context.appVersion}…`);
+  if (installed.version) await stop();
+  const result = await install(pkg);
+  if (result.code !== 0) throw failure("安装服务端", result);
 }
 
 /** Reads the launcher's stdout until its ready line; the process keeps running afterwards. */
@@ -172,6 +183,7 @@ async function startWsl(connection: Extract<Connection, { kind: "wsl" }>, contex
     context,
     () => wsl(distro, PROBE_SCRIPT, [], 60_000),
     (pkg) => wsl(distro, installCommand(pkg.name, "arg"), [pkg.file], 300_000),
+    () => wsl(distro, STOP_SCRIPT, [], 60_000),
     ` WSL（${distro}）`,
   );
   const launch = async () => {
@@ -222,6 +234,7 @@ async function startSsh(connection: Extract<Connection, { kind: "ssh" }>, contex
     context,
     () => run(ssh(), [...args, "sh -s"], PROBE_SCRIPT, 60_000),
     (pkg) => run(ssh(), [...args, `sh -c '${installCommand(pkg.name, "stdin")}'`], readFileSync(pkg.file), 600_000),
+    () => run(ssh(), [...args, "sh -s"], STOP_SCRIPT, 60_000),
     where,
   );
   const start = async () => {

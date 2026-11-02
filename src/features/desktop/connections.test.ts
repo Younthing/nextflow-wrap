@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { windowsToWsl, wslPaths, wslToWindows } from "./backend-paths";
 import {
-  installCommand, parseProbe, parseWslList, PROBE_SCRIPT, readConnection, readStore, serverArch, serverPackageName,
+  installCommand, needsInstall, parseProbe, STOP_SCRIPT, parseWslList, PROBE_SCRIPT, readConnection, readStore, serverArch, serverPackageName,
   SSH_START_SCRIPT, sshArgs,
 } from "./connections";
 import { parseReadyLine } from "@/features/server/serve-config";
@@ -64,6 +64,17 @@ describe("connections", () => {
   });
 });
 
+describe("needsInstall", () => {
+  it("reinstalls for another version or another build of the same version", () => {
+    expect(needsInstall({}, { version: "0.2.0" })).toBe(true);
+    expect(needsInstall({ version: "0.1.0", build: "a" }, { version: "0.2.0", build: "a" })).toBe(true);
+    expect(needsInstall({ version: "0.2.0", build: "a" }, { version: "0.2.0", build: "b" })).toBe(true);
+    expect(needsInstall({ version: "0.2.0", build: "a" }, { version: "0.2.0", build: "a" })).toBe(false);
+    // A package without a build id (older builds) only compares versions.
+    expect(needsInstall({ version: "0.2.0", build: "a" }, { version: "0.2.0" })).toBe(false);
+  });
+});
+
 describe("remote scripts", () => {
   let home: string;
   afterEach(() => { if (home) rmSync(home, { recursive: true, force: true }); });
@@ -93,5 +104,17 @@ describe("remote scripts", () => {
     expect(parseProbe(execFileSync("sh", ["-s"], { input: PROBE_SCRIPT, env }).toString()).version).toBe("0.3.0");
     const started = execFileSync("sh", ["-s"], { input: SSH_START_SCRIPT, env, timeout: 20_000 }).toString().trim();
     expect(parseReadyLine(started)).toMatchObject({ port: 4321, version: "0.3.0" });
+  });
+
+  it("stops the server recorded in server.json", () => {
+    home = mkdtempSync(join(tmpdir(), "nfs-home-"));
+    // Not a child of this test (which would leave a zombie that still answers kill -0): init reaps it.
+    const pid = Number(execFileSync("sh", ["-c", "sleep 30 >/dev/null 2>&1 & echo $!"]).toString().trim());
+    mkdirSync(join(home, ".local/share/nextflow-studio"), { recursive: true });
+    writeFileSync(join(home, ".local/share/nextflow-studio/server.json"), JSON.stringify({ pid, port: 1, host: "127.0.0.1" }, null, 2));
+    const started = Date.now();
+    execFileSync("sh", ["-s"], { input: STOP_SCRIPT, env: { ...process.env, HOME: home }, timeout: 30_000 });
+    expect(() => process.kill(pid, 0)).toThrow();
+    expect(Date.now() - started).toBeLessThan(5_000);
   });
 });

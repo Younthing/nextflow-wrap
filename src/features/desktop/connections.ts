@@ -110,19 +110,38 @@ const SERVE = '"$HOME/.local/share/nextflow-studio/server/current/bin/nextflow-s
 
 /** Prints `version=<installed or empty>` and `arch=<uname -m>`. */
 export const PROBE_SCRIPT = `v=$(cat ${SERVER_HOME}/current/VERSION 2>/dev/null || true)
-printf 'version=%s\\narch=%s\\n' "$v" "$(uname -m)"
+b=$(cat ${SERVER_HOME}/current/BUILD 2>/dev/null || true)
+printf 'version=%s\\nbuild=%s\\narch=%s\\n' "$v" "$b" "$(uname -m)"
 `;
 
-export function parseProbe(output: string): { version?: string; arch?: string } {
+export function parseProbe(output: string): { version?: string; build?: string; arch?: string } {
   const values = Object.fromEntries(output.split(/\r?\n/).map((line) => line.split("=")).filter((parts) => parts.length === 2).map(([key, value]) => [key!.trim(), value!.trim()]));
-  return { version: values.version || undefined, arch: values.arch || undefined };
+  return { version: values.version || undefined, build: values.build || undefined, arch: values.arch || undefined };
 }
+
+/** Whether the installed server must be replaced: another version, or the same version from another build. */
+export function needsInstall(installed: { version?: string; build?: string }, wanted: { version: string; build?: string }): boolean {
+  if (installed.version !== wanted.version) return true;
+  return Boolean(wanted.build && installed.build !== wanted.build);
+}
+
+/** Stops the server recorded in server.json (after an upgrade, so the next start runs the new files). */
+export const STOP_SCRIPT = `f="$HOME/.local/share/nextflow-studio/server.json"
+p=$(sed -n 's/.*"pid": *\\([0-9][0-9]*\\).*/\\1/p' "$f" 2>/dev/null)
+if [ -n "$p" ] && kill -0 "$p" 2>/dev/null; then
+  kill -TERM "$p"
+  i=0
+  while kill -0 "$p" 2>/dev/null && [ $i -lt 20 ]; do sleep 1; i=$((i + 1)); done
+fi
+`;
 
 /** Unpacks a package archive read from stdin (ssh) or from `$1` (wsl) and points `current` at it. */
 export function installCommand(packageName: string, from: "stdin" | "arg"): string {
   if (!/^nextflow-studio-server-[A-Za-z0-9._-]+$/.test(packageName)) throw new ConnectionError("服务端包名无效");
-  const source = from === "stdin" ? "-" : '"$(wslpath -u "$1")"';
-  return `set -e; d=${SERVER_HOME}; mkdir -p "$d"; tar -xzf ${source} -C "$d"; ln -sfn "${packageName}" "$d/current"`;
+  // A Windows path (the app's resources) is converted; a path already inside the distro is used as it is.
+  const source = from === "stdin" ? "-" : '"$f"';
+  const resolve = from === "stdin" ? "" : 'case "$1" in /*) f="$1" ;; *) f=$(wslpath -u "$1") ;; esac; ';
+  return `set -e; ${resolve}d=${SERVER_HOME}; mkdir -p "$d"; tar -xzf ${source} -C "$d"; ln -sfn "${packageName}" "$d/current"`;
 }
 
 /** Runs `serve` in a login shell (for PATH, Java, conda) and waits in the foreground: the WSL launcher keeps it. */
