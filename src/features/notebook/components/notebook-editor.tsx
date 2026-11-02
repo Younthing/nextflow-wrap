@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FastForward, Loader2, Play, Plus } from "lucide-react";
+import { CodeXml, FastForward, Loader2, Play, Plus, X } from "lucide-react";
 
 import { AsyncPlaceholder } from "@/components/ui/async-placeholder";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { NotebookAssistant } from "@/features/assistant/modules/surfaces";
+import { applyCanvasValues, readCanvasValues, type AppliedValue } from "@/features/notebook/canvas-values";
 import { convertNotebook, ConvertError } from "@/features/notebook/convert";
 import { dispatchNotebookKey, notebookDraftKey } from "@/features/notebook/edit";
 import { COMMAND_HINT, EDIT_HINT, interpretNotebookKey, toNotebookKeyEvent, type NotebookMode } from "@/features/notebook/keyboard";
@@ -37,7 +38,8 @@ export function NotebookEditor({ notebookId }: { notebookId: string }) {
 
 function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
   const router = useRouter();
-  const revParam = useSearchParams().get("rev");
+  const search = useSearchParams();
+  const revParam = search.get("rev");
   const notebook = useNotebook(notebookId);
   const revision = useNotebookRevision(notebookId, revParam);
   const save = useSaveNotebook();
@@ -55,6 +57,8 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
   const [mode, setMode] = React.useState<NotebookMode>("command");
   const [deleteArmed, setDeleteArmed] = React.useState(false);
   const [markdownEditId, setMarkdownEditId] = React.useState<string | null>(null);
+  const [canvasFor, setCanvasFor] = React.useState<string | null>(null);
+  const [fromCanvas, setFromCanvas] = React.useState<{ from: string; applied: AppliedValue[]; skipped: string[]; before: NotebookCell[] } | null>(null);
   const [focusTick, setFocusTick] = React.useState<{ id: string; mode: NotebookMode; token: number } | null>(null);
   const focusSerial = React.useRef(0);
   const runningRef = React.useRef<string | null>(null);
@@ -136,6 +140,36 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
     if (!base) return;
     update({ cells: base.cells.map((cell) => (cell.id === id ? { ...cell, ...patch } : cell)) });
   };
+
+  // Values handed over by a canvas node's </> button land in the input cells once, then the URL is cleaned.
+  const canvas = readCanvasValues(search);
+  const canvasKey = canvas && notebook.data && !readOnly ? search.toString() : null;
+  if (canvasKey !== canvasFor) {
+    setCanvasFor(canvasKey);
+    if (canvas && canvasKey && notebook.data) {
+      const base = override ?? notebook.data;
+      let inputs: ReturnType<typeof convertNotebook>["inputs"] = [];
+      try {
+        inputs = convertNotebook(base).inputs;
+      } catch {
+        // A notebook that does not convert has no markers to fill.
+      }
+      const result = applyCanvasValues(base.cells, inputs, canvas.values, base.language);
+      if (result.cells.some((cell, i) => cell !== base.cells[i])) {
+        setOverride({ ...base, cells: result.cells });
+        setDirty(true);
+      }
+      setFromCanvas({
+        from: canvas.from,
+        applied: result.applied,
+        skipped: Object.keys(canvas.values).filter((name) => !result.applied.some((item) => item.name === name)),
+        before: base.cells,
+      });
+    }
+  }
+  React.useEffect(() => {
+    if (canvasKey) router.replace(`/workbench/${notebookId}`);
+  }, [canvasKey, notebookId, router]);
 
   let converted: ReturnType<typeof convertNotebook> | undefined;
   let convertError = "";
@@ -356,6 +390,47 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
           正在查看钉住的原版 r{live.rev}。这一页只读，改最新笔记本不会改写这个修订。
           <Button asChild size="sm" variant="outline" className="ml-auto">
             <Link href={`/workbench/${notebookId}`}>打开最新 r{notebook.data.rev}</Link>
+          </Button>
+        </div>
+      )}
+
+      {fromCanvas && !readOnly && (
+        <div role="status" className="flex flex-wrap items-center gap-2 border-b border-primary/30 bg-primary/10 px-4 py-2 text-sm">
+          <CodeXml className="size-4 shrink-0 text-primary" aria-hidden />
+          <span className="min-w-0 flex-1">
+            {fromCanvas.applied.length ? (
+              <>
+                已从画布节点 <span className="font-mono">{fromCanvas.from}</span> 填入
+                {fromCanvas.applied.map((item, i) => (
+                  <React.Fragment key={item.name}>
+                    {i ? "、" : " "}
+                    <code className="font-mono text-xs">{item.name} = {item.literal}</code>
+                  </React.Fragment>
+                ))}
+                。运行单元格就会用这些值。
+              </>
+            ) : (
+              <>画布节点 <span className="font-mono">{fromCanvas.from}</span> 没有可以填入的值。</>
+            )}
+            {fromCanvas.skipped.length > 0 && (
+              <span className="text-muted-foreground"> 笔记本里没有输入 {fromCanvas.skipped.join("、")}，已跳过。</span>
+            )}
+          </span>
+          {fromCanvas.applied.length > 0 && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                update({ cells: fromCanvas.before });
+                setFromCanvas(null);
+              }}
+            >
+              撤销
+            </Button>
+          )}
+          <Button type="button" size="icon-sm" variant="ghost" aria-label="关闭提示" onClick={() => setFromCanvas(null)}>
+            <X />
           </Button>
         </div>
       )}

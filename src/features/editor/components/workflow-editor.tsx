@@ -7,7 +7,9 @@ import { PanelLoading, PanelNotice } from "@/components/ui/panel-notice";
 
 import { Button } from "@/components/ui/button";
 import { EditorAssistant } from "@/features/assistant/editor-assistant";
-import { RunDialog } from "@/features/runs/components/run-dialog";
+import { ExportProjectDialog } from "@/features/runs/components/export-project-dialog";
+import { RunSettingsDialog } from "@/features/runs/components/run-settings-dialog";
+import { useRunNow } from "@/features/runs/use-run-now";
 import { BUILTIN_MODULES } from "@/features/workflow/builtins";
 import { modulesForDrawer } from "@/features/workflow/origin";
 import { useModuleCatalog, useWorkflow } from "@/features/workflow/queries";
@@ -16,6 +18,7 @@ import {
   revisionIsOlder,
 } from "@/features/workflow/revision";
 import { editorIssues } from "../issues";
+import { NodeIssuesProvider } from "../node-issues";
 import { useShortcutLabels } from "@/lib/use-action-shortcuts";
 import { EDITOR_ACTIONS } from "../commands";
 import { getEditorSaveSession } from "../editor-save";
@@ -52,7 +55,8 @@ function Editor({ workflowId }: { workflowId: string }) {
   const { fitView, screenToFlowPosition } = useReactFlow();
   const canvasRef = React.useRef<HTMLDivElement>(null);
   const [search, setSearch] = React.useState<SearchRequest | null>(null);
-  const [runOpen, setRunOpen] = React.useState(false);
+  const [settingsOpen, setSettingsOpen] = React.useState(false);
+  const [exportOpen, setExportOpen] = React.useState(false);
   const [mountToken] = React.useState(() => Symbol("workflow-editor"));
   const applied = useEditorStore((s) => s.appliedWorkflow);
 
@@ -149,6 +153,29 @@ function Editor({ workflowId }: { workflowId: string }) {
     [nodes, edges, params, index],
   );
 
+  // Select the node a run is blocked on and bring it into view.
+  const focusNode = React.useCallback(
+    (nodeId: string) => {
+      store.setState((state) => ({
+        nodes: state.nodes.map((node) =>
+          node.selected === (node.id === nodeId) ? node : { ...node, selected: node.id === nodeId },
+        ),
+      }));
+      void fitView({ nodes: [{ id: nodeId }], maxZoom: 1, duration: 300 });
+    },
+    [store, fitView],
+  );
+
+  const { runNow, pending: runPending } = useRunNow({
+    issues,
+    onNodeIssue: focusNode,
+    onNeedsSettings: () => setSettingsOpen(true),
+  });
+
+  const saveFirst = () => {
+    if (store.getState().docId && selectIsDirty(store.getState())) doSave(true);
+  };
+
   const modules = React.useMemo(
     () => [...BUILTIN_MODULES, ...(catalog.data?.modules ?? [])],
     [catalog.data],
@@ -238,17 +265,24 @@ function Editor({ workflowId }: { workflowId: string }) {
         <EditorToolbar
           saving={saving}
           onFit={fitWorkflow}
+          running={runPending}
           onRun={() => {
-            if (store.getState().docId && selectIsDirty(store.getState()))
-              doSave(true);
-            setRunOpen(true);
+            saveFirst();
+            void runNow();
           }}
+          onRunSettings={() => {
+            saveFirst();
+            setSettingsOpen(true);
+          }}
+          onExport={() => setExportOpen(true)}
         />
         <section
           ref={canvasRef}
           className="glass relative min-h-0 flex-1 overflow-hidden rounded-xl"
         >
-          <WorkflowCanvas onRequestSearch={setSearch} />
+          <NodeIssuesProvider issues={issues}>
+            <WorkflowCanvas onRequestSearch={setSearch} />
+          </NodeIssuesProvider>
           {nodes.length === 0 && (
             <div className="pointer-events-none absolute inset-0 grid place-items-center">
               <div className="glass max-w-sm rounded-xl px-8 py-6 text-center">
@@ -257,7 +291,7 @@ function Editor({ workflowId }: { workflowId: string }) {
                 </div>
                 <p className="mt-2 text-sm text-muted-foreground">
                   从左侧模块库拖入模块，或双击画布搜索（{searchKeys}
-                  ）。先放一个「样本表」作为输入。
+                  ）。先拖入一个文件或文件夹作为输入。
                 </p>
               </div>
             </div>
@@ -271,11 +305,12 @@ function Editor({ workflowId }: { workflowId: string }) {
         onPick={onPick}
         onClose={() => setSearch(null)}
       />
-      <RunDialog
-        open={runOpen}
-        onOpenChange={setRunOpen}
+      <RunSettingsDialog
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
         issues={issues}
       />
+      <ExportProjectDialog open={exportOpen} onOpenChange={setExportOpen} />
       <EditorAssistant onCanvasChange={onAssistantChange} />
     </div>
   );

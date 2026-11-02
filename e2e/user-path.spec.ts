@@ -284,17 +284,22 @@ async function runLanguage(page: Page, language: "python" | "r") {
   await scriptNode.getByRole("textbox").fill("S1", { force: true });
   await waitForWorkflowSaved(page);
 
-  await page.getByRole("button", { name: "运行", exact: true }).click();
-  const dialog = page.getByRole("dialog");
-  await dialog.getByLabel("容器 / 环境（-profile）").click();
-  await page.getByRole("option", { name: /^Shell/ }).click();
-  await expect(dialog.getByText("不使用 -profile，进程在本机 shell 里直接执行")).toBeVisible();
-  await openLocalProcess(dialog);
-  const processFile = dialog.getByRole("tabpanel", { name: /项目文件/ }).locator("pre");
+  await page.getByRole("button", { name: "导出 Nextflow 项目", exact: true }).click();
+  const exported = page.getByRole("dialog", { name: "导出 Nextflow 项目" });
+  await openLocalProcess(exported);
+  const processFile = exported.getByRole("tabpanel", { name: /项目文件/ }).locator("pre");
   // Published modules copy the conda file next to main.nf (module library, #48).
   await expect(processFile).toContainText('conda "${moduleDir}/environment.yml"');
   await expect(processFile).toContainText(`container '${image}'`);
   await shot(page, `e2e-${language}-process.png`);
+  await page.keyboard.press("Escape");
+  await expect(exported).toBeHidden();
+
+  await page.getByRole("button", { name: "运行设置", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "运行设置" });
+  await dialog.getByLabel("容器 / 环境（-profile）").click();
+  await page.getByRole("option", { name: /^Shell/ }).click();
+  await expect(dialog.getByText("不使用 -profile，进程在本机 shell 里直接执行")).toBeVisible();
   const start = dialog.getByRole("button", { name: "启动运行" });
   if (!(await start.isEnabled())) {
     throw new Error((await dialog.locator("li").allInnerTexts()).join("\n") || "启动运行不可用");

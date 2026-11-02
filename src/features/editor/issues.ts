@@ -1,5 +1,5 @@
 import type { EditorState } from "./store";
-import { validateWorkflow } from "@/features/workflow/validate";
+import { validateWorkflow, type Issue } from "@/features/workflow/validate";
 
 export function editorIssues(
   state: Pick<EditorState, "nodes" | "edges" | "params" | "index">,
@@ -15,4 +15,16 @@ export function editorIssues(
     state.params,
     state.index,
   );
+}
+
+/** Validation issues grouped by node, so each card can show its own. */
+export function groupIssuesByNode(issues: readonly Issue[]): Map<string, Issue[]> {
+  const byNode = new Map<string, Issue[]>();
+  for (const issue of issues) {
+    if (!issue.nodeId) continue;
+    const list = byNode.get(issue.nodeId) ?? [];
+    list.push(issue);
+    byNode.set(issue.nodeId, list);
+  }
+  return byNode;
 }

@@ -2,7 +2,7 @@
 
 import type { ComponentProps } from "react";
 import Link from "next/link";
-import { ArrowLeft, Play, Redo2, Scan, Undo2 } from "lucide-react";
+import { ArrowLeft, FolderDown, Loader2, Play, Redo2, Scan, Settings2, Undo2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -53,10 +53,17 @@ export function EditorToolbar({
   saving,
   onFit,
   onRun,
+  onRunSettings,
+  onExport,
+  running = false,
 }: {
   saving: boolean;
   onFit: () => void;
+  /** Start right away with the saved run settings. */
   onRun: () => void;
+  onRunSettings: () => void;
+  onExport: () => void;
+  running?: boolean;
 }) {
   const name = useEditorStore((s) => s.name);
   const setName = useEditorStore((s) => s.setName);
@@ -143,9 +150,20 @@ export function EditorToolbar({
         <Scan />
       </IconButton>
       <div className="ml-auto flex shrink-0 items-center gap-2 whitespace-nowrap">
-        <Button size="sm" type="button" onClick={onRun}>
-          <Play /> 运行
-        </Button>
+        <IconButton label="导出 Nextflow 项目" onClick={onExport}>
+          <FolderDown />
+        </IconButton>
+        <IconButton label="运行设置" onClick={onRunSettings}>
+          <Settings2 />
+        </IconButton>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button size="sm" type="button" onClick={onRun} disabled={running}>
+              {running ? <Loader2 className="animate-spin" /> : <Play />} 运行
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>用上次的运行设置直接启动</TooltipContent>
+        </Tooltip>
       </div>
     </div>
   );
