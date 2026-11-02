@@ -24,3 +24,12 @@ export function useInstallTool() {
     onSettled: () => qc.invalidateQueries({ queryKey: setupKeys.status }),
   });
 }
+
+/** Installs all missing required tools in order (`/api/setup/install-required`). */
+export function useInstallRequired() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api<{ started: boolean; tools: ToolId[]; message?: string }>("/setup/install-required", { method: "POST" }),
+    onSettled: () => qc.invalidateQueries({ queryKey: setupKeys.status }),
+  });
+}

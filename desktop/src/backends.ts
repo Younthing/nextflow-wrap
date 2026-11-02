@@ -111,6 +111,19 @@ export async function wslDistros(): Promise<string[]> {
   return result?.code === 0 ? parseWslList(result.stdout) : [];
 }
 
+/**
+ * `wsl --install` (WSL plus the default Ubuntu) needs administrator rights: Windows shows its UAC prompt. The
+ * installer opens its own console, where Ubuntu asks for a Linux user name; some machines need a restart first.
+ */
+export async function installWsl(): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (process.platform !== "win32") return { ok: false, error: "只有 Windows 需要安装 WSL" };
+  const result = await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "Start-Process -FilePath wsl.exe -ArgumentList '--install' -Verb RunAs -Wait"], undefined, 3_600_000)
+    .catch((error: unknown) => ({ code: 1, stdout: Buffer.alloc(0), stderr: error instanceof Error ? error.message : String(error) }));
+  if (result.code === 0) return { ok: true };
+  // Declining the UAC prompt ends Start-Process with "The operation was canceled by the user".
+  return { ok: false, error: /cancel|取消/i.test(result.stderr) ? "已取消安装" : `安装 WSL 失败：${result.stderr.split("\n").slice(-2).join(" ")}` };
+}
+
 /** `sh` in the distro, script on stdin: no Windows command-line quoting to get wrong. */
 const wsl = (distro: string, script: string, args: string[] = [], timeoutMs?: number) => run("wsl.exe", ["-d", distro, "--", "sh", "-l", "-s", "--", ...args], script, timeoutMs);
 

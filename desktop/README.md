@@ -11,6 +11,8 @@ Electron 外壳。服务端（界面、`/api`、笔记本内核和 Nextflow runn
 | SSH | 远程 Linux | 用系统的 `ssh`（需要免密登录）检查版本，必要时通过 ssh 传输并安装服务端包，在后台启动 `serve`，再建 `-L` 隧道。首次连接会记住主机密钥。退出应用只断开隧道，服务端继续运行，下次直接接上 |
 | 地址 | 任意 | 连接已经在运行的服务端（见 [docs/server.md](../docs/server.md)），需要它的令牌。令牌用系统钥匙串加密保存 |
 
+Windows 上没有 WSL 时，连接页的「安装 WSL」以管理员身份运行 `wsl --install`（弹出 UAC），之后按提示创建 Linux 用户，必要时重启。连上后缺少 Java 或 Nextflow 时，设置页自动依次安装，runner 每 30 秒重试，装好后自动就绪。
+
 连接页（`src/connect/index.html`）随应用打包，没有后端时显示；上次的连接在启动时自动连接。File 菜单的「切换后端…」回到连接页。连接保存在 userData 的 `connections.json`。
 
 远程后端（SSH、地址）上，本机路径对服务端没有意义：拖入或粘贴的文件上传到项目的 `data/`，「打开目录」浏览服务端的文件，「在文件夹中显示」隐藏。

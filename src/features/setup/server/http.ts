@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { setupStatus, startInstall } from "./setup";
+import { installRequired, setupStatus, startInstall } from "./setup";
 
 const json = (value: unknown, status = 200) => Response.json(value, { status, headers: { "cache-control": "no-store" } });
 const installSchema = z.object({ tool: z.enum(["java", "nextflow", "weblog", "conda", "jupyter", "docker"]) });
@@ -12,6 +12,10 @@ export async function handleSetupApi(method: string, path: string[], request: Re
     const { tool } = installSchema.parse(await request.json());
     const result = startInstall(tool);
     return json(result, result.started ? 202 : 409);
+  }
+  if (action === "install-required" && method === "POST") {
+    const result = await installRequired();
+    return json(result, result.started ? 202 : 200);
   }
   return json({ message: "接口不存在" }, 404);
 }

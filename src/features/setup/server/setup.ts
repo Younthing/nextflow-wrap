@@ -25,6 +25,10 @@ interface InstallJob { tool: InstallableTool; state: "installing" | "error"; log
 const globalJobs = globalThis as typeof globalThis & { studioInstallJobs?: Map<InstallableTool, InstallJob> };
 const jobs = () => globalJobs.studioInstallJobs ??= new Map();
 
+/** Required tools waiting their turn in `installRequired`, reported as installing so the wizard keeps polling. */
+const globalQueue = globalThis as typeof globalThis & { studioInstallQueue?: Set<ToolId>; studioInstallChain?: boolean };
+const queue = () => globalQueue.studioInstallQueue ??= new Set();
+
 const TOOL_INSTALLS: Partial<Record<ToolId, InstallableTool>> = { java: "java", nextflow: "nextflow", weblog: "weblog", conda: "micromamba", jupyter: "notebook-env" };
 
 const quiet = (bin: string, args: string[], env?: NodeJS.ProcessEnv) => runCommand(bin, args, { env, quiet: true, timeoutMs: 30_000 });
@@ -47,6 +51,7 @@ async function condaEnvironments(env: NodeJS.ProcessEnv, kernelPrefixes: Set<str
 function withJob(status: ToolStatus): ToolStatus {
   const install = TOOL_INSTALLS[status.id];
   const job = install ? jobs().get(install) : undefined;
+  if (!job && queue().has(status.id)) return { ...status, state: "installing", log: ["等待前一项安装完成"] };
   if (!job) return status;
   return { ...status, state: job.state, log: job.log.slice(-12), detail: job.error ?? status.detail };
 }
@@ -163,4 +168,46 @@ export function startInstall(id: ToolId): { started: boolean; message?: string }
 /** Last lines of a tool's install log, for diagnostics. */
 export async function installLog(tool: InstallableTool): Promise<string> {
   return readFile(join(managedPaths().logs, `${tool}.log`), "utf8").catch(() => "");
+}
+
+/**
+ * Installs every missing required tool the app can install, one after another (Nextflow needs Java first).
+ * Runs on first connect, so a fresh machine, WSL distro or server gets ready without clicks.
+ */
+export async function installRequired(): Promise<{ started: boolean; tools: ToolId[]; message?: string }> {
+  if (globalQueue.studioInstallChain) return { started: false, tools: [...queue()], message: "正在安装" };
+  globalQueue.studioInstallChain = true;
+  let missing: ToolId[] = [];
+  try {
+    const status = await setupStatus();
+    missing = status.tools.filter((tool) => tool.required && tool.state === "missing" && TOOL_INSTALLS[tool.id]).map((tool) => tool.id);
+  } catch (error) {
+    globalQueue.studioInstallChain = false;
+    throw error;
+  }
+  if (!missing.length || !platformKey()) {
+    globalQueue.studioInstallChain = false;
+    return { started: false, tools: [], message: missing.length ? `不支持在 ${process.platform}-${process.arch} 上自动安装` : undefined };
+  }
+  for (const id of missing) queue().add(id);
+  void (async () => {
+    try {
+      for (const id of missing) {
+        const result = startInstall(id);
+        queue().delete(id);
+        if (!result.started) return;
+        // The job leaves the map when it succeeds and stays with state "error" when it fails.
+        for (;;) {
+          const job = jobs().get(TOOL_INSTALLS[id]!);
+          if (!job) break;
+          if (job.state === "error") return;
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
+      }
+    } finally {
+      queue().clear();
+      globalQueue.studioInstallChain = false;
+    }
+  })();
+  return { started: true, tools: missing };
 }

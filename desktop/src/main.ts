@@ -9,7 +9,7 @@ import { readProjectMenuState } from "../../src/features/desktop/project-menu";
 import { SESSION_COOKIE } from "../../src/features/desktop/session-guard";
 import { parseEnvBlock, quitPrompt, RestartTracker, SHELL_ENV_KEYS } from "../../src/features/desktop/supervisor";
 import type { DesktopMenuAction, DesktopNotification, PickPathOptions, ProjectMenuState } from "../../src/lib/desktop";
-import { freePort, startBackend, waitForHealth, wslDistros, type BackendContext, type RunningBackend } from "./backends";
+import { freePort, installWsl, startBackend, waitForHealth, wslDistros, type BackendContext, type RunningBackend } from "./backends";
 import { connectionToken, loadConnections, rememberLast, removeConnection, saveConnection } from "./connection-store";
 import { setupUpdates } from "./updates";
 
@@ -115,7 +115,7 @@ async function appServerDirectory(): Promise<string> {
 }
 
 /** Start a hosted process and keep it alive: crash → backoff restart, too many → tell the user. */
-function supervise(name: string, modulePath: string, args: string[], env: NodeJS.ProcessEnv, cwd?: string) {
+function supervise(name: string, modulePath: string, args: string[], env: NodeJS.ProcessEnv, cwd?: string, keepTrying = false) {
   const generation = localGeneration;
   const restarts = new RestartTracker();
   const log = serviceLog(name);
@@ -133,11 +133,10 @@ function supervise(name: string, modulePath: string, args: string[], env: NodeJS
       // Quitting, or this local server was stopped (another backend was picked): no restart.
       if (quitting || generation !== localGeneration) return;
       const delay = restarts.crash(Date.now());
-      if (delay === undefined) {
-        dialog.showErrorBox(`Nextflow Studio：${name} 反复退出`, `最后一次退出码 ${code}。请在设置页导出诊断包，或重启应用。`);
-        return;
-      }
-      setTimeout(start, delay);
+      if (delay !== undefined) { setTimeout(start, delay); return; }
+      // The runner fails until Java and Nextflow exist; the setup page installs them, so keep checking.
+      if (keepTrying) { restarts.healthy(); setTimeout(start, 30_000); return; }
+      dialog.showErrorBox(`Nextflow Studio：${name} 反复退出`, `最后一次退出码 ${code}。请在设置页导出诊断包，或重启应用。`);
     });
   };
   start();
@@ -155,7 +154,7 @@ async function startLocal(context: BackendContext) {
   const serverDir = await appServerDirectory();
   const env = serviceEnv({ PORT: String(port), HOSTNAME: "127.0.0.1", NEXTFLOW_STUDIO_SESSION_TOKEN: token });
   supervise("web", join(serverDir, "server.js"), [], env, serverDir);
-  supervise("runner", join(resources, "runner", "runner.mjs"), [], serviceEnv(), join(resources, "runner"));
+  supervise("runner", join(resources, "runner", "runner.mjs"), [], serviceEnv(), join(resources, "runner"), true);
   await waitForHealth(origin, token);
   return {
     origin,
@@ -372,6 +371,7 @@ function registerIpc() {
     return { ...loadConnections(), platform: process.platform, localAvailable: process.platform !== "win32", auto, error };
   });
   ipcMain.handle("connect:distros", (event) => (fromConnectPage(event) ? wslDistros() : []));
+  ipcMain.handle("connect:install-wsl", (event) => (fromConnectPage(event) ? installWsl() : { ok: false, error: "不允许" }));
   ipcMain.handle("connect:remove", (event, id: unknown) => (fromConnectPage(event) && typeof id === "string" ? removeConnection(id) : loadConnections()));
   ipcMain.handle("connect:start", async (event, input: unknown, token: unknown) => {
     if (!fromConnectPage(event)) return { ok: false, error: "不允许" };

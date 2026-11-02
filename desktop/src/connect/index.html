@@ -47,6 +47,8 @@
   .actions { display: flex; justify-content: flex-end; margin-top: 4px; }
   #status { min-height: 20px; margin: 16px 0 0; font-size: 13px; color: var(--muted); }
   #status.error { color: var(--danger); white-space: pre-wrap; }
+  .inline { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+  .inline span { flex: 1; }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -65,7 +67,12 @@
     <form id="form" autocomplete="off">
       <div data-kind="local"></div>
       <div data-kind="wsl">
-        <label>发行版<select name="distro" required></select></label>
+        <label id="distro-field">发行版<select name="distro" required></select></label>
+        <div id="wsl-missing" class="inline" hidden>
+          <span>没有可用的 WSL 发行版</span>
+          <button type="button" id="install-wsl">安装 WSL</button>
+          <button type="button" id="refresh-wsl" class="ghost">刷新</button>
+        </div>
       </div>
       <div data-kind="ssh">
         <div class="row">
@@ -111,16 +118,30 @@
       part.hidden = part.dataset.kind !== next;
       for (const field of part.querySelectorAll("input, select")) field.disabled = part.hidden;
     }
+    $("submit").hidden = false;
     if (next === "wsl") loadDistros();
   }
 
-  async function loadDistros() {
+  async function loadDistros(force = false) {
     const select = form.elements.distro;
-    if (select.options.length) return;
+    if (select.options.length && !force) return;
+    select.replaceChildren();
     const distros = await api.distros();
     for (const name of distros) select.add(new Option(name, name));
-    if (!distros.length) setStatus("没有找到 WSL 发行版。在 PowerShell 里运行 wsl --install 后重试。", true);
+    $("wsl-missing").hidden = distros.length > 0;
+    $("distro-field").hidden = distros.length === 0;
+    $("submit").hidden = kind === "wsl" && distros.length === 0;
   }
+
+  $("refresh-wsl").onclick = async () => { setStatus(""); await loadDistros(true); };
+  $("install-wsl").onclick = async () => {
+    setBusy(true);
+    setStatus("正在安装 WSL…");
+    const result = await api.installWsl();
+    setBusy(false);
+    setStatus(result.ok ? "按安装窗口的提示创建 Linux 用户。需要重启时，重启后再打开应用。" : result.error, !result.ok);
+    if (result.ok) await loadDistros(true);
+  };
 
   async function connect(connection, token) {
     if (busy) return;

@@ -12,6 +12,7 @@ if (location.protocol === "file:") {
   contextBridge.exposeInMainWorld("studioConnect", {
     state: () => ipcRenderer.invoke("connect:state"),
     distros: () => ipcRenderer.invoke("connect:distros"),
+    installWsl: () => ipcRenderer.invoke("connect:install-wsl"),
     connect: (connection: unknown, token?: string) => ipcRenderer.invoke("connect:start", connection, token),
     remove: (id: string) => ipcRenderer.invoke("connect:remove", id),
     onStatus: (listener: (message: string) => void) => { ipcRenderer.on("connect:status", (_event, message: string) => listener(message)); },

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import * as React from "react";
 import { ArrowRight, FlaskConical, RefreshCw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -8,7 +9,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { PanelLoading, PanelNotice } from "@/components/ui/panel-notice";
 import { mockingActive, setDemoMode } from "@/lib/mocking";
 import { toast } from "@/lib/toast";
-import { useInstallTool, useSetupStatus } from "../queries";
+import { shouldAutoInstall } from "../auto-install";
+import { useInstallRequired, useInstallTool, useSetupStatus } from "../queries";
 import type { SetupStatus, ToolStatus } from "../types";
 import { ToolChecklist } from "./tool-checklist";
 
@@ -104,6 +106,15 @@ export function SetupWizardView({
 export function SetupWizard() {
   const status = useSetupStatus();
   const install = useInstallTool();
+  const installRequired = useInstallRequired();
+  const started = React.useRef(false);
+  // A fresh machine (or WSL distro, or server) installs Java and Nextflow on its own. Once per visit: after a
+  // failure the buttons take over.
+  React.useEffect(() => {
+    if (started.current || !status.data || mockingActive() || !shouldAutoInstall(status.data)) return;
+    started.current = true;
+    installRequired.mutate(undefined, { onError: (error) => toast.error(error.message) });
+  }, [status.data, installRequired]);
   if (status.isPending) return <PanelLoading message="正在检查运行环境…" />;
   if (status.isError) return <PanelNotice tone="danger" message={`检查失败：${status.error.message}`} />;
   return (
