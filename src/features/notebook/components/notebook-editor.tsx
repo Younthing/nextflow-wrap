@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import { CodeXml, Eraser, FastForward, Loader2, Plus, X } from "lucide-react";
 
@@ -13,7 +14,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { NotebookAssistant } from "@/features/assistant/modules/surfaces";
 import { applyCanvasValues, readCanvasValues, type AppliedValue } from "@/features/notebook/canvas-values";
 import { convertNotebook, ConvertError } from "@/features/notebook/convert";
-import { dispatchNotebookKey, notebookDraftKey } from "@/features/notebook/edit";
+import { dispatchNotebookKey, dragOffsets, gapAtPointer, moveCellToGap, notebookDraftKey } from "@/features/notebook/edit";
 import { COMMAND_HINT, EDIT_HINT, interpretNotebookKey, toNotebookKeyEvent, type NotebookMode } from "@/features/notebook/keyboard";
 import { latestModuleForNotebook } from "@/features/notebook/library";
 import { useNotebook, useNotebookRevision, useRunNotebook, useSaveNotebook, useScriptModules } from "@/features/notebook/queries";
@@ -41,6 +42,41 @@ function newCell(role: NotebookCellRole): NotebookCell {
  * The gap between two cells. Like VS Code, hovering it reveals buttons that
  * insert a code or markdown cell right there; after the last cell they stay visible.
  */
+/** Lifted copy of a dragged cell that follows the pointer. Portalled to body so no transformed ancestor clips it. */
+function DragPreview({
+  cell,
+  language,
+  top,
+  left,
+  width,
+}: {
+  cell: NotebookCell;
+  language: string;
+  top: number;
+  left: number;
+  width: number;
+}) {
+  const lines = cell.source.split("\n");
+  const shown = lines.slice(0, 8).join("\n");
+  return createPortal(
+    <div
+      aria-hidden
+      style={{ top, left, width }}
+      className="glass-strong pointer-events-none fixed z-50 scale-[1.02] cursor-grabbing rounded-md border border-primary/50 shadow-2xl"
+    >
+      <pre className="m-0 max-h-48 overflow-hidden px-3 py-2 font-mono text-xs leading-5 whitespace-pre-wrap text-foreground">
+        {shown.trim() ? shown : " "}
+        {lines.length > 8 ? <span className="block text-muted-foreground">…</span> : null}
+      </pre>
+      <div className="flex justify-between px-3 pb-1.5 text-[11px] text-muted-foreground">
+        <span>{CELL_ROLE_LABEL[cell.role]}</span>
+        <span>{cell.role === "markdown" ? "Markdown" : language}</span>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 function InsertBar({
   after,
   last = false,
@@ -114,6 +150,25 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
   const [mode, setMode] = React.useState<NotebookMode>("command");
   const [deleteArmed, setDeleteArmed] = React.useState(false);
   const [markdownEditId, setMarkdownEditId] = React.useState<string | null>(null);
+  /** Cell being dragged by its gutter handle, and the gap (0..cells.length) it would drop into. */
+  const [drag, setDragState] = React.useState<{
+    id: string;
+    gap: number | null;
+    pointerY: number;
+    /**
+     * Cell layout measured when the drag started, in scroll-content coordinates. Cells move by transforms during
+     * the drag, so the gap is picked from these untouched positions rather than from the moving boxes.
+     */
+    layout: { midpoints: number[]; pitches: number[]; left: number; width: number; grab: number };
+  } | null>(null);
+  /** Pointer handlers read the latest drag here, between renders. */
+  const dragRef = React.useRef(drag);
+  const setDrag = (next: typeof drag) => {
+    dragRef.current = next;
+    setDragState(next);
+  };
+  const scrollerRef = React.useRef<HTMLDivElement>(null);
+  const cellListRef = React.useRef<HTMLDivElement>(null);
   const [canvasFor, setCanvasFor] = React.useState<string | null>(null);
   const [fromCanvas, setFromCanvas] = React.useState<{ from: string; applied: AppliedValue[]; skipped: string[]; before: NotebookCell[] } | null>(null);
   const [focusTick, setFocusTick] = React.useState<{ id: string; mode: NotebookMode; token: number } | null>(null);
@@ -238,6 +293,41 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
     }
   }
   const ports = { inputs: converted?.inputs.length ?? 0, outputs: converted?.outputs.length ?? 0 };
+
+  // Scroll while the pointer rests near the top or bottom edge of the list, and keep the gap in step.
+  const dragging = drag !== null;
+  React.useEffect(() => {
+    if (!dragging) return;
+    let frame = 0;
+    const tick = () => {
+      const current = dragRef.current;
+      const scroller = scrollerRef.current;
+      if (current && scroller) {
+        const box = scroller.getBoundingClientRect();
+        const edge = 56;
+        const speed =
+          current.pointerY < box.top + edge
+            ? -Math.ceil((box.top + edge - current.pointerY) / 4)
+            : current.pointerY > box.bottom - edge
+              ? Math.ceil((current.pointerY - box.bottom + edge) / 4)
+              : 0;
+        const before = scroller.scrollTop;
+        if (speed !== 0) scroller.scrollTop += speed;
+        if (scroller.scrollTop !== before) {
+          const y = current.pointerY - box.top + scroller.scrollTop;
+          const gap = gapAtPointer(current.layout.midpoints, y);
+          if (gap !== current.gap) {
+            const next = { ...current, gap };
+            dragRef.current = next;
+            setDragState(next);
+          }
+        }
+      }
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [dragging]);
 
   if (notebook.isPending || (readOnly && revision.isPending)) return <AsyncPlaceholder status="pending" className="h-full" />;
   if (notebook.error || !notebook.data) {
@@ -379,6 +469,51 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
     update({ cells });
     setSelected(id);
   };
+  const dropCell = () => {
+    const current = dragRef.current;
+    setDrag(null);
+    if (!current || current.gap === null) return;
+    const cells = moveCellToGap(live.cells, current.id, current.gap);
+    if (!cells) return;
+    update({ cells });
+    setSelected(current.id);
+  };
+  /** Pointer Y in the scroll content, so positions measured at drag start stay valid as the list scrolls. */
+  const contentY = (clientY: number) => {
+    const scroller = scrollerRef.current;
+    if (!scroller) return clientY;
+    return clientY - scroller.getBoundingClientRect().top + scroller.scrollTop;
+  };
+  const startDrag = (id: string, clientY: number) => {
+    const articles = Array.from(
+      cellListRef.current?.querySelectorAll<HTMLElement>(":scope > [data-cell-slot] > article") ?? [],
+    );
+    const rects = articles.map((article) => article.getBoundingClientRect());
+    const index = live.cells.findIndex((cell) => cell.id === id);
+    const own = rects[index];
+    if (!own) return;
+    const tops = rects.map((rect) => contentY(rect.top));
+    const last = rects.length - 1;
+    const spacing = last > 0 ? tops[last] - tops[last - 1] - rects[last - 1].height : 20;
+    const layout = {
+      midpoints: rects.map((rect, i) => tops[i] + rect.height / 2),
+      pitches: rects.map((rect, i) => (i < last ? tops[i + 1] - tops[i] : rect.height + spacing)),
+      // Line the preview up with the editor box, past the 3rem gutter.
+      left: own.left + 48,
+      width: own.width - 52,
+      grab: clientY - own.top,
+    };
+    setDrag({ id, gap: null, pointerY: clientY, layout });
+  };
+  /** Track the pointer while a cell is dragged: move the preview and pick the gap it points at. */
+  const dragMove = (clientY: number) => {
+    const current = dragRef.current;
+    if (!current) return;
+    setDrag({ ...current, gap: gapAtPointer(current.layout.midpoints, contentY(clientY)), pointerY: clientY });
+  };
+  const dragIndex = drag ? live.cells.findIndex((cell) => cell.id === drag.id) : -1;
+  const offsets = drag ? dragOffsets(drag.layout.pitches, dragIndex, drag.gap) : null;
+
   const clearOutput = (id?: string) => {
     if (!id) {
       setOutputs({});
@@ -557,8 +692,17 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
         </p>
       ) : null}
 
-      <div className="min-h-0 flex-1 overflow-auto">
-        <div className="mx-auto grid max-w-6xl px-4 pt-5 pb-24">
+      {drag && live.cells[dragIndex] ? (
+        <DragPreview
+          cell={live.cells[dragIndex]}
+          language={live.language === "r" ? "R" : "Python"}
+          top={drag.pointerY - drag.layout.grab}
+          left={drag.layout.left}
+          width={drag.layout.width}
+        />
+      ) : null}
+      <div ref={scrollerRef} className="min-h-0 flex-1 overflow-auto">
+        <div ref={cellListRef} className="mx-auto grid max-w-6xl px-4 pt-5 pb-24">
           <div className="grid gap-0.5 pb-3 pl-12">
             <input
               value={live.name}
@@ -578,7 +722,12 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
           </div>
           {!readOnly ? <InsertBar after={-1} onInsert={insertCell} /> : <div className="h-4" />}
           {live.cells.map((cell, index) => (
-            <React.Fragment key={cell.id}>
+            <div
+              key={cell.id}
+              data-cell-slot
+              className={cn("relative", drag && "motion-safe:transition-transform motion-safe:duration-200 motion-safe:ease-out")}
+              style={offsets?.[index] ? { transform: `translateY(${offsets[index]}px)` } : undefined}
+            >
               <NotebookCellCard
                 cell={cell}
                 index={index}
@@ -628,6 +777,10 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
                 }}
                 onChange={(source) => updateCell(cell.id, { source })}
                 onRole={(role) => updateCell(cell.id, { role })}
+                dragging={drag?.id === cell.id}
+                onDragStart={readOnly ? undefined : (clientY) => startDrag(cell.id, clientY)}
+                onDragMove={dragMove}
+                onDragEnd={(commit) => (commit ? dropCell() : setDrag(null))}
                 onDelete={() => {
                   const remaining = live.cells.filter((item) => item.id !== cell.id);
                   update({ cells: remaining });
@@ -640,7 +793,7 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
               ) : (
                 <div className="h-4" />
               )}
-            </React.Fragment>
+            </div>
           ))}
         </div>
       </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { ArrowDown, ArrowUp, Check, Eraser, Loader2, Pencil, Play, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, Eraser, GripVertical, Loader2, Pencil, Play, Trash2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -21,6 +21,9 @@ export const CELL_ROLE_LABEL: Record<NotebookCellRole, string> = {
   output: "输出",
   explore: "自由探索",
 };
+
+/** Pixels the pointer must travel on the grip before a press becomes a drag. */
+const DRAG_THRESHOLD = 4;
 
 const LANGUAGE_LABEL: Record<NotebookLanguage, string> = {
   python: "Python",
@@ -110,6 +113,10 @@ export function NotebookCellCard({
   onCommandKey,
   onEnterEdit,
   onEnterCommand,
+  onDragStart,
+  onDragMove,
+  onDragEnd,
+  dragging = false,
 }: {
   cell: NotebookCell;
   index: number;
@@ -141,6 +148,17 @@ export function NotebookCellCard({
   onCommandKey?: (event: KeyboardEvent<HTMLButtonElement>) => boolean;
   onEnterEdit?: () => void;
   onEnterCommand?: () => void;
+  /**
+   * Set to make the cell draggable by its gutter grip. Dragging uses pointer events rather than HTML5 drag and
+   * drop: reordering stays inside the page, and native DnD is unreliable under WSLg/XWayland.
+   */
+  onDragStart?: (clientY: number) => void;
+  /** Pointer position while dragging, in viewport coordinates. */
+  onDragMove?: (clientY: number) => void;
+  /** `commit` is false when the drag was cancelled (lost pointer capture). */
+  onDragEnd?: (commit: boolean) => void;
+  /** This cell is being dragged: dim it in place. */
+  dragging?: boolean;
 }) {
   const number = index + 1;
   const executable = cell.role !== "markdown";
@@ -151,6 +169,7 @@ export function NotebookCellCard({
   const [menu, setMenu] = useState(false);
   const [toolbarMenu, setToolbarMenu] = useState(false);
   const sourceRef = useRef<HTMLTextAreaElement>(null);
+  const press = useRef<{ pointerId: number; startY: number; started: boolean } | null>(null);
   const commandRef = useRef<HTMLButtonElement>(null);
   if ((readOnly || !selected) && markdownEditing) setMarkdownEditing(false);
   const showEditor = markdown && !readOnly && (markdownEditing || markdownOpen);
@@ -213,7 +232,7 @@ export function NotebookCellCard({
       aria-label={`单元格 ${number}`}
       aria-current={selected ? "true" : undefined}
       data-selected={selected ? "true" : "false"}
-      className={cn("group/cell relative flex", raised && "z-20")}
+      className={cn("group/cell relative flex transition-opacity", raised && "z-20", dragging && "opacity-40")}
       onClick={(event) => {
         onSelect();
         const target = event.target;
@@ -281,6 +300,50 @@ export function NotebookCellCard({
           {/* A persistent kernel numbers executions the way Jupyter does; blank until the cell runs. */}
           {showRunning ? "[*]" : shownOutput?.executionCount !== undefined ? `[${shownOutput.executionCount}]` : "[ ]"}
         </button>
+        {onDragStart && !readOnly ? (
+          <span
+            role="button"
+            aria-label={`拖动单元格 ${number}`}
+            title="拖动以移动单元格"
+            className={cn(
+              "mt-1 flex h-6 w-5 cursor-grab touch-none items-center justify-center rounded-sm text-muted-foreground transition-opacity select-none hover:bg-accent hover:text-foreground",
+              dragging && "cursor-grabbing",
+              selected || dragging ? "opacity-100" : "opacity-0 group-hover/cell:opacity-100",
+            )}
+            onClick={(event) => event.stopPropagation()}
+            onPointerDown={(event) => {
+              if (event.button !== 0) return;
+              event.preventDefault();
+              event.stopPropagation();
+              event.currentTarget.setPointerCapture(event.pointerId);
+              press.current = { pointerId: event.pointerId, startY: event.clientY, started: false };
+            }}
+            onPointerMove={(event) => {
+              const current = press.current;
+              if (!current || current.pointerId !== event.pointerId) return;
+              if (!current.started) {
+                if (Math.abs(event.clientY - current.startY) < DRAG_THRESHOLD) return;
+                current.started = true;
+                onSelect();
+                onDragStart(current.startY);
+              }
+              onDragMove?.(event.clientY);
+            }}
+            onPointerUp={(event) => {
+              const current = press.current;
+              if (!current || current.pointerId !== event.pointerId) return;
+              press.current = null;
+              if (current.started) onDragEnd?.(true);
+            }}
+            onLostPointerCapture={() => {
+              const current = press.current;
+              press.current = null;
+              if (current?.started) onDragEnd?.(false);
+            }}
+          >
+            <GripVertical className="size-4" />
+          </span>
+        ) : null}
       </div>
 
       <div className="relative min-w-0 flex-1 pr-1">

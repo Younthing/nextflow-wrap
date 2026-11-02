@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { dispatchNotebookKey, notebookDraftKey, type NotebookSurface } from "./edit";
+import { dispatchNotebookKey, dragOffsets, gapAtPointer, moveCellToGap, notebookDraftKey, type NotebookSurface } from "./edit";
 import type { NotebookCell } from "./types";
 
 const cells: NotebookCell[] = [
@@ -109,5 +109,60 @@ describe("notebookDraftKey", () => {
       ...doc,
       cells: [{ ...cells[0]!, source: "print(2)\n" }, cells[1]!],
     }));
+  });
+});
+
+describe("moveCellToGap", () => {
+  const ids = (cells: { id: string }[] | null) => cells?.map((cell) => cell.id) ?? null;
+  const cells = ["a", "b", "c", "d"].map((id) => ({ id }));
+
+  it("moves a cell down into a later gap", () => {
+    expect(ids(moveCellToGap(cells, "a", 3))).toEqual(["b", "c", "a", "d"]);
+    expect(ids(moveCellToGap(cells, "b", 4))).toEqual(["a", "c", "d", "b"]);
+  });
+
+  it("moves a cell up into an earlier gap", () => {
+    expect(ids(moveCellToGap(cells, "d", 0))).toEqual(["d", "a", "b", "c"]);
+    expect(ids(moveCellToGap(cells, "c", 1))).toEqual(["a", "c", "b", "d"]);
+  });
+
+  it("ignores drops next to the cell itself and unknown cells", () => {
+    expect(moveCellToGap(cells, "b", 1)).toBeNull();
+    expect(moveCellToGap(cells, "b", 2)).toBeNull();
+    expect(moveCellToGap(cells, "x", 0)).toBeNull();
+    expect(moveCellToGap(cells, "a", 5)).toBeNull();
+  });
+});
+
+describe("gapAtPointer", () => {
+  const midpoints = [100, 300, 500];
+
+  it("counts the cell midpoints above the pointer", () => {
+    expect(gapAtPointer(midpoints, 0)).toBe(0);
+    expect(gapAtPointer(midpoints, 150)).toBe(1);
+    expect(gapAtPointer(midpoints, 499)).toBe(2);
+    expect(gapAtPointer(midpoints, 900)).toBe(3);
+  });
+
+  it("returns 0 for an empty notebook", () => {
+    expect(gapAtPointer([], 50)).toBe(0);
+  });
+});
+
+describe("dragOffsets", () => {
+  const pitches = [100, 50, 80, 60];
+
+  it("slides the passed cells up and the dragged one down", () => {
+    expect(dragOffsets(pitches, 0, 3)).toEqual([130, -100, -100, 0]);
+  });
+
+  it("slides the passed cells down and the dragged one up", () => {
+    expect(dragOffsets(pitches, 3, 1)).toEqual([0, 60, 60, -130]);
+  });
+
+  it("stays put before the pointer picks a gap or when the gap is beside the cell", () => {
+    expect(dragOffsets(pitches, 1, null)).toEqual([0, 0, 0, 0]);
+    expect(dragOffsets(pitches, 1, 1)).toEqual([0, 0, 0, 0]);
+    expect(dragOffsets(pitches, 1, 2)).toEqual([0, 0, 0, 0]);
   });
 });
