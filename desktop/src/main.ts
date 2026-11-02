@@ -194,7 +194,7 @@ function createWindow(path: string) {
 
 function showWindow() {
   if (mainWindow) { mainWindow.show(); mainWindow.focus(); }
-  else createWindow("/workflows");
+  else createWindow("/");
 }
 
 function updateTray() {
@@ -296,7 +296,7 @@ app.whenReady().then(async () => {
   await waitForServer(origin);
   // A machine without Java or Nextflow starts on the setup page.
   const setup = await api<{ ready: boolean }>("/setup").catch(() => ({ ready: true }));
-  createWindow(setup.ready ? "/workflows" : "/setup");
+  createWindow(setup.ready ? "/" : "/setup");
   updateTray();
   if (!dev) setupUpdates();
 }).catch((error: unknown) => {

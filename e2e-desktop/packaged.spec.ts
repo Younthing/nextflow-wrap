@@ -12,7 +12,7 @@ import { addReference, extend, go, notebookModule, runWithShell, shot } from "..
  */
 
 const root = resolve(__dirname, "..");
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 function packagedBinary(): string {
   if (process.env.DESKTOP_APP) return process.env.DESKTOP_APP;
