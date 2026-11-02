@@ -6,8 +6,23 @@ import { describe, expect, it } from "vitest";
 import { demoNotebooks, demoScriptModules } from "@/features/notebook/seed";
 import { readsQcWorkflow } from "@/features/workflow/demo";
 import { StudioStore } from "./database";
+import { SCHEMA_VERSION } from "./migrations";
 
 describe("StudioStore", () => {
+  it("remembers an upgrade for the process that opens the file second", () => {
+    const dir = mkdtempSync(join(tmpdir(), "studio-upgrade-"));
+    try {
+      const legacy = new DatabaseSync(join(dir, "studio.sqlite"));
+      legacy.exec("CREATE TABLE workflows (id TEXT PRIMARY KEY, data TEXT NOT NULL); PRAGMA user_version=2;");
+      legacy.close();
+      const runner = new StudioStore(join(dir, "studio.sqlite"));
+      expect(runner.migration).toMatchObject({ from: 2, to: SCHEMA_VERSION });
+      const web = new StudioStore(join(dir, "studio.sqlite"));
+      expect(web.migration.applied).toEqual([]);
+      expect(web.lastMigration()).toMatchObject({ from: 2, to: SCHEMA_VERSION, applied: [3, 4] });
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
   it("persists workflow edits across connections and rolls back failed transactions", () => {
     const directory = mkdtempSync(join(tmpdir(), "studio-db-"));
     try {
@@ -86,7 +101,7 @@ describe("StudioStore", () => {
       legacy.prepare("INSERT INTO notebooks(id, updated, data) VALUES (?,?,?)").run(doc.id, doc.updatedAt, JSON.stringify(doc));
       legacy.close();
       const db = new StudioStore(path);
-      expect(Number(db.db.prepare("PRAGMA user_version").get()?.user_version)).toBe(3);
+      expect(Number(db.db.prepare("PRAGMA user_version").get()?.user_version)).toBe(SCHEMA_VERSION);
       expect(db.notebook(doc.id)?.name).toBe(doc.name);
       expect(db.notebookJson(doc.id)).toBe(JSON.stringify(doc));
       db.saveLibraryCopy({

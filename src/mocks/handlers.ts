@@ -17,6 +17,11 @@ import type { HealthStatus } from "@/lib/api-types";
 import { readDb, writeDb } from "./db";
 import { kernelHandlers } from "./kernels";
 import { runHandlers } from "./runs";
+import { setupHandlers } from "./setup";
+import { fsHandlers } from "./fs";
+import { settingsHandlers } from "./settings";
+import { storageHandlers } from "./storage";
+import { diagnosticsHandlers } from "./diagnostics";
 
 const summarize = (w: WorkflowDoc): WorkflowSummary => ({
   id: w.id,
@@ -30,6 +35,11 @@ const notFound = () => HttpResponse.json({ message: "流程不存在" }, { statu
 
 export const handlers = [
   ...kernelHandlers,
+  ...setupHandlers,
+  ...fsHandlers,
+  ...settingsHandlers,
+  ...storageHandlers,
+  ...diagnosticsHandlers,
   http.get("/api/health", async () => {
     await delay(150);
     return HttpResponse.json<HealthStatus>({

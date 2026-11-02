@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Loader2, Play, XCircle } from "lucide-react";
+import { AlertTriangle, Loader2, Play, RotateCcw, XCircle } from "lucide-react";
 
 import { AsyncPlaceholder } from "@/components/ui/async-placeholder";
 import { Button } from "@/components/ui/button";
@@ -36,7 +36,7 @@ import type { Issue } from "@/features/workflow/validate";
 import { EnvironmentForm } from "./environment-form";
 import { ProjectSettingsForm } from "@/features/project/components/project-settings-form";
 import { readLaunchConfig, rememberLaunchConfig } from "../saved-launch";
-import { useHealthStatus, useLaunchRun } from "../queries";
+import { useHealthStatus, useLaunchRun, useRuns } from "../queries";
 
 export function RunDialog({
   open,
@@ -104,13 +104,18 @@ export function RunDialog({
       : []),
   ];
 
-  const start = () => {
+  // One-click resume: the latest finished run of this workflow whose cache is still on disk.
+  const runs = useRuns(docId || undefined, { enabled: open && Boolean(docId) });
+  const resumeSource = runs.data?.find((run) => run.resumable);
+
+  const start = (resumeFrom?: string) => {
     if (problems.length || !generated?.project) return;
     const doc = store.getState().toDoc();
     const { project } = generated;
     rememberLaunchConfig(docId, launchConfig);
     launch.mutate(
       {
+        ...(resumeFrom ? { resumeFrom } : {}),
         workflow: doc,
         project: {
           name: project.meta.name,
@@ -238,8 +243,19 @@ export function RunDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             取消
           </Button>
+          {resumeSource && (
+            <Button
+              variant="glass"
+              onClick={() => start(resumeSource.id)}
+              disabled={problems.length > 0 || launch.isPending}
+              title={`用 -resume 复用 ${resumeSource.runName} 的缓存：没改动的步骤直接跳过`}
+            >
+              <RotateCcw />
+              续跑
+            </Button>
+          )}
           <Button
-            onClick={start}
+            onClick={() => start()}
             disabled={problems.length > 0 || launch.isPending}
           >
             {launch.isPending ? <Loader2 className="animate-spin" /> : <Play />}

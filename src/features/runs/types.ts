@@ -24,6 +24,8 @@ export interface RunProgress {
 
 export interface RunSummary {
   phase?: "queued" | "preparing" | "executing" | "finalizing" | "cancelling";
+  /** Finished with a Nextflow session whose cache is still on disk: the canvas can run with `-resume` of it. */
+  resumable?: boolean;
   id: string;
   /** Nextflow run name, e.g. `tender_curie`. */
   runName: string;
@@ -46,6 +48,8 @@ export interface ProjectSnapshot {
 
 /** POST /api/runs */
 export interface LaunchRequest {
+  /** Run the canvas with `-resume` of this earlier run's session. */
+  resumeFrom?: string;
   workflow: WorkflowDoc;
   project: ProjectSnapshot;
   params: PipelineParams;
@@ -65,6 +69,10 @@ export interface RunDetail extends RunSummary {
   project: ProjectSnapshot;
   workflow: WorkflowDoc;
   cancelledAt?: string;
+  /** The session's task directories were removed on the disk page; `-resume` can no longer use them. */
+  workCleanedAt?: string;
+  /** Published results were removed too. */
+  resultsRemovedAt?: string;
 }
 
 export interface TaskRecord {

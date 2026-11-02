@@ -8,6 +8,7 @@ import { indexModules, resolveNodeDef } from "@/features/workflow/catalog";
 import { newId } from "@/features/workflow/nodes";
 import { profileList } from "@/features/project/launch";
 import { readDb, writeDb, type StoredRun } from "./db";
+import { sampleAnnDataSummary } from "@/features/runs/anndata";
 
 function moduleIndex() {
   return indexModules(Object.values(readDb().scriptModules));
@@ -55,7 +56,7 @@ export const runHandlers = [
     const workflowId = new URL(request.url).searchParams.get("workflowId");
     const runs = Object.values(readDb().runs)
       .filter((r) => !workflowId || r.workflowId === workflowId)
-      .map((r) => summarize(materialize(r)))
+      .map((r) => { const summary = summarize(materialize(r)); return { ...summary, resumable: summary.status === "succeeded" || summary.status === "failed" }; })
       .sort((a, b) => b.submittedAt.localeCompare(a.submittedAt));
     return HttpResponse.json(runs);
   }),
@@ -78,6 +79,7 @@ export const runHandlers = [
       runConfig: body.runConfig,
       project: body.project,
       workflow: body.workflow,
+      ...(body.resumeFrom ? { resumeFromRunId: body.resumeFrom } : {}),
     };
     writeDb((db) => {
       db.runs[run.id] = run;
@@ -133,6 +135,14 @@ export const runHandlers = [
     if (!content) return HttpResponse.json({ message: "文件不存在或无法预览" }, { status: 404 });
     const body = content.encoding === "base64" ? Uint8Array.from(atob(content.body), (char) => char.charCodeAt(0)) : content.body;
     return new HttpResponse(body, { headers: { "content-type": content.contentType } });
+  }),
+
+  http.get("/api/runs/:id/results/summary", async ({ params, request }) => {
+    await delay(150);
+    if (!readDb().runs[params.id as string]) return notFound();
+    const path = new URL(request.url).searchParams.get("path") ?? "";
+    if (!path.endsWith(".h5ad")) return HttpResponse.json({ message: "只有 .h5ad 文件有摘要" }, { status: 400 });
+    return HttpResponse.json(sampleAnnDataSummary(path));
   }),
 
   http.post("/api/runs/:id/cancel", async ({ params }) => {

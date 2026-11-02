@@ -27,7 +27,7 @@ import {
   SAMPLESHEET_ID,
 } from "@/features/workflow/builtins";
 import { resolveNodeDef } from "@/features/workflow/catalog";
-import { moduleOrigin, newerScriptModule } from "@/features/workflow/origin";
+import { moduleOrigin, newerScriptModule, scriptModuleVersions, versionDiff } from "@/features/workflow/origin";
 import { portSignature, socketInputs } from "@/features/workflow/ports";
 import { projectMeta } from "@/features/project/generate";
 import { scriptEnvDirectives } from "@/features/project/script-process";
@@ -251,10 +251,52 @@ function BuiltinSettings({ node, def }: { node: FlowNode; def: ModuleDef }) {
   );
 }
 
+/** All published versions of this notebook's module, with what switching would change on the canvas. */
+function VersionPicker({ current, modules, onPick }: { current: ModuleDef; modules: readonly ModuleDef[]; onPick: (def: ModuleDef) => void }) {
+  const versions = scriptModuleVersions(current, modules);
+  const [target, setTarget] = React.useState<string>();
+  if (versions.length < 2) return null;
+  const chosen = versions.find((def) => def.id === target);
+  const diff = chosen ? versionDiff(current, chosen) : undefined;
+  const lost = diff ? [...diff.removedInputs, ...diff.removedOutputs] : [];
+  return (
+    <div className="grid gap-2 rounded-lg border border-border/60 p-2">
+      <FormField label="版本" htmlFor="module-version">
+        <Select value={target ?? current.id} onValueChange={setTarget}>
+          <SelectTrigger id="module-version" className="h-8 font-mono text-xs"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {versions.map((def) => (
+              <SelectItem key={def.id} value={def.id} className="text-xs">
+                <span className="font-mono">{def.version}</span>
+                {def.id === current.id ? "（当前）" : ""}
+                {def.tryRun && def.tryRun !== "passed" ? " · 未通过试跑" : ""}
+                {def.changelog ? ` · ${def.changelog.slice(0, 40)}` : ""}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </FormField>
+      {chosen && chosen.id !== current.id && diff && (
+        <div className="grid gap-1.5 text-xs">
+          {lost.length > 0 && <p className="text-warning">{chosen.version} 没有端口 {lost.join("、")}，连到它们的线会被删除。</p>}
+          {diff.addedInputs.length > 0 && <p className="text-muted-foreground">新增输入：{diff.addedInputs.join("、")}</p>}
+          {diff.changedPorts.length > 0 && <p className="text-muted-foreground">结构变化的端口：{diff.changedPorts.join("、")}，切换后会重新检查连线。</p>}
+          {!lost.length && !diff.addedInputs.length && !diff.changedPorts.length && <p className="text-muted-foreground">端口相同，连线保持不变。</p>}
+          <div className="flex gap-2">
+            <Button type="button" size="sm" onClick={() => { onPick(chosen); setTarget(undefined); }}>切换到 {chosen.version}</Button>
+            <Button type="button" size="sm" variant="ghost" onClick={() => setTarget(undefined)}>取消</Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function NodeInspector({ node }: { node: FlowNode }) {
   const index = useEditorStore((s) => s.index);
   const update = useEditorStore((s) => s.updateNodeData);
   const removeNodes = useEditorStore((s) => s.removeNodes);
+  const switchVersion = useEditorStore((s) => s.switchModuleVersion);
   const scripts = useScriptModules();
   const def = resolveNodeDef(index, node.data);
   if (!def)
@@ -309,10 +351,11 @@ function NodeInspector({ node }: { node: FlowNode }) {
           />
         )}
         {newer && (
-          <Button type="button" size="sm" variant="outline" onClick={() => update(node.id, { moduleId: newer.id })}>
+          <Button type="button" size="sm" variant="outline" onClick={() => switchVersion(node.id, newer)}>
             有新版本 {newer.version} · 更新
           </Button>
         )}
+        {origin === "script" && <VersionPicker current={def} modules={scripts.data?.modules ?? []} onPick={(target) => switchVersion(node.id, target)} />}
         {def.tools.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             {def.tools.map((t) =>

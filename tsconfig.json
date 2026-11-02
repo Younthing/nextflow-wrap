@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2017",
-    "lib": ["dom", "dom.iterable", "esnext"],
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -19,7 +23,9 @@
       }
     ],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": [
+        "./src/*"
+      ]
     }
   },
   "include": [
@@ -28,6 +34,7 @@
     "src/**/*.tsx",
     "scripts/**/*.ts",
     "e2e/**/*.ts",
+    "e2e-desktop/**/*.ts",
     ".storybook/**/*.ts",
     ".storybook/**/*.tsx",
     "*.ts",
@@ -35,5 +42,8 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules",
+    "desktop"
+  ]
 }

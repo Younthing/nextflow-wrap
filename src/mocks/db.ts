@@ -5,7 +5,7 @@
 import type { ModuleLibraryCopy } from "@/features/notebook/library-copy";
 import { demoLibraryCopies, demoNotebooks, demoRevisions, demoScriptModules } from "@/features/notebook/seed";
 import type { NotebookDoc, NotebookRevision, TryRunRecord } from "@/features/notebook/types";
-import { demoWorkflow } from "@/features/workflow/demo";
+import { demoWorkflow, dockingWorkflow } from "@/features/workflow/demo";
 import { EXAMPLE_MODULES } from "@/features/workflow/example-modules";
 import type { RunDetail } from "@/features/runs/types";
 import type { ModuleDef, WorkflowDoc } from "@/features/workflow/types";
@@ -30,6 +30,7 @@ let memory: MockDb | null = null;
 
 function seed(): MockDb {
   const demo = demoWorkflow("wf_demo_scrna");
+  const docking = dockingWorkflow("wf_demo_docking");
   const notebooks = demoNotebooks();
   const revisionsList = demoRevisions(notebooks);
   const revisions: Record<string, NotebookRevision> = {};
@@ -40,7 +41,7 @@ function seed(): MockDb {
   const libraryCopies: Record<string, ModuleLibraryCopy> = {};
   for (const copy of demoLibraryCopies(notebooks, revisionsList, scriptList)) libraryCopies[copy.moduleId] = copy;
   return {
-    workflows: { [demo.id]: demo },
+    workflows: { [demo.id]: demo, [docking.id]: docking },
     runs: {},
     notebooks: Object.fromEntries(notebooks.map((doc) => [doc.id, doc])),
     revisions,

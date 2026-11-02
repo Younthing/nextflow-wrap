@@ -5,6 +5,7 @@ import { ChevronRight, HelpCircle } from "lucide-react";
 
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
+import { PathInput } from "@/features/files/components/path-input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
@@ -120,6 +121,21 @@ function Field({
     );
   }
 
+  if (isPathFormat(spec.format)) {
+    return (
+      <FormField label={label}>
+        <PathInput
+          id={id}
+          value={value === undefined ? "" : String(value)}
+          placeholder={placeholder}
+          aria-invalid={required && (value === undefined || value === "")}
+          kind={spec.format === "directory-path" ? "directory" : "file"}
+          onChange={(raw) => onChange(raw === "" ? undefined : raw)}
+          className="h-8 text-xs"
+        />
+      </FormField>
+    );
+  }
   const numeric = type === "integer" || type === "number";
   return (
     <FormField label={label}>

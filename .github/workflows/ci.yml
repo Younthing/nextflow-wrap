@@ -25,7 +25,7 @@ jobs:
       - name: Install Nextflow
         run: bash scripts/install-nextflow.sh
       - name: Install Jupyter kernel
-        run: python3 -m pip install --user --break-system-packages ipykernel matplotlib
+        run: python3 -m pip install --user --break-system-packages ipykernel matplotlib h5py
       - run: pnpm test
         env:
           NXF_DISABLE_CHECK_LATEST: "true"
@@ -49,12 +49,16 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      # AutoDock Vina publishes wheels up to Python 3.12; the runner's system Python is newer.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
       - run: pnpm install --frozen-lockfile
       - name: Install Nextflow
         run: bash scripts/install-nextflow.sh
-      - name: Install Jupyter kernel, scanpy and R
+      - name: Install Jupyter kernel, scanpy, docking tools and R
         run: |
-          python3 -m pip install --user --break-system-packages ipykernel matplotlib scanpy igraph leidenalg
+          python3 -m pip install ipykernel matplotlib scanpy igraph leidenalg vina meeko gemmi scipy rdkit
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y r-base-core
       - name: Toolchain

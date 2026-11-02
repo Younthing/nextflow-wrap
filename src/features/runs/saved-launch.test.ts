@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { defaultLaunchConfig } from "@/features/project/launch";
-import { readLaunchConfig, rememberLaunchConfig, type LaunchStorage } from "./saved-launch";
+import { readLaunchConfig, rememberLaunchConfig, rememberLaunchDefaults, type LaunchStorage } from "./saved-launch";
 
 function memory(): LaunchStorage {
   const values = new Map<string, string>();
@@ -18,6 +18,14 @@ describe("saved launch config", () => {
     rememberLaunchConfig("qc-smoke", config, storage);
     expect(readLaunchConfig("qc-smoke", storage)).toMatchObject({ workDir: "/tmp/work", engine: "docker", runName: undefined });
     expect(readLaunchConfig("other", storage)).toEqual(defaultLaunchConfig());
+  });
+
+  it("starts a new workflow from the settings page defaults", () => {
+    const storage = memory();
+    rememberLaunchDefaults({ engine: "conda", cpus: 6, memory: "12.GB" }, storage);
+    expect(readLaunchConfig("fresh", storage)).toMatchObject({ engine: "conda", settings: { cpus: 6, memory: "12.GB" } });
+    rememberLaunchConfig("fresh", { ...defaultLaunchConfig(), engine: "docker" }, storage);
+    expect(readLaunchConfig("fresh", storage).engine).toBe("docker");
   });
 
   it("falls back when the stored value is not JSON", () => {

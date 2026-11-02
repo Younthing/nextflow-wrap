@@ -12,8 +12,13 @@ import { cn } from "@/lib/utils";
 import { formatBytes } from "../format";
 import type { ResultFile } from "../outputs";
 import { firstPreviewable, imageMime, isBinaryPreview } from "../preview";
-import { useHealthStatus, useResultBlob, useResultContent, useRunLog, useRunResults } from "../queries";
+import { useAnnDataSummary, useHealthStatus, useResultBlob, useResultContent, useRunLog, useRunResults } from "../queries";
 import { staticReportHtml } from "../report-preview";
+import type { TaskRecord } from "../types";
+import type { WorkflowDoc } from "@/features/workflow/types";
+import { AnnDataSummaryView } from "./anndata-summary";
+import { MoleculeViewer } from "./molecule-viewer";
+import { ResultSource } from "./result-source";
 
 const MULTIQC = "multiqc/multiqc_report.html";
 
@@ -33,8 +38,9 @@ function BlobPreview({ blob, view }: { blob: Blob; view: (src: string) => Output
 
 function Preview({ runId, file, outdir }: { runId: string; file: ResultFile; outdir: string }) {
   const binary = isBinaryPreview(file.preview);
-  const textual = file.preview === "html" || file.preview === "markdown" || file.preview === "csv" || file.preview === "tsv" || file.preview === "text";
+  const textual = file.preview === "html" || file.preview === "markdown" || file.preview === "csv" || file.preview === "tsv" || file.preview === "text" || file.preview === "molecule";
   const content = useResultContent(runId, textual ? file.path : null);
+  const summary = useAnnDataSummary(runId, file.preview === "anndata" ? file.path : null);
   const blob = useResultBlob(runId, binary ? file.path : null);
   const fullPath = `${outdir.replace(/\/$/, "")}/${file.path}`;
   const reportHtml = React.useMemo(
@@ -54,6 +60,11 @@ function Preview({ runId, file, outdir }: { runId: string; file: ResultFile; out
         <code className="rounded bg-secondary px-2 py-1 font-mono text-xs">{fullPath}</code>
       </AsyncPlaceholder>
     );
+  }
+  if (file.preview === "anndata") {
+    if (summary.isPending) return <AsyncPlaceholder status="pending" className="flex-1" />;
+    if (summary.error) return <AsyncPlaceholder status="error" className="h-auto" message={`无法读取摘要：${summary.error.message}`} />;
+    return <AnnDataSummaryView summary={summary.data} />;
   }
   const pending = binary ? blob.isPending : content.isPending;
   const error = binary ? blob.error : content.error;
@@ -76,6 +87,7 @@ function Preview({ runId, file, outdir }: { runId: string; file: ResultFile; out
   if (file.preview === "html") {
     return <OutputRenderer view={{ kind: "html-document", html: reportHtml, title: file.path }} className="min-h-0 flex-1" />;
   }
+  if (file.preview === "molecule") return <MoleculeViewer path={file.path} text={content.data.body} />;
   if (file.preview === "markdown" || file.preview === "csv" || file.preview === "tsv" || file.preview === "text") {
     return <OutputRenderer view={viewFromText(file.preview, content.data.body)} className="min-h-0 flex-1" />;
   }
@@ -92,7 +104,7 @@ function groupByDir(files: ResultFile[]) {
   return [...groups.entries()];
 }
 
-export function RunResults({ runId, active, outdir }: { runId: string; active: boolean; outdir: string }) {
+export function RunResults({ runId, active, outdir, workflow, tasks = [] }: { runId: string; active: boolean; outdir: string; workflow?: WorkflowDoc; tasks?: TaskRecord[] }) {
   const health = useHealthStatus();
   const results = useRunResults(runId, active);
   const files = React.useMemo(() => results.data ?? [], [results.data]);
@@ -186,6 +198,7 @@ export function RunResults({ runId, active, outdir }: { runId: string; active: b
             <div className="font-mono text-xs text-muted-foreground">
               {outdir.replace(/\/$/, "")}/{current.path}
             </div>
+            <ResultSource file={current} fullPath={`${outdir.replace(/\/$/, "")}/${current.path}`} workflow={workflow} tasks={tasks} />
             {health.data?.mocked === false && <Button asChild variant="outline" size="sm" className="self-start"><a href={`/api/runs/${runId}/results/content?download=1&path=${encodeURIComponent(current.path)}`}>下载原始文件</a></Button>}
             {current.preview === "html" && <p className="text-xs text-muted-foreground">静态预览；交互图表请下载报告后查看。</p>}
             <Preview key={current.path} runId={runId} file={current} outdir={outdir} />

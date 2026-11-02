@@ -1,5 +1,6 @@
 import { Toaster } from "@/components/ui/toaster";
 import { AssistantButton } from "@/features/assistant/assistant-button";
+import { DesktopBridge } from "@/features/desktop/desktop-bridge";
 
 import { BackendStatus } from "./backend-status";
 import { NavRail } from "./nav-rail";
@@ -26,6 +27,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <main className="min-h-0 flex-1">{children}</main>
       </div>
       <Toaster />
+      <DesktopBridge />
     </div>
   );
 }
