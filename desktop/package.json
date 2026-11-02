@@ -8,8 +8,10 @@
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "bundle": "node scripts/bundle.mjs",
+    "bundle:shell": "node scripts/bundle-shell.mjs",
     "start": "node scripts/bundle.mjs --skip-next && electron .",
     "dev": "electron . --dev",
+    "dev:win": "node scripts/bundle-shell.mjs && electron . --dev",
     "dist": "node scripts/bundle.mjs && electron-builder --publish never",
     "dist:mac": "node scripts/bundle.mjs && electron-builder --mac --publish never",
     "dist:linux": "node scripts/bundle.mjs && electron-builder --linux --publish never",

@@ -13,9 +13,9 @@
 import { cpSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { build } from "esbuild";
 
 import { buildStandalone, bundleScript, prefetchWeblog, root, run } from "../../scripts/build-parts.mjs";
+import { bundleShell } from "./bundle-shell.mjs";
 
 const desktop = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const resources = join(desktop, "resources");
@@ -32,18 +32,7 @@ if (!skipNext) {
 // The runner runs in an Electron utility process (Node with node:sqlite).
 await bundleScript("runner.ts", join(resources, "runner", "runner.mjs"));
 
-await build({
-  entryPoints: { main: join(desktop, "src", "main.ts"), preload: join(desktop, "src", "preload.ts") },
-  outdir: join(desktop, "dist"),
-  bundle: true,
-  platform: "node",
-  format: "cjs",
-  target: "node22",
-  external: ["electron", "electron-updater"],
-  logLevel: "info",
-});
-
-cpSync(join(desktop, "src", "connect"), join(desktop, "dist", "connect"), { recursive: true });
+await bundleShell();
 
 // Server packages for WSL and SSH backends, from the Next.js build above. Linux x64 always; arm64 on request.
 if (!process.argv.includes("--skip-server")) {

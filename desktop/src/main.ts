@@ -387,7 +387,8 @@ function registerIpc() {
 
 const context = (): BackendContext => ({
   appVersion: app.getVersion(),
-  serverPackages: join(resources, "server"),
+  // A development shell on Windows can use packages built in WSL (\\wsl.localhost\<distro>\...\resources\server).
+  serverPackages: process.env.NEXTFLOW_STUDIO_SERVER_PACKAGES || join(resources, "server"),
   log: serviceLog,
   status: (message) => mainWindow?.webContents.send("connect:status", message),
 });
