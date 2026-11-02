@@ -128,7 +128,7 @@ pnpm runner      # 独立执行服务；先等到 Runner ready
 pnpm dev:real    # 另一个终端，http://127.0.0.1:3000
 ```
 
-runner 启动时写入一个内置示例流程（host-chain：用本机 shell 命令串起各种通道模式），输入是它创建的合成文本数据。点击「运行 → 启动运行」，即可查看真实任务、日志和下载结果。默认任务上限 2 CPU / 2 GB，可在运行弹窗调整；输出和 work 目录由服务端隔离管理。自备数据时，`--input` 和参考文件参数必须是 runner 主机上的绝对路径。
+runner 启动时写入一个内置示例流程（host-chain：用本机 shell 命令串起各种通道模式），输入是它创建的合成文本数据。点击「运行 → 启动运行」，即可查看真实任务、日志和下载结果。默认任务上限 2 CPU / 2 GB，可在运行弹窗调整；输出和 work 目录由服务端隔离管理。自备数据时，`--input` 和文件输入、文件夹输入节点上选的路径必须是 runner 主机上的绝对路径。
 
 本机 web 默认只监听 127.0.0.1，执行可信工作流。runner 按执行器分槽位排队：本机执行器同一时间只跑一个运行（任务都在这台机器上，避免 CPU/内存超订）；集群和云执行器的 Nextflow head 只负责提交作业，默认可同时跑 4 个，用 `NEXTFLOW_STUDIO_REMOTE_SLOTS` 调整。两类各自先到先跑，本机运行排队时不挡集群运行。runner 落盘提交时生成的项目快照（模块之后重新发布也不影响这次运行），用 `nf-weblog@1.2.0` 采集真实状态，trace 最终对账；运行图中的任务数随数据流展开。取消会向 Nextflow 进程组发 SIGTERM（本机 10 秒、集群/云 60 秒后 SIGKILL），并清理带本次运行标签的容器。Nextflow head 在独立进程组里运行，输出直接写日志文件，所以 runner 停止或崩溃时运行不中断；重启后 runner 核验原进程身份并重新接管，复用上次的事件端口继续接收 weblog（端口被占用时改为轮询 trace）。head 在 runner 停止期间结束的，按 `.nextflow/history` 记录的 OK/ERR 判定成功或失败。只有还在准备阶段的运行会被标记中断。重启 web 不影响独立 runner。
 
@@ -170,9 +170,9 @@ pnpm smoke:runner # 幂等提交 → 实时任务 → 成功/下载 → 缓存�
 `pnpm build:real && pnpm test:e2e` 启动真实 runner 和 web，用浏览器走完整闭环：
 
 - `e2e/user-path.spec.ts`：Python 和 R 笔记本出图、发布、画布运行、源改动提示、发布 v2 后从原运行恢复命中缓存。
-- `e2e/single-cell.spec.ts`：两本 scanpy 笔记本（质控、聚类）在常驻 Jupyter 内核里逐格运行，用本机 Python 试跑后发布；画布上把「参考文件」接到质控、再接到聚类，用 Shell 运行时跑真实 Nextflow，结果页显示 UMAP 和 marker 表。数据由 `scripts/make-pbmc-demo.py` 准备：优先 `PBMC3K_H5AD` 指向的文件，其次下载 10x PBMC 3k，都不可用时生成确定性的合成 PBMC 计数。
+- `e2e/single-cell.spec.ts`：两本 scanpy 笔记本（质控、聚类）在常驻 Jupyter 内核里逐格运行，用本机 Python 试跑后发布；画布上把「文件输入」接到质控、再接到聚类，用 Shell 运行时跑真实 Nextflow，结果页显示 UMAP 和 marker 表。数据由 `scripts/make-pbmc-demo.py` 准备：优先 `PBMC3K_H5AD` 指向的文件，其次下载 10x PBMC 3k，都不可用时生成确定性的合成 PBMC 计数。
 
-- `e2e/docking.spec.ts`：RDKit 笔记本把 SMILES 变成 3D 配体，Vina 笔记本在 CPU 上对接；两个参考文件（配体表、受体）接入画布，真实 Nextflow 运行后结果页显示打分表，最佳构象在 Mol* 里打开。数据由 `scripts/make-docking-demo.py` 准备（默认是离线的合成口袋）。
+- `e2e/docking.spec.ts`：RDKit 笔记本把 SMILES 变成 3D 配体，Vina 笔记本在 CPU 上对接；两个文件输入（配体表、受体）接入画布，真实 Nextflow 运行后结果页显示打分表，最佳构象在 Mol* 里打开。数据由 `scripts/make-docking-demo.py` 准备（默认是离线的合成口袋）。
 - `e2e-desktop/packaged.spec.ts`：打包后的桌面应用（`pnpm --dir desktop dist:linux`）用 Playwright 的 Electron 驱动启动，验证旧版本数据目录自动升级，以及笔记本模块在应用里生成项目并真实运行。命令：`xvfb-run pnpm exec playwright test -c e2e-desktop/playwright.config.ts`。
 
 需要 `python3 -m pip install ipykernel matplotlib h5py scanpy igraph leidenalg vina meeko gemmi scipy rdkit`，R 部分另需 `Rscript`。runner 首次运行要从 Nextflow 插件仓库下载 `nf-weblog@1.2.0`；下载不到时进度改为每 3 秒读取 trace 文件。

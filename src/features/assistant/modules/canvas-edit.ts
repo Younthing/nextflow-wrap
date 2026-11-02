@@ -49,7 +49,7 @@ export const canvasEditModule = {
     {
       name: "configure_node",
       description:
-        "修改节点：别名、模块参数（widgets）、conf/modules.config 设置（ext.args、ext.prefix、是否发布结果、资源标签）、停用，以及参考文件节点的参数名和格式。只传要改的字段。",
+        "修改节点：别名、模块参数（widgets）、conf/modules.config 设置（ext.args、ext.prefix、是否发布结果、资源标签）、停用，以及文件输入、文件夹输入节点的路径（inputPath）和是否可以不选（inputOptional）。只传要改的字段。",
     },
     {
       name: "set_pipeline_param",

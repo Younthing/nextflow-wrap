@@ -165,7 +165,7 @@ export function SchemaForm({
   schema: JsonSchema;
   values: PipelineParams;
   onChange: (key: string, value: WidgetValue | undefined) => void;
-  /** Params that come from the canvas (e.g. reference nodes), shown first. */
+  /** Params that come from the canvas (e.g. input nodes), shown first. */
   extraFields?: { name: string; spec: JsonSchema }[];
 }) {
   const [showHidden, setShowHidden] = React.useState(false);
@@ -220,10 +220,10 @@ export function SchemaForm({
       {extras.length > 0 &&
         renderGroup(
           "_canvas",
-          "画布中的参考文件",
+          "画布中的输入",
           extras.map((f) => [f.name, f.spec]),
           new Set(extras.map((f) => f.name)),
-          "这些参数来自画布上的参考文件节点。",
+          "这些参数来自画布上的输入节点。",
         )}
       {groups.map((g) => renderGroup(g.id, g.title, g.fields, g.required, g.description))}
       <label className="flex items-center gap-2 px-1 pt-1 text-xs text-muted-foreground">
