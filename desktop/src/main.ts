@@ -102,7 +102,8 @@ function serviceLog(name: string): WriteStream {
  */
 async function appServerDirectory(): Promise<string> {
   const archive = join(resources, "app-server.tar.gz");
-  if (!existsSync(archive)) return join(resources, "app-server");
+  // Unpackaged runs keep the same app version across rebuilds, so a cached copy would serve a stale build.
+  if (!app.isPackaged || !existsSync(archive)) return join(resources, "app-server");
   const root = join(app.getPath("userData"), "app-server");
   const target = join(root, app.getVersion());
   if (existsSync(join(target, "app-server", "server.js"))) return join(target, "app-server");
