@@ -16,10 +16,13 @@ export function KernelPicker({
   value,
   disabled,
   onChange,
+  subtle = false,
 }: {
   value: string;
   disabled?: boolean;
   onChange: (kernel: string) => void;
+  /** Quiet pill for the workbench toolbar; the "内核" label stays for screen readers. */
+  subtle?: boolean;
 }) {
   const [open, setOpen] = React.useState(false);
   const [custom, setCustom] = React.useState(false);
@@ -51,14 +54,15 @@ export function KernelPicker({
           type="button"
           disabled={disabled}
           className={cn(
-            "inline-flex h-8 max-w-full items-center gap-2 rounded-md border border-primary bg-primary/10 px-2.5 text-xs text-foreground",
-            "hover:bg-primary/15 focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-none",
+            "inline-flex h-8 max-w-full items-center gap-2 rounded-md border px-2.5 text-xs text-foreground",
+            subtle ? "border-border bg-glass-strong hover:bg-accent" : "border-primary bg-primary/10 hover:bg-primary/15",
+            "focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-none",
             "disabled:cursor-not-allowed disabled:opacity-50",
           )}
         >
-          <span className="text-muted-foreground">内核</span>
+          <span className={cn(subtle ? "sr-only" : "text-muted-foreground")}>内核</span>
           <span className="size-1.5 shrink-0 rounded-full bg-success" aria-hidden />
-          <span className="truncate font-semibold">{kernelLabel(value)}</span>
+          <span className={cn("truncate", subtle ? "font-medium" : "font-semibold")}>{kernelLabel(value)}</span>
           <ChevronDown className="size-3.5 shrink-0 opacity-70" aria-hidden />
         </button>
       </Popover.Trigger>

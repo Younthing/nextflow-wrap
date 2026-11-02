@@ -3,6 +3,7 @@
 import { Loader2, RotateCcw, Square } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useKernelAction, useKernelInfo } from "@/features/notebook/queries";
 import type { KernelState } from "@/features/notebook/types";
 import { cn } from "@/lib/utils";
@@ -28,11 +29,14 @@ export function KernelControls({
   notebookId,
   running,
   disabled,
+  compact = false,
 }: {
   notebookId: string;
   /** A run request is in flight from this editor. */
   running: boolean;
   disabled?: boolean;
+  /** Icon buttons with tooltips, for the workbench toolbar. The state text stays readable. */
+  compact?: boolean;
 }) {
   const info = useKernelInfo(notebookId, !disabled);
   const action = useKernelAction();
@@ -43,12 +47,47 @@ export function KernelControls({
     .filter(Boolean)
     .join("\n");
 
+  const restarting = action.isPending && action.variables?.action === "restart";
+  const status = (
+    <span className="inline-flex items-center gap-1.5 px-1 text-xs whitespace-nowrap text-muted-foreground" role="status" title={title || undefined}>
+      <span className={cn("size-1.5 shrink-0 rounded-full", STATE_DOT[shown])} aria-hidden />
+      {STATE_TEXT[shown]}
+    </span>
+  );
+  const error = action.error ? (
+    <span role="alert" className="max-w-56 truncate text-xs text-destructive" title={action.error.message}>
+      {action.error.message}
+    </span>
+  ) : null;
+
+  if (compact) {
+    return (
+      <div className="flex items-center gap-0.5" role="group" aria-label="内核控制">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button type="button" size="icon-sm" variant="ghost" aria-label="中断" disabled={disabled || !busy || action.isPending} onClick={() => action.mutate({ id: notebookId, action: "interrupt" })}>
+              <Square />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>中断正在运行的单元格</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button type="button" size="icon-sm" variant="ghost" aria-label="重启内核" disabled={disabled || action.isPending} onClick={() => action.mutate({ id: notebookId, action: "restart" })}>
+              {restarting ? <Loader2 className="animate-spin" /> : <RotateCcw />}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>重启内核，清空变量</TooltipContent>
+        </Tooltip>
+        {status}
+        {error}
+      </div>
+    );
+  }
+
   return (
     <div className="flex items-center gap-1" role="group" aria-label="内核控制">
-      <span className="inline-flex items-center gap-1.5 px-1 text-xs text-muted-foreground" role="status" title={title || undefined}>
-        <span className={cn("size-1.5 shrink-0 rounded-full", STATE_DOT[shown])} aria-hidden />
-        {STATE_TEXT[shown]}
-      </span>
+      {status}
       <Button
         type="button"
         size="sm"
@@ -66,14 +105,10 @@ export function KernelControls({
         disabled={disabled || action.isPending}
         onClick={() => action.mutate({ id: notebookId, action: "restart" })}
       >
-        {action.isPending && action.variables?.action === "restart" ? <Loader2 className="animate-spin" /> : <RotateCcw />}
+        {restarting ? <Loader2 className="animate-spin" /> : <RotateCcw />}
         重启内核
       </Button>
-      {action.error ? (
-        <span role="alert" className="max-w-56 truncate text-xs text-destructive" title={action.error.message}>
-          {action.error.message}
-        </span>
-      ) : null}
+      {error}
     </div>
   );
 }

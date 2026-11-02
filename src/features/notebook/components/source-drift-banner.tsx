@@ -28,10 +28,10 @@ export function SourceDriftBanner({
       </p>
       <div className="mt-3 flex flex-wrap gap-2">
         <Button asChild variant="outline" size="sm">
-          <Link href={`/notebooks/${notebookId}?rev=${pinnedRev}`}>打开原版 r{pinnedRev}（只读）</Link>
+          <Link href={`/workbench/${notebookId}?rev=${pinnedRev}`}>打开原版 r{pinnedRev}（只读）</Link>
         </Button>
         <Button asChild size="sm">
-          <Link href={`/notebooks/${notebookId}`}>打开最新 r{currentRev}</Link>
+          <Link href={`/workbench/${notebookId}`}>打开最新 r{currentRev}</Link>
         </Button>
       </div>
     </div>

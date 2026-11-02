@@ -95,7 +95,7 @@ function PublishWizardScreen({ notebookId }: { notebookId: string }) {
     if (!containerImage && previous?.containerImage) setContainerImage(previous.containerImage);
   }
 
-  const go = (next: number) => router.replace(`/notebooks/${notebookId}/publish?step=${next}`);
+  const go = (next: number) => router.replace(`/workbench/${notebookId}/publish?step=${next}`);
   const version = doc ? nextModuleVersion(scripts.data?.modules ?? [], doc.id) : "v1";
   const receipt = tryRun.data;
   const staged = stageModuleEnv({ condaYaml, containerImage });
@@ -112,7 +112,7 @@ function PublishWizardScreen({ notebookId }: { notebookId: string }) {
       <header className="glass flex flex-wrap items-center gap-3 rounded-xl px-4 py-3">
         <div>
           <div className="text-xs text-muted-foreground">
-            <Link href={`/notebooks/${notebookId}`} className="hover:underline">笔记本 / {doc.name}</Link>
+            <Link href={`/workbench/${notebookId}`} className="hover:underline">笔记本 / {doc.name}</Link>
             <span> / 发布为模块</span>
           </div>
           <div className="mt-2 flex flex-wrap gap-2">
@@ -122,7 +122,7 @@ function PublishWizardScreen({ notebookId }: { notebookId: string }) {
           </div>
         </div>
         <Button asChild variant="ghost" size="sm" className="ml-auto">
-          <Link href={`/notebooks/${notebookId}`}>取消，回笔记本</Link>
+          <Link href={`/workbench/${notebookId}`}>取消，回笔记本</Link>
         </Button>
       </header>
 
@@ -287,7 +287,7 @@ function PublishWizardScreen({ notebookId }: { notebookId: string }) {
       )}
 
       <footer className="glass flex items-center justify-between rounded-xl px-4 py-3">
-        <Button type="button" variant="outline" onClick={() => (step === 1 ? router.push(`/notebooks/${notebookId}`) : go(step - 1))}>
+        <Button type="button" variant="outline" onClick={() => (step === 1 ? router.push(`/workbench/${notebookId}`) : go(step - 1))}>
           {step === 1 ? "返回笔记本" : step === 3 ? "返回试跑" : "上一步"}
         </Button>
         {step < 3 ? (
@@ -305,7 +305,7 @@ function PublishWizardScreen({ notebookId }: { notebookId: string }) {
             onClick={() => {
               publish.mutate(
                 { id: doc.id, name: name.trim(), description, changelog, condaYaml, containerImage },
-                { onSuccess: () => router.push("/workflows/modules") },
+                { onSuccess: () => router.push("/modules") },
               );
             }}
           >
