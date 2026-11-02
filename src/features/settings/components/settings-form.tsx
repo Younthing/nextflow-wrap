@@ -13,7 +13,7 @@ import { Switch } from "@/components/ui/switch";
 import { PathInput } from "@/features/files/components/path-input";
 import { isDesktop } from "@/lib/desktop";
 import { ENGINES, type ContainerEngine } from "@/features/project/launch";
-import { SECRET_KEYS, type SecretKey, type SettingsUpdate, type SettingsView, type StudioSettings } from "../types";
+import { ASSISTANT_SECRET_KEYS, type SecretKey, type SettingsUpdate, type SettingsView, type StudioSettings } from "../types";
 
 const ENGINE_LABEL: Partial<Record<ContainerEngine, string>> = { shell: "本机 shell（不加 profile）" };
 /** A browser shows run notifications only after the user allows them; the desktop shell needs no permission. */
@@ -22,13 +22,43 @@ function askNotificationPermission() {
   void Notification.requestPermission();
 }
 
-const SECRET_LABEL: Record<SecretKey, string> = { ANTHROPIC_API_KEY: "Anthropic API key", OPENAI_API_KEY: "OpenAI API key", GOOGLE_API_KEY: "Google API key" };
+const SECRET_LABEL: Record<SecretKey, string> = {
+  ANTHROPIC_API_KEY: "Anthropic API key",
+  OPENAI_API_KEY: "OpenAI API key",
+  GOOGLE_API_KEY: "Google API key",
+  AWS_ACCESS_KEY_ID: "AWS Access Key ID",
+  AWS_SECRET_ACCESS_KEY: "AWS Secret Access Key",
+  AZURE_BATCH_ACCOUNT_KEY: "Azure Batch 账户密钥",
+  AZURE_STORAGE_ACCOUNT_KEY: "Azure 存储账户密钥",
+};
+
+/** A write-only secret: the page only knows whether one is saved; typing replaces it, 清除 removes it. */
+function SecretField({ name, saved, value, hint, onChange }: { name: SecretKey; saved: boolean; value: string | null | undefined; hint?: string; onChange: (value: string | null) => void }) {
+  return (
+    <FormField label={SECRET_LABEL[name]} htmlFor={name} hint={hint ?? (saved && value === undefined ? "已保存" : value === null ? "保存后清除" : undefined)}>
+      <div className="flex items-center gap-1">
+        <KeyRound className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <Input
+          id={name}
+          type="password"
+          autoComplete="off"
+          className="h-8 font-mono text-xs"
+          placeholder={saved ? "••••••••（输入新值替换）" : "未设置"}
+          value={typeof value === "string" ? value : ""}
+          onChange={(event) => onChange(event.target.value)}
+        />
+        {saved && <Button type="button" size="sm" variant="ghost" onClick={() => onChange(null)}>清除</Button>}
+      </div>
+    </FormField>
+  );
+}
 
 /** Runtime defaults, notifications and the AI assistant. API keys are write-only: the page only knows if one is set. */
 export function SettingsForm({ view, onSave, saving }: { view: SettingsView; onSave: (update: SettingsUpdate) => void; saving?: boolean }) {
   const [draft, setDraft] = React.useState<StudioSettings>(view.settings);
   const [secrets, setSecrets] = React.useState<Partial<Record<SecretKey, string | null>>>({});
   const runtime = (patch: Partial<StudioSettings["runtime"]>) => setDraft((current) => ({ ...current, runtime: { ...current.runtime, ...patch } }));
+  const cloud = (patch: Partial<StudioSettings["cloud"]>) => setDraft((current) => ({ ...current, cloud: { ...current.cloud, ...patch } }));
   const assistant = (patch: Partial<StudioSettings["assistant"]>) => setDraft((current) => ({ ...current, assistant: { ...current.assistant, ...patch } }));
   const overridden = (key: string) => view.environmentOverrides.includes(key) ? `环境变量 ${key} 已设置，以它为准` : undefined;
   const dirty = JSON.stringify(draft) !== JSON.stringify(view.settings) || Object.keys(secrets).length > 0;
@@ -117,31 +147,47 @@ export function SettingsForm({ view, onSave, saving }: { view: SettingsView; onS
           <FormField label="Codex 模型" htmlFor="codex-model" hint={overridden("CODEX_MODEL")}>
             <Input id="codex-model" className="h-8 font-mono text-xs" placeholder="默认" value={draft.assistant.codexModel ?? ""} onChange={(event) => assistant({ codexModel: event.target.value || undefined })} />
           </FormField>
-          {SECRET_KEYS.map((key) => (
-            <FormField key={key} label={SECRET_LABEL[key]} htmlFor={key} hint={overridden(key) ?? (view.secrets[key] && secrets[key] === undefined ? "已保存" : undefined)}>
-              <div className="flex items-center gap-1">
-                <KeyRound className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                <Input
-                  id={key}
-                  type="password"
-                  autoComplete="off"
-                  className="h-8 font-mono text-xs"
-                  placeholder={view.secrets[key] ? "••••••••（输入新值替换）" : "未设置"}
-                  value={typeof secrets[key] === "string" ? secrets[key] : ""}
-                  onChange={(event) => setSecrets((current) => ({ ...current, [key]: event.target.value }))}
-                />
-                {view.secrets[key] && (
-                  <Button type="button" size="sm" variant="ghost" onClick={() => setSecrets((current) => ({ ...current, [key]: null }))}>清除</Button>
-                )}
-              </div>
-            </FormField>
+          {ASSISTANT_SECRET_KEYS.map((key) => (
+            <SecretField key={key} name={key} saved={view.secrets[key]} value={secrets[key]} hint={overridden(key)} onChange={(value) => setSecrets((current) => ({ ...current, [key]: value }))} />
           ))}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>云端凭据</CardTitle>
+          <CardDescription>
+            AWS Batch、Google Batch 和 Azure Batch 运行时 Nextflow 从环境变量读取这些凭据；已经用 <code className="font-mono">aws configure</code> 或 <code className="font-mono">gcloud auth</code> 配好的可以留空。Runner 重启后生效。
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 sm:grid-cols-2">
+          <FormField label="AWS profile" htmlFor="aws-profile" hint={overridden("AWS_PROFILE") ?? "~/.aws/config 里的配置名"}>
+            <Input id="aws-profile" className="h-8 font-mono text-xs" placeholder="default" value={draft.cloud.awsProfile ?? ""} onChange={(event) => cloud({ awsProfile: event.target.value || undefined })} />
+          </FormField>
+          <FormField label="AWS 区域" htmlFor="aws-region" hint={overridden("AWS_REGION")}>
+            <Input id="aws-region" className="h-8 font-mono text-xs" placeholder="us-east-1" value={draft.cloud.awsRegion ?? ""} onChange={(event) => cloud({ awsRegion: event.target.value || undefined })} />
+          </FormField>
+          {(["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"] as const).map((key) => (
+            <SecretField key={key} name={key} saved={view.secrets[key]} value={secrets[key]} hint={overridden(key)} onChange={(value) => setSecrets((current) => ({ ...current, [key]: value }))} />
+          ))}
+          <FormField label="Google 服务账号 JSON" htmlFor="google-credentials" hint={overridden("GOOGLE_APPLICATION_CREDENTIALS") ?? "GOOGLE_APPLICATION_CREDENTIALS；留空用 gcloud 的默认凭据"}>
+            <PathInput id="google-credentials" className="h-8 text-xs" value={draft.cloud.googleCredentials ?? ""} onChange={(value) => cloud({ googleCredentials: value || undefined })} />
+          </FormField>
+          <div className="hidden sm:block" />
+          <FormField label="Azure Batch 账户名" htmlFor="azure-batch-account" hint={overridden("AZURE_BATCH_ACCOUNT_NAME")}>
+            <Input id="azure-batch-account" className="h-8 font-mono text-xs" value={draft.cloud.azureBatchAccount ?? ""} onChange={(event) => cloud({ azureBatchAccount: event.target.value || undefined })} />
+          </FormField>
+          <SecretField name="AZURE_BATCH_ACCOUNT_KEY" saved={view.secrets.AZURE_BATCH_ACCOUNT_KEY} value={secrets.AZURE_BATCH_ACCOUNT_KEY} hint={overridden("AZURE_BATCH_ACCOUNT_KEY")} onChange={(value) => setSecrets((current) => ({ ...current, AZURE_BATCH_ACCOUNT_KEY: value }))} />
+          <FormField label="Azure 存储账户名" htmlFor="azure-storage-account" hint={overridden("AZURE_STORAGE_ACCOUNT_NAME")}>
+            <Input id="azure-storage-account" className="h-8 font-mono text-xs" value={draft.cloud.azureStorageAccount ?? ""} onChange={(event) => cloud({ azureStorageAccount: event.target.value || undefined })} />
+          </FormField>
+          <SecretField name="AZURE_STORAGE_ACCOUNT_KEY" saved={view.secrets.AZURE_STORAGE_ACCOUNT_KEY} value={secrets.AZURE_STORAGE_ACCOUNT_KEY} hint={overridden("AZURE_STORAGE_ACCOUNT_KEY")} onChange={(value) => setSecrets((current) => ({ ...current, AZURE_STORAGE_ACCOUNT_KEY: value }))} />
         </CardContent>
       </Card>
 
       <div className="flex items-center gap-3">
         <Button type="submit" disabled={!dirty || saving}><Save />保存设置</Button>
-        {view.runnerRestartNeeded && <span role="status" className="text-xs text-warning">工具位置已更改，重启 runner（桌面版重启应用）后生效</span>}
+        {view.runnerRestartNeeded && <span role="status" className="text-xs text-warning">工具位置或云端凭据已更改，重启 runner（桌面版重启应用）后生效</span>}
       </div>
     </form>
   );

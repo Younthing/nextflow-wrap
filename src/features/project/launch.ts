@@ -292,6 +292,8 @@ export interface LaunchConfig {
   resume: boolean;
   registry: string;
   runName?: string;
+  /** Id of a remote host from the settings page: Nextflow then runs on that cluster's login node over SSH. */
+  remote?: string;
 }
 
 export function defaultLaunchConfig(): LaunchConfig {

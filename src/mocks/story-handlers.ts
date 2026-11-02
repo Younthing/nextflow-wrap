@@ -8,6 +8,7 @@ import { fsHandlers } from "./fs";
 import { settingsHandlers } from "./settings";
 import { storageHandlers } from "./storage";
 import { diagnosticsHandlers } from "./diagnostics";
+import { remoteHandlers } from "./remotes";
 import { kernelHandlers } from "./kernels";
 
 export const storyWorkflow = {
@@ -53,6 +54,7 @@ export const storyHandlers = [
   ...settingsHandlers,
   ...storageHandlers,
   ...diagnosticsHandlers,
+  ...remoteHandlers,
   http.get("/api/script-modules", () => HttpResponse.json({ modules: EXAMPLE_MODULES, references: {} })),
   http.get("/api/health", () =>
     HttpResponse.json({

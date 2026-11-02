@@ -13,6 +13,7 @@ import { handleFsApi } from "@/features/files/server/http";
 import { handleSettingsApi } from "@/features/settings/server/http";
 import { handleStorageApi } from "@/features/storage/server/http";
 import { handleDiagnosticsApi } from "@/features/diagnostics/server/http";
+import { handleRemoteApi } from "@/features/remote/server/http";
 import type { HealthStatus } from "@/lib/api-types";
 import { store } from "@/lib/server/database";
 
@@ -40,6 +41,7 @@ async function handle(request: Request, context: Context): Promise<Response> {
     if (resource === "settings" && !id) return handleSettingsApi(method, request);
     if (resource === "storage") return handleStorageApi(method, path, request);
     if (resource === "diagnostics" && !id) return handleDiagnosticsApi(method, request);
+    if (resource === "remotes") return handleRemoteApi(method, path, request);
     if (resource === "notebooks" || resource === "script-modules" || resource === "kernels") return handleNotebookApi(method, path, request);
     if (resource === "schemas" && id === "samplesheet" && method === "GET") return json(samplesheetSchema);
     if (resource === "workflows") {
@@ -65,8 +67,8 @@ async function handle(request: Request, context: Context): Promise<Response> {
       if (!id && method === "GET") {
         const workflowId = url.searchParams.get("workflowId");
         return json(store().runs().filter((run) => !workflowId || run.detail.workflowId === workflowId).map((run) => {
-          const { id, runName, workflowId, workflowName, status, executor, profile, submittedAt, startedAt, completedAt, progress, errorMessage, phase } = run.detail;
-          return { id, runName, workflowId, workflowName, status, executor, profile, submittedAt, startedAt, completedAt, progress, errorMessage, phase, resumable: resumable(run) };
+          const { id, runName, workflowId, workflowName, status, executor, profile, submittedAt, startedAt, completedAt, progress, errorMessage, phase, remoteHost } = run.detail;
+          return { id, runName, workflowId, workflowName, status, executor, profile, submittedAt, startedAt, completedAt, progress, errorMessage, phase, remoteHost, resumable: resumable(run) };
         }));
       }
       if (!id && method === "POST") {
