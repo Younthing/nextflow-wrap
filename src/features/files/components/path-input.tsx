@@ -6,6 +6,7 @@ import { ArrowUp, File, Folder, FolderOpen, Home, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { toWorkspacePath } from "@/features/workspace/paths";
 import { useCurrentProject } from "@/features/workspace/queries";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
@@ -144,11 +145,14 @@ export function PathInput({
   const [dragging, setDragging] = React.useState(false);
   const { project } = useCurrentProject();
   const root = workspace ? project?.path : undefined;
-  const options: PickOptions = { kind, extensions, defaultPath: value || undefined, root };
+  // Data inputs store workspace paths (`data/reads.fq`); the server resolves them when it runs.
+  const store = (path: string) => onChange(workspace ? toWorkspacePath(path, root) : path);
+  const shown = root && value && !value.startsWith("/") ? `${root}/${value}` : value;
+  const options: PickOptions = { kind, extensions, defaultPath: shown || undefined, root };
   const intake = useFileIntake();
   const take = (transfer: DataTransfer) => {
     if (!workspace) { toast.warning("这里需要服务端上的路径，请点浏览选择"); return; }
-    void intake(transfer).then(([first]) => { if (first) onChange(first.path); });
+    void intake(transfer).then(([first]) => { if (first) store(first.path); });
   };
   return (
     <div
@@ -177,7 +181,7 @@ export function PathInput({
       <Button type="button" size="icon-sm" variant="ghost" aria-label={kind === "directory" ? "浏览文件夹" : "浏览文件"} onClick={() => setBrowsing(true)}>
         <FolderOpen />
       </Button>
-      {browsing && <PathBrowserDialog open={browsing} onOpenChange={setBrowsing} options={options} onPick={onChange} />}
+      {browsing && <PathBrowserDialog open={browsing} onOpenChange={setBrowsing} options={options} onPick={store} />}
     </div>
   );
 }

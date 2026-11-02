@@ -33,6 +33,7 @@ export function parseWorkflowDoc(value: unknown): WorkflowDoc {
     name: doc.name ?? "导入的流程",
     description: doc.description,
     project: doc.project,
+    ...(doc.projectId ? { projectId: doc.projectId } : {}),
     version: WORKFLOW_FILE_VERSION,
     // Fill fields older or hand-written files may lack, so the canvas can always render them.
     nodes: doc.nodes.map((n) => ({

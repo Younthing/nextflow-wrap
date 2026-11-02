@@ -178,6 +178,8 @@ export interface WorkflowDoc {
   edges: WorkflowEdge[];
   params: PipelineParams;
   project?: ProjectSettings;
+  /** The project (workspace) it belongs to. Its file paths are relative to that folder. Set by the server. */
+  projectId?: string;
   updatedAt: string;
 }
 

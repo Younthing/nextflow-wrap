@@ -15,6 +15,7 @@ import { handleStorageApi } from "@/features/storage/server/http";
 import { handleDiagnosticsApi } from "@/features/diagnostics/server/http";
 import { handleRemoteApi } from "@/features/remote/server/http";
 import { handleProjectsApi } from "@/features/workspace/server/http";
+import { currentProjectId } from "@/features/workspace/server/projects";
 import { remoteTaskLog } from "@/features/remote/server/remote-run";
 import { SshSession } from "@/features/remote/server/session";
 import { applyStoredSettings, readSettings } from "@/lib/server/settings";
@@ -52,14 +53,21 @@ async function handle(request: Request, context: Context): Promise<Response> {
     if (resource === "notebooks" || resource === "script-modules" || resource === "kernels") return handleNotebookApi(method, path, request);
     if (resource === "schemas" && id === "samplesheet" && method === "GET") return json(samplesheetSchema);
     if (resource === "workflows") {
-      if (!id && method === "GET") return json(store().workflows().map((doc) => ({ id: doc.id, name: doc.name, description: doc.description, updatedAt: doc.updatedAt, nodeCount: doc.nodes.length })));
+      // Workflows belong to a project, as notebooks do: the list is the open project's.
+      if (!id && method === "GET") {
+        const project = currentProjectId(store());
+        return json(store().workflows().filter((doc) => project && doc.projectId === project).map((doc) => ({ id: doc.id, name: doc.name, description: doc.description, updatedAt: doc.updatedAt, nodeCount: doc.nodes.length })));
+      }
       if (!id && method === "POST") {
-        const doc = { ...workflowInput(await request.json()), id: randomUUID(), updatedAt: new Date().toISOString() };
+        const projectId = currentProjectId(store());
+        if (!projectId) throw new HttpError(400, "先打开一个项目");
+        const doc = { ...workflowInput(await request.json()), id: randomUUID(), projectId, updatedAt: new Date().toISOString() };
         store().saveWorkflow(doc);
         return json(doc, 201);
       }
       if (id && method === "PUT") {
-        const incoming = { ...workflowInput(await request.json()), id };
+        // The project is fixed when the workflow is created.
+        const incoming = { ...workflowInput(await request.json()), id, projectId: store().workflow(id)?.projectId };
         const result = store().putWorkflow(incoming);
         if (result.status === "missing") throw new HttpError(404, "流程不存在");
         if (result.status === "stale") throw new HttpError(409, "流程已在其他地方更新，请重新打开");

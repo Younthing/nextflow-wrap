@@ -28,7 +28,7 @@ export const BrowseOnWeb: Story = {
   },
 };
 
-/** In a browser (or with a remote backend) a dropped file is uploaded to the project's data/ and its server path filled in. */
+/** A dropped file is uploaded into the workspace's data/ and stored by its workspace path. */
 export const DropUploadsOnWeb: Story = {
   args: { workspace: true },
   play: async ({ canvasElement }) => {
@@ -37,7 +37,7 @@ export const DropUploadsOnWeb: Story = {
     const transfer = new DataTransfer();
     transfer.items.add(new File(["h5ad"], "pbmc_small.h5ad"));
     field.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: transfer }));
-    await waitFor(() => expect(field).toHaveValue("/home/demo/Projects/pbmc-atlas/data/pbmc_small.h5ad"));
+    await waitFor(() => expect(field).toHaveValue("data/pbmc_small.h5ad"));
   },
 };
 
@@ -50,7 +50,7 @@ export const PasteUploadsOnWeb: Story = {
     const transfer = new DataTransfer();
     transfer.items.add(new File(["x"], "markers.csv"));
     field.dispatchEvent(new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData: transfer }));
-    await waitFor(() => expect(field).toHaveValue("/home/demo/Projects/pbmc-atlas/data/markers.csv"));
+    await waitFor(() => expect(field).toHaveValue("data/markers.csv"));
   },
 };
 

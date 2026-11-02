@@ -12,7 +12,7 @@ export interface UploadItem {
 }
 
 export interface UploadedItem {
-  /** Absolute path on the server. */
+  /** Workspace path, e.g. `data/reads.fq`: how workflows and notebooks name it. */
   path: string;
   kind: "file" | "directory";
 }
@@ -101,7 +101,7 @@ export async function uploadItems(projectId: string, items: UploadItem[], onProg
       await put(url, file, (loaded) => onProgress({ loaded: done + loaded, total, item: index + 1, items: items.length }), signal);
       done += file.size;
     }
-    uploaded.push({ path: reserved.path, kind: item.kind });
+    uploaded.push({ path: `data/${reserved.name}`, kind: item.kind });
   }
   onProgress({ loaded: total, total, item: items.length, items: items.length });
   return uploaded;

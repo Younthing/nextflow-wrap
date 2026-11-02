@@ -248,7 +248,9 @@ export const handlers = [
 
   http.get("/api/workflows", async () => {
     await delay(120);
-    const list = Object.values(readDb().workflows)
+    const db = readDb();
+    const list = Object.values(db.workflows)
+      .filter((doc) => db.currentProject && doc.projectId === db.currentProject)
       .map(summarize)
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
     return HttpResponse.json(list);
@@ -256,7 +258,9 @@ export const handlers = [
 
   http.post("/api/workflows", async ({ request }) => {
     const body = (await request.json()) as WorkflowDoc;
-    const doc: WorkflowDoc = { ...body, id: newId("wf"), updatedAt: new Date().toISOString() };
+    const projectId = readDb().currentProject;
+    if (!projectId) return HttpResponse.json({ message: "先打开一个项目" }, { status: 400 });
+    const doc: WorkflowDoc = { ...body, id: newId("wf"), projectId, updatedAt: new Date().toISOString() };
     writeDb((db) => {
       db.workflows[doc.id] = doc;
     });
@@ -272,7 +276,7 @@ export const handlers = [
   http.put("/api/workflows/:id", async ({ params, request }) => {
     const id = params.id as string;
     const body = (await request.json()) as WorkflowDoc;
-    const result = commitWorkflowPut(readDb().workflows[id], { ...body, id });
+    const result = commitWorkflowPut(readDb().workflows[id], { ...body, id, projectId: readDb().workflows[id]?.projectId });
     if (result.status === "missing") return notFound();
     if (result.status === "stale") {
       return HttpResponse.json({ message: "流程已在其他地方更新，请重新打开" }, { status: 409 });

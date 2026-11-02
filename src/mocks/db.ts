@@ -48,7 +48,8 @@ function seed(): MockDb {
   const libraryCopies: Record<string, ModuleLibraryCopy> = {};
   for (const copy of demoLibraryCopies(notebooks, revisionsList, scriptList)) libraryCopies[copy.moduleId] = copy;
   return {
-    workflows: { [demo.id]: demo, [docking.id]: docking },
+    // The demo workflows belong to the example project, like everything a project holds.
+    workflows: { [demo.id]: { ...demo, projectId: EXAMPLE_PROJECT_ID }, [docking.id]: { ...docking, projectId: EXAMPLE_PROJECT_ID } },
     runs: {},
     notebooks: Object.fromEntries(notebooks.map((doc) => [doc.id, doc])),
     revisions,

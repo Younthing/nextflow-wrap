@@ -19,7 +19,7 @@ export function useFsListing(path: string | undefined, enabled: boolean) {
   });
 }
 
-/** A file or folder the page can hand to the server, by its path there. */
+/** An uploaded file or folder, by its workspace path (`data/reads.fq`). */
 export interface IntakePath { path: string; folder: boolean }
 
 /**
@@ -50,7 +50,7 @@ export function useFileIntake() {
           shown = Date.now();
           progress.update(`上传 ${label} · ${formatBytes(loaded)} / ${formatBytes(total)}`);
         });
-        progress.success(`已上传到 data/：${uploaded.map((item) => item.path.slice(item.path.lastIndexOf("/") + 1)).join("、")}`);
+        progress.success(`已上传：${uploaded.map((item) => item.path).join("、")}`);
         void qc.invalidateQueries({ queryKey: ["fs"] });
         return uploaded.map((item) => ({ path: item.path, folder: item.kind === "directory" }));
       } catch (error) {
