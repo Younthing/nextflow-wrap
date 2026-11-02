@@ -9,7 +9,8 @@ import type { StoredExecution } from "@/lib/server/database";
 export type SlotClass = "local" | "remote";
 export type SlotLimits = Record<SlotClass, number>;
 
-export const slotClass = (run: StoredExecution): SlotClass => run.detail.launch.executor === "local" ? "local" : "remote";
+/** A run on a remote host, even on its login node, uses none of this machine's cores. */
+export const slotClass = (run: StoredExecution): SlotClass => run.detail.launch.executor === "local" && !run.detail.launch.remote ? "local" : "remote";
 
 export function slotLimits(env: Partial<Record<string, string>> = process.env): SlotLimits {
   const remote = Number(env.NEXTFLOW_STUDIO_REMOTE_SLOTS ?? 4);
@@ -48,6 +49,15 @@ export function historyStatus(history: string, runName: string): "OK" | "ERR" | 
     const columns = line.split("\t");
     if (columns[2] !== runName) continue;
     return columns[3] === "OK" ? "OK" : columns[3] === "ERR" ? "ERR" : undefined;
+  }
+  return undefined;
+}
+
+/** Session id of a run from `.nextflow/history` (column 6), used when no weblog event reported it. */
+export function historySession(history: string, runName: string): string | undefined {
+  for (const line of history.trim().split("\n").reverse()) {
+    const columns = line.split("\t");
+    if (columns[2] === runName && /^[0-9a-f-]{36}$/i.test(columns[5] ?? "")) return columns[5];
   }
   return undefined;
 }

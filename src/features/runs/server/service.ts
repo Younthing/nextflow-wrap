@@ -9,6 +9,7 @@ import {
   EXECUTORS,
   executorDef,
   EXTRA_PROFILES,
+  isGridExecutor,
   launchCommand,
   launchProblems,
   profileList,
@@ -21,7 +22,9 @@ import { indexModules } from "@/features/workflow/catalog";
 import { parseWorkflowDoc } from "@/features/workflow/document";
 import type { WorkflowDoc } from "@/features/workflow/types";
 import { validateWorkflow } from "@/features/workflow/validate";
+import { REMOTE_ID } from "@/features/remote/types";
 import { store, type StoredExecution } from "@/lib/server/database";
+import { readSettings } from "@/lib/server/settings";
 import { executionDirectory, pipelineDirectory } from "@/lib/server/paths";
 import type { RunProgress } from "../types";
 
@@ -48,6 +51,7 @@ const launchSchema = z.object({
   settings: z.record(z.string(), z.union([plainText(500), z.number().finite(), z.boolean()])),
   extraProfiles: z.array(z.enum(EXTRA_PROFILES)).max(EXTRA_PROFILES.length),
   workDir: plainText(1000), resume: z.boolean(), registry: z.enum(["quay.io", "docker.rainbond.cc"]), runName: z.string().regex(/^[A-Za-z][A-Za-z0-9_-]{0,60}$/).optional(),
+  remote: z.string().regex(REMOTE_ID).optional(),
 });
 
 /** Keeps only the executor's own settings, typed as its form declares them, or explains what is wrong. */
@@ -71,13 +75,20 @@ export function checkedLaunch(input: z.infer<typeof launchSchema>): LaunchConfig
     throw new HttpError(400, "本机：「最多内存」写成 16.GB 这样的形式");
   }
   const launch: LaunchConfig = { ...defaultLaunchConfig(), ...input, settings, resume: false };
-  if (input.executor !== "local" && launch.workDir !== "work" && !/^(?:\/|[a-z][a-z0-9+.-]*:\/\/)/i.test(launch.workDir)) {
+  if (!launch.remote) delete launch.remote;
+  if ((input.executor !== "local" || launch.remote) && launch.workDir !== "work" && !/^(?:\/|[a-z][a-z0-9+.-]*:\/\/)/i.test(launch.workDir)) {
     throw new HttpError(400, "工作目录需要是绝对路径或对象存储地址");
+  }
+  if (launch.remote) {
+    if (!remoteHost(launch.remote)) throw new HttpError(400, "这个远程集群已在设置页删除，请重新选择运行位置");
+    // Cloud batch services and Kubernetes are reached with this machine's credentials, not through a login node.
+    if (input.executor !== "local" && !isGridExecutor(input.executor)) throw new HttpError(400, `${def.name} 从本机提交，不经过远程集群`);
   }
   const problems = launchProblems(launch);
   if (problems.length) throw new HttpError(400, problems.join("；"));
   return launch;
 }
+export const remoteHost = (id: string) => readSettings().remotes.find((host) => host.id === id);
 export function workflowInput(value: unknown): WorkflowDoc { return parseWorkflowDoc(workflowSchema.parse(value)); }
 export const emptyProgress = (): RunProgress => ({ total: 0, pending: 0, running: 0, completed: 0, cached: 0, failed: 0, aborted: 0 });
 export const active = (run: StoredExecution) => run.detail.status === "submitted" || run.detail.status === "running";
@@ -95,7 +106,7 @@ const BIN_EXECUTORS = new Set(["aws-batch", "google-batch", "azure-batch", "k8s"
 export const scriptLayoutFor = (executor: string): ScriptLayout => (BIN_EXECUTORS.has(executor) ? "bin" : "module");
 
 export function submitRun(body: unknown, idempotency?: string) {
-  const request = z.object({ workflow: z.unknown(), params: paramsSchema, launch: launchSchema }).parse(body);
+  const request = z.object({ workflow: z.unknown(), params: paramsSchema, launch: launchSchema, resumeFrom: z.string().max(100).optional() }).parse(body);
   if (!runnerReady()) throw new HttpError(503, "Runner 未就绪，请先启动 pnpm runner 并检查健康状态");
   const workflow = workflowInput(request.workflow);
   if (!store().workflow(workflow.id)) throw new HttpError(400, "请先保存流程");
@@ -106,15 +117,26 @@ export function submitRun(body: unknown, idempotency?: string) {
   if (new Set(workflow.nodes.map((node) => node.id)).size !== workflow.nodes.length) throw new HttpError(400, "节点 ID 重复");
   if (request.launch.resume) throw new HttpError(400, "续跑需要从运行详情选择来源记录");
   const launch = checkedLaunch(request.launch);
+  // Resume: the edited canvas runs with `-resume <session>` of an earlier run of the same workflow. The launch
+  // directory and work directory are stable per workflow, so unchanged steps come from the cache.
+  const source = request.resumeFrom ? resumableSource(request.resumeFrom, workflow.id) : undefined;
+  if (source && source.detail.launch.executor !== launch.executor) throw new HttpError(400, `续跑要用和来源运行相同的执行器（${executorDef(source.detail.launch.executor).name}）`);
+  // The cache of a remote run is on that cluster; a resume has to launch from the same place.
+  if (source && (source.detail.launch.remote ?? "") !== (launch.remote ?? "")) throw new HttpError(400, `续跑要在来源运行的位置上进行（${source.detail.remoteHost ?? "本机"}）`);
+  if (source) Object.assign(launch, { resume: true, workDir: source.detail.launch.workDir });
   const project = generateProject(workflow, index, { registry: launch.registry, scriptLayout: scriptLayoutFor(launch.executor) });
   const id = randomUUID();
-  const root = executionDirectory(id);
+  const lineageId = source?.lineageId ?? id;
+  const root = executionDirectory(lineageId);
   const now = new Date().toISOString();
   const run: StoredExecution = {
     // Every run of a workflow launches from one directory so `-resume` can reuse any earlier session's tasks.
-    lineageId: id, projectDir: pipelineDirectory(workflow.id), attemptDir: join(root, "attempts", id),
+    lineageId, projectDir: pipelineDirectory(workflow.id), attemptDir: join(root, "attempts", id),
+    ...(source ? { resumeFrom: source.detail.id, sessionId: source.sessionId } : {}),
     detail: {
+      ...(source ? { resumeFromRunId: source.detail.id, nextflowSessionId: source.sessionId } : {}),
       id, runName: launch.runName ?? `studio_${id.replaceAll("-", "").slice(0, 12)}`, workflowId: workflow.id, workflowName: workflow.name,
+      ...(launch.remote ? { remoteHost: remoteHost(launch.remote)!.name } : {}),
       executor: launch.executor, profile: profileList(launch), status: "submitted", phase: "queued", submittedAt: now, progress: emptyProgress(),
       command: launchCommand(launch), launch, params: { ...request.params, outdir: join(root, "attempts", id, "results") }, runConfig: renderRunConfig(launch),
       project: { name: project.meta.name, files: project.files.map(({ path, content, executable }) => ({ path, content, ...(executable ? { executable } : {}) })) }, workflow,
@@ -126,6 +148,19 @@ export function submitRun(body: unknown, idempotency?: string) {
     return run.detail;
   });
 }
+
+/** An earlier finished run of this workflow whose session cache is still on disk. */
+export function resumableSource(id: string, workflowId: string): StoredExecution {
+  const source = requireRun(id);
+  if (source.detail.workflowId !== workflowId) throw new HttpError(400, "只能续跑同一个流程的运行");
+  if (active(source) || !source.sessionId) throw new HttpError(409, "只能续跑具有 Nextflow session 的已结束运行");
+  if (source.detail.workCleanedAt) throw new HttpError(409, "这次运行的 work 目录已在磁盘页清理，不能再续跑；请重新运行");
+  if (store().runs(true).some((run) => active(run) && run.lineageId === source.lineageId)) throw new HttpError(409, "同一运行链已有活动运行");
+  return source;
+}
+
+/** Whether a run can be the source of a resume, for the run list. */
+export const resumable = (run: StoredExecution) => !active(run) && Boolean(run.sessionId) && !run.detail.workCleanedAt;
 
 export function cancelRun(id: string) {
   const current = requireRun(id);
@@ -141,6 +176,7 @@ export function cancelRun(id: string) {
 export function resumeRun(id: string) {
   const source = requireRun(id);
   if (active(source) || !source.sessionId) throw new HttpError(409, "只能恢复具有 Nextflow session 的已结束运行");
+  if (source.detail.workCleanedAt) throw new HttpError(409, "这次运行的 work 目录已在磁盘页清理，不能再续跑；请重新运行");
   if (!runnerReady()) throw new HttpError(503, "Runner 未就绪");
   return store().transaction(() => {
     if (store().runs(true).some((run) => active(run) && run.lineageId === source.lineageId)) throw new HttpError(409, "同一运行链已有活动运行");
@@ -152,7 +188,7 @@ export function resumeRun(id: string) {
     next.attemptDir = join(executionDirectory(source.lineageId), "attempts", newId);
     next.detail.params = { ...next.detail.params, outdir: join(next.attemptDir, "results") };
     next.resumeFrom = id;
-    delete next.pid; delete next.pidStart; delete next.owner; delete next.cancelRequested;
+    delete next.pid; delete next.pidStart; delete next.detail.remote; delete next.owner; delete next.cancelRequested;
     store().insertRun(next);
     return next.detail;
   });

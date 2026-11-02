@@ -74,7 +74,7 @@ export function WorkflowLibrary() {
           />
         </div>
         <Button asChild variant="outline">
-          <Link href="/workflows/modules">模块库</Link>
+          <Link href="/modules">模块库</Link>
         </Button>
         <Button type="button" onClick={onCreate} disabled={create.isPending}>
           {create.isPending ? <Loader2 className="animate-spin" /> : <Plus />}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { contentTypeOf, firstPreviewable, previewKind } from "./preview";
+import { contentTypeOf, firstPreviewable, moleculeFormat, previewFor, previewKind } from "./preview";
 
 describe("result preview kinds", () => {
   it("classifies the formats the shared renderer can open", () => {
@@ -37,5 +37,15 @@ describe("result preview kinds", () => {
     expect(contentTypeOf("qc/report.pdf")).toBe("application/pdf");
     expect(contentTypeOf("pipeline_info/params.json")).toBe("application/json");
     expect(contentTypeOf("bam/S1.bam")).toBe("application/octet-stream");
+  });
+
+  it("summarises large h5ad files and opens structures in Mol*", () => {
+    expect(previewFor("cluster/pbmc.h5ad", 4 * 1024 ** 3)).toBe("anndata");
+    expect(previewFor("qc/huge.csv", 40 * 1024 ** 2)).toBeNull();
+    expect(previewKind("dock/pose.pdbqt")).toBe("molecule");
+    expect(moleculeFormat("dock/pose.PDBQT")).toBe("pdbqt");
+    expect(moleculeFormat("prep/receptor.cif")).toBe("mmcif");
+    expect(moleculeFormat("prep/ligand.sdf")).toBe("sdf");
+    expect(moleculeFormat("prep/notes.txt")).toBeUndefined();
   });
 });

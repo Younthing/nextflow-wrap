@@ -4,11 +4,12 @@ import { join } from "node:path";
 
 import { IpynbError, notebookFromIpynb, serializeIpynb, type IpynbNotebook } from "@/features/notebook/ipynb";
 import type { NotebookDoc } from "@/features/notebook/types";
+import { EXAMPLE_PROJECT_ID, notebookProjectId } from "@/features/workspace/projects";
 import { ensureWorkspace, writeFileAtomic } from "@/features/workspace/server/workspace";
 import type { StudioStore } from "@/lib/server/database";
 
 /**
- * Keeps `notebooks/*.ipynb` in a workspace and the notebook rows in the database in step.
+ * Keeps `notebooks/*.ipynb` in one project folder and that project's notebook rows in the database in step.
  *
  * The file is what the user owns: Jupyter, an editor or `git pull` may change it. The database keeps the
  * revision history, try-run receipts and published modules that point at notebook revisions.
@@ -45,8 +46,13 @@ export class NotebookFiles {
   readonly folder: string;
   private readonly entries = new Map<string, Entry>();
 
-  constructor(readonly root: string) {
+  /** `projectId` is the project whose folder `root` is; only its notebooks are written here. */
+  constructor(readonly root: string, readonly projectId: string = EXAMPLE_PROJECT_ID) {
     this.folder = join(root, FOLDER);
+  }
+
+  private owns(doc: NotebookDoc): boolean {
+    return notebookProjectId(doc) === this.projectId;
   }
 
   /** Path of a notebook's file relative to the workspace, for display. */
@@ -154,8 +160,10 @@ export class NotebookFiles {
     // A file renamed outside the app renames the notebook, so the next save keeps the user's file name.
     const fileBase = file.replace(/\.ipynb$/, "").replace(/ \(nb_[\w-]+\)$/, "");
     if (baseName(parsed.name, parsed.id ?? "") !== fileBase) parsed = { ...parsed, name: fileBase.slice(0, 80) };
-    const claimed = parsed.id ? this.entries.has(parsed.id) : false;
-    const existing = parsed.id && !claimed ? db.notebook(parsed.id) : undefined;
+    const known = parsed.id ? db.notebook(parsed.id) : undefined;
+    // A file copied from another project's folder is a new notebook here, not a move.
+    const claimed = parsed.id ? this.entries.has(parsed.id) || (known !== undefined && !this.owns(known)) : false;
+    const existing = !claimed ? known : undefined;
     if (existing) {
       // The database already has this notebook: the file wins.
       const saved = contentKey(parsed) === contentKey(existing) ? existing : db.saveNotebook({ ...existing, ...parsed, id: existing.id });
@@ -165,7 +173,7 @@ export class NotebookFiles {
     // A new notebook, or a copy of another notebook's file: give it its own id and record it in the file.
     const now = new Date().toISOString();
     const id = parsed.id && !claimed ? parsed.id : `nb_${randomUUID().slice(0, 8)}`;
-    const saved = db.saveNotebook({ ...parsed, id, rev: 1, createdAt: now, updatedAt: now });
+    const saved = db.saveNotebook({ ...parsed, id, projectId: this.projectId, rev: 1, createdAt: now, updatedAt: now });
     this.entries.set(id, { file, mtimeMs: read.mtimeMs, size: read.size, content: contentKey(saved) });
     if (parsed.id !== id) await this.write(saved);
   }
@@ -174,29 +182,45 @@ export class NotebookFiles {
   async reconcile(db: StudioStore): Promise<void> {
     await this.adoptNewFiles(db);
     // Oldest first, so the first notebook with a name gets the plain file name.
-    const docs = db.notebooks().sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+    const docs = db.notebooks().filter((doc) => this.owns(doc)).sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
     for (const doc of docs) {
       if (!this.entries.has(doc.id)) await this.write(doc);
     }
   }
 }
 
-const opened = new WeakMap<StudioStore, Promise<NotebookFiles | undefined>>();
+const opened = new WeakMap<StudioStore, Map<string, Promise<NotebookFiles | undefined>>>();
 
-/** The workspace notebook files for a database, opened and reconciled once per process. */
-export function notebookFiles(db: StudioStore): Promise<NotebookFiles | undefined> {
+/**
+ * The notebook files of one project, opened and reconciled once per process. Each project's folder holds its own
+ * `notebooks/`; the example project lives in the database's default workspace. An in-memory database and a project
+ * whose folder has gone missing have none, so the database alone keeps their notebooks.
+ */
+export function notebookFiles(db: StudioStore, projectId: string = EXAMPLE_PROJECT_ID): Promise<NotebookFiles | undefined> {
   if (!db.workspace) return Promise.resolve(undefined);
-  let pending = opened.get(db);
+  let byProject = opened.get(db);
+  if (!byProject) {
+    byProject = new Map();
+    opened.set(db, byProject);
+  }
+  const cache = byProject;
+  let pending = cache.get(projectId);
   if (!pending) {
-    const root = db.workspace;
+    const project = db.project(projectId);
+    const root = project?.path ?? (projectId === EXAMPLE_PROJECT_ID ? db.workspace : undefined);
+    if (!root) return Promise.resolve(undefined);
     pending = (async () => {
+      if (!project?.example && projectId !== EXAMPLE_PROJECT_ID && !(await stat(root).then((info) => info.isDirectory(), () => false))) {
+        cache.delete(projectId);
+        return undefined;
+      }
       await ensureWorkspace(root);
-      const files = new NotebookFiles(root);
+      const files = new NotebookFiles(root, projectId);
       await files.reconcile(db);
       return files;
     })();
-    pending.catch(() => opened.delete(db));
-    opened.set(db, pending);
+    pending.catch(() => cache.delete(projectId));
+    cache.set(projectId, pending);
   }
   return pending;
 }

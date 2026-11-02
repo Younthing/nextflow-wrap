@@ -17,6 +17,8 @@ import { HttpError } from "@/features/runs/server/service";
 import type { ModuleDef } from "@/features/workflow/types";
 import type { StudioStore } from "@/lib/server/database";
 import { store } from "@/lib/server/database";
+import { notebookProjectId } from "@/features/workspace/projects";
+import { currentProjectId } from "@/features/workspace/server/projects";
 
 const json = (value: unknown, status = 200) => Response.json(value, { status, headers: { "cache-control": "no-store" } });
 
@@ -31,6 +33,7 @@ const writeSchema = z.object({
   description: z.string().max(2000).optional(),
   kernel: z.string().trim().min(1).max(80).refine((value) => !/[\u0000-\u001f]/.test(value), "内核名称不能包含换行"),
   cells: z.array(cellSchema).max(80),
+  projectId: z.string().regex(/^[\w-]{1,80}$/).optional(),
 });
 
 const runSchema = z.object({
@@ -134,14 +137,21 @@ async function saveToLibrary(db: StudioStore, def: ModuleDef, copy?: ModuleLibra
 export async function handleNotebookApi(method: string, path: string[], request: Request, db: StudioStore = store()): Promise<Response> {
   ensureNotebookDemo(db);
   await ensureModuleLibrary(db);
-  const files = await notebookFiles(db);
   const [resource, id, action, extra] = path;
-  // Pick up edits made to the notebook files outside the app before anything reads them. A save checks instead.
-  if (files && !(resource === "notebooks" && id && !action && method === "PUT")) {
-    await files.refresh(db, resource === "notebooks" && id ? id : undefined);
+  // Each project's notebooks live as `.ipynb` files in its folder. Pick up edits made outside the app before
+  // anything reads them; a save checks instead.
+  const filesOf = (doc: NotebookDoc) => notebookFiles(db, notebookProjectId(doc));
+  if (resource === "notebooks" && id && !(method === "PUT" && !action)) {
+    const doc = db.notebook(id);
+    if (doc) await (await filesOf(doc))?.refresh(db, id);
+  } else if (resource === "notebooks" && !id && method === "GET") {
+    const project = new URL(request.url).searchParams.get("project");
+    const ids = project ? [project] : [...new Set(db.notebooks().map(notebookProjectId))];
+    for (const projectId of ids) await (await notebookFiles(db, projectId))?.refresh(db);
   }
-  /** Save a notebook to the database and its workspace file. */
+  /** Save a notebook to the database and to the file in its project folder. */
   const saveNotebook = async (doc: NotebookDoc) => {
+    const files = await filesOf(doc);
     if (files) {
       try {
         await files.write(doc);
@@ -150,9 +160,8 @@ export async function handleNotebookApi(method: string, path: string[], request:
         throw error;
       }
     }
-    const saved = db.saveNotebook(doc);
     // The database assigns rev and timestamps; the file only holds content, so it is already current.
-    return saved;
+    return db.saveNotebook(doc);
   };
 
   if (resource === "kernels" && !id && method === "GET") return json(await listKernelSpecs());
@@ -192,6 +201,8 @@ export async function handleNotebookApi(method: string, path: string[], request:
     let doc: NotebookDoc;
     try {
       doc = notebookFromLibrary(copy, newNotebookId(db));
+      const projectId = currentProjectId(db);
+      if (projectId) doc = { ...doc, projectId };
     } catch (error) {
       if (error instanceof PercentError) throw new HttpError(400, error.message);
       throw error;
@@ -203,7 +214,8 @@ export async function handleNotebookApi(method: string, path: string[], request:
 
   if (!id && method === "GET") {
     const modules = db.scriptModules();
-    return json(db.notebooks().map((doc) => summarizeNotebook(doc, modules)));
+    const project = new URL(request.url).searchParams.get("project");
+    return json(db.notebooks().filter((doc) => !project || notebookProjectId(doc) === project).map((doc) => summarizeNotebook(doc, modules)));
   }
 
   if (!id && method === "POST") {
@@ -220,7 +232,8 @@ export async function handleNotebookApi(method: string, path: string[], request:
       createdAt: now,
       updatedAt: now,
     };
-    return json(await saveNotebook(doc), 201);
+    const projectId = body.projectId ?? currentProjectId(db);
+    return json(await saveNotebook(projectId ? { ...doc, projectId } : doc), 201);
   }
 
   if (!id) throw new HttpError(404, "接口不存在");
@@ -272,11 +285,11 @@ export async function handleNotebookApi(method: string, path: string[], request:
     if (body.action === "shutdown") shutdownKernel(id);
     if (body.action === "restart") {
       shutdownKernel(id);
-      if (notebook.language !== "python") throw new HttpError(400, "R 笔记本本期没有常驻内核");
+      const r = notebook.language !== "python";
       try {
-        await (await kernelFor(id, notebook.kernel)).whenReady();
+        await (await kernelFor(id, notebook.kernel, r ? "r" : "python")).whenReady();
       } catch (error) {
-        if (error instanceof KernelUnavailableError) throw new HttpError(400, `${error.message}。安装 ipykernel 后再启动内核`);
+        if (error instanceof KernelUnavailableError) throw new HttpError(400, `${error.message}。${r ? "安装 IRkernel" : "安装 ipykernel"} 后再启动内核`);
         throw new HttpError(500, error instanceof Error ? error.message : "内核启动失败");
       }
     }

@@ -1,5 +1,5 @@
 import { REFERENCE_ID, SAMPLESHEET_ID } from "./builtins";
-import { EXAMPLE_CLUSTER_ID, EXAMPLE_FASTQ_QC_ID, EXAMPLE_REPORT_ID, EXAMPLE_SCANPY_QC_ID, EXAMPLE_TRIM_ID } from "./example-modules";
+import { EXAMPLE_CLUSTER_ID, EXAMPLE_DOCK_ID, EXAMPLE_FASTQ_QC_ID, EXAMPLE_LIGANDS_ID, EXAMPLE_REPORT_ID, EXAMPLE_SCANPY_QC_ID, EXAMPLE_TRIM_ID } from "./example-modules";
 import { inHandle, outHandle } from "./ports";
 import type { WorkflowDoc, WorkflowEdge, WorkflowNode } from "./types";
 
@@ -68,6 +68,29 @@ export function readsQcWorkflow(id: string): WorkflowDoc {
       edge("trim", "reads", "qc", "reads"),
       edge("qc", "html", "report", "files"),
       edge("trim", "json", "report", "files"),
+    ],
+    updatedAt: "2026-10-30T00:00:00.000Z",
+  };
+}
+
+/** The docking example: SMILES → ligand PDBQT → CPU Vina against a prepared receptor. Seeds the mock backend and stories. */
+export function dockingWorkflow(id: string): WorkflowDoc {
+  return {
+    id,
+    name: "分子对接（Vina）",
+    description: "SMILES 准备配体 → AutoDock Vina 对接 → 打分和最佳构象",
+    version: 1,
+    params: { ligands: "data/ligands.csv", receptor: "data/receptor.pdbqt", outdir: "results" },
+    nodes: [
+      node("ligands", REFERENCE_ID, "LIGANDS", 0, 80, { config: {}, settings: { param: "ligands", format: "other" } }),
+      node("receptor", REFERENCE_ID, "RECEPTOR", 0, 320, { config: {}, settings: { param: "receptor", format: "other" } }),
+      node("prepare", EXAMPLE_LIGANDS_ID, "PREPARE_LIGANDS", 360, 60),
+      node("dock", EXAMPLE_DOCK_ID, "VINA_DOCK", 760, 160, { widgets: { center_x: 0, center_y: 0, center_z: 0, size: 18, exhaustiveness: 8 } }),
+    ],
+    edges: [
+      edge("ligands", "with_meta", "prepare", "smiles"),
+      edge("prepare", "ligands", "dock", "ligands"),
+      edge("receptor", "file", "dock", "receptor"),
     ],
     updatedAt: "2026-10-30T00:00:00.000Z",
   };

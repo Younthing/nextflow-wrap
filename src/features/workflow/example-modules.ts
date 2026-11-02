@@ -51,6 +51,7 @@ export const EXAMPLE_CLUSTER_ID = "script/scanpy_cluster/v1";
 export const EXAMPLE_REPORT_ID = "script/summary_report/v1";
 export const EXAMPLE_RECEPTOR_ID = "script/prepare_receptor/v1";
 export const EXAMPLE_DOCK_ID = "script/vina_dock/v1";
+export const EXAMPLE_LIGANDS_ID = "script/prepare_ligands/v1";
 
 export const EXAMPLE_MODULES: ModuleDef[] = [
   example({
@@ -137,20 +138,34 @@ export const EXAMPLE_MODULES: ModuleDef[] = [
     outputs: [port("pdbqt", [file("pdbqt", "pdbqt", "受体 PDBQT")])],
   }),
   example({
+    process: "PREPARE_LIGANDS",
+    name: "prepare_ligands",
+    category: "分子对接",
+    description: "从 SMILES 表用 RDKit 生成 3D 构象，写成一个多分子 SDF。",
+    keywords: ["docking", "ligand", "smiles", "rdkit", "sdf"],
+    inputs: [port("smiles", [meta(), file("smiles", "csv", "name,smiles 两列的配体表")], "配体 SMILES 表")],
+    outputs: [port("ligands", [meta(), file("ligands", "sdf", "带 3D 坐标的配体", "ligands.sdf")])],
+  }),
+  example({
     process: "VINA_DOCK",
     name: "vina_dock",
     category: "分子对接",
-    description: "用 AutoDock Vina 把每个配体对接到受体，输出构象和打分。",
-    keywords: ["docking", "vina", "ligand", "sdf"],
+    description: "用 Meeko 准备配体，AutoDock Vina（CPU）对接到受体口袋，输出构象和结合能。",
+    keywords: ["docking", "vina", "ligand", "pdbqt"],
     label: "process_high",
     inputs: [
-      port("ligand", [meta(), file("ligand", "sdf", "配体结构")], "每个配体"),
+      port("ligands", [meta(), file("ligands", "sdf", "带 3D 坐标的配体")], "每批配体"),
       port("receptor", [file("receptor", "pdbqt", "受体 PDBQT")], "受体"),
+      widget("center_x", "number", "口袋中心 x（Å）"),
+      widget("center_y", "number", "口袋中心 y（Å）"),
+      widget("center_z", "number", "口袋中心 z（Å）"),
+      widget("size", "number", "搜索盒边长（Å）"),
       widget("exhaustiveness", "integer", "搜索强度"),
     ],
     outputs: [
-      port("poses", [meta(), file("poses", "sdf", "对接构象", "*.poses.sdf")]),
-      port("scores", [meta(), file("scores", "csv", "结合能打分")]),
+      port("poses", [meta(), file("poses", "pdbqt", "全部配体的对接构象（按打分排序）", "poses.pdbqt")]),
+      port("scores", [meta(), file("scores", "csv", "结合能打分", "scores.csv")]),
+      port("best", [meta(), file("best", "pdbqt", "打分最好的构象", "best_pose.pdbqt")]),
     ],
   }),
 ];

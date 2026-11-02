@@ -12,8 +12,15 @@ import { cn } from "@/lib/utils";
 import { formatBytes } from "../format";
 import type { ResultFile } from "../outputs";
 import { firstPreviewable, imageMime, isBinaryPreview } from "../preview";
-import { useHealthStatus, useResultBlob, useResultContent, useRunLog, useRunResults } from "../queries";
+import { useAnnDataSummary, useHealthStatus, useResultBlob, useResultContent, useRunLog, useRunResults } from "../queries";
 import { staticReportHtml } from "../report-preview";
+import type { TaskRecord } from "../types";
+import { RemoteResultsNotice } from "@/features/remote/components/remote-results-notice";
+import type { RemoteRunState } from "@/features/remote/types";
+import type { WorkflowDoc } from "@/features/workflow/types";
+import { AnnDataSummaryView } from "./anndata-summary";
+import { MoleculeViewer } from "./molecule-viewer";
+import { ResultSource } from "./result-source";
 
 const MULTIQC = "multiqc/multiqc_report.html";
 
@@ -33,8 +40,9 @@ function BlobPreview({ blob, view }: { blob: Blob; view: (src: string) => Output
 
 function Preview({ runId, file, outdir }: { runId: string; file: ResultFile; outdir: string }) {
   const binary = isBinaryPreview(file.preview);
-  const textual = file.preview === "html" || file.preview === "markdown" || file.preview === "csv" || file.preview === "tsv" || file.preview === "text";
+  const textual = file.preview === "html" || file.preview === "markdown" || file.preview === "csv" || file.preview === "tsv" || file.preview === "text" || file.preview === "molecule";
   const content = useResultContent(runId, textual ? file.path : null);
+  const summary = useAnnDataSummary(runId, file.preview === "anndata" ? file.path : null);
   const blob = useResultBlob(runId, binary ? file.path : null);
   const fullPath = `${outdir.replace(/\/$/, "")}/${file.path}`;
   const reportHtml = React.useMemo(
@@ -54,6 +62,11 @@ function Preview({ runId, file, outdir }: { runId: string; file: ResultFile; out
         <code className="rounded bg-secondary px-2 py-1 font-mono text-xs">{fullPath}</code>
       </AsyncPlaceholder>
     );
+  }
+  if (file.preview === "anndata") {
+    if (summary.isPending) return <AsyncPlaceholder status="pending" className="flex-1" />;
+    if (summary.error) return <AsyncPlaceholder status="error" className="h-auto" message={`无法读取摘要：${summary.error.message}`} />;
+    return <AnnDataSummaryView summary={summary.data} />;
   }
   const pending = binary ? blob.isPending : content.isPending;
   const error = binary ? blob.error : content.error;
@@ -76,6 +89,7 @@ function Preview({ runId, file, outdir }: { runId: string; file: ResultFile; out
   if (file.preview === "html") {
     return <OutputRenderer view={{ kind: "html-document", html: reportHtml, title: file.path }} className="min-h-0 flex-1" />;
   }
+  if (file.preview === "molecule") return <MoleculeViewer path={file.path} text={content.data.body} />;
   if (file.preview === "markdown" || file.preview === "csv" || file.preview === "tsv" || file.preview === "text") {
     return <OutputRenderer view={viewFromText(file.preview, content.data.body)} className="min-h-0 flex-1" />;
   }
@@ -92,7 +106,7 @@ function groupByDir(files: ResultFile[]) {
   return [...groups.entries()];
 }
 
-export function RunResults({ runId, active, outdir }: { runId: string; active: boolean; outdir: string }) {
+export function RunResults({ runId, active, outdir, workflow, tasks = [], remoteHost, remote }: { runId: string; active: boolean; outdir: string; workflow?: WorkflowDoc; tasks?: TaskRecord[]; remoteHost?: string; remote?: RemoteRunState }) {
   const health = useHealthStatus();
   const results = useRunResults(runId, active);
   const files = React.useMemo(() => results.data ?? [], [results.data]);
@@ -107,92 +121,100 @@ export function RunResults({ runId, active, outdir }: { runId: string; active: b
   if (results.isPending) {
     return <AsyncPlaceholder status="pending" className="flex-1" />;
   }
+  const notice = remoteHost ? <RemoteResultsNotice host={remoteHost} remote={remote} active={active} /> : null;
   if (!files.length) {
     return (
-      <AsyncPlaceholder
-        status="empty"
-        className="flex-1"
-        icon={<PackageOpen />}
-        description={active ? "任务完成后，发布到 outdir 的文件会出现在这里" : "这次运行没有发布任何文件"}
-      />
+      <div className="flex min-h-0 flex-1 flex-col gap-2">
+        {notice}
+        <AsyncPlaceholder
+          status="empty"
+          className="flex-1"
+          icon={<PackageOpen />}
+          description={remote?.resultsLeftRemote ? "结果留在集群上" : active ? "任务完成后，发布到 outdir 的文件会出现在这里" : "这次运行没有发布任何文件"}
+        />
+      </div>
     );
   }
 
   return (
-    <div className="flex min-h-0 flex-1 gap-3">
-      <ScrollArea className="w-72 shrink-0 rounded-lg bg-secondary/40">
-        <div className="grid gap-2 p-2">
-          {files.some((f) => f.path === MULTIQC) && (
-            <Button
-              variant={current?.path === MULTIQC ? "default" : "outline"}
-              size="sm"
-              className="justify-start"
-              onClick={() => setChosen(MULTIQC)}
-            >
-              <BarChart3 /> MultiQC 报告
-            </Button>
+    <div className="flex min-h-0 flex-1 flex-col gap-2">
+      {notice}
+      <div className="flex min-h-0 flex-1 gap-3">
+        <ScrollArea className="w-72 shrink-0 rounded-lg bg-secondary/40">
+          <div className="grid gap-2 p-2">
+            {files.some((f) => f.path === MULTIQC) && (
+              <Button
+                variant={current?.path === MULTIQC ? "default" : "outline"}
+                size="sm"
+                className="justify-start"
+                onClick={() => setChosen(MULTIQC)}
+              >
+                <BarChart3 /> MultiQC 报告
+              </Button>
+            )}
+            <ul className="text-xs" aria-label="结果文件">
+              {groupByDir(files).map(([dir, group]) => {
+                const isCollapsed = collapsed.has(dir);
+                return (
+                  <li key={dir}>
+                    {dir && (
+                      <button
+                        type="button"
+                        className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-muted-foreground hover:bg-accent"
+                        onClick={() =>
+                          setCollapsed((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(dir)) next.delete(dir);
+                            else next.add(dir);
+                            return next;
+                          })
+                        }
+                      >
+                        {isCollapsed ? <Folder className="size-3.5" /> : <FolderOpen className="size-3.5" />}
+                        {dir}/<span className="ml-auto">{group.length}</span>
+                      </button>
+                    )}
+                    {!isCollapsed && (
+                      <ul>
+                        {group.map((f) => (
+                          <li key={f.path}>
+                            <button
+                              type="button"
+                              onClick={() => setChosen(f.path)}
+                              className={cn(
+                                "flex w-full items-center gap-1.5 rounded-md py-1 pr-2 pl-6 text-left font-mono hover:bg-accent",
+                                f.path === current?.path && "bg-glass-strong text-primary shadow-sm",
+                              )}
+                            >
+                              {f.path.endsWith("/") ? <Folder className="size-3.5 shrink-0" /> : <FileText className="size-3.5 shrink-0 text-muted-foreground" />}
+                              <span className="truncate">{f.path.slice(dir ? dir.length + 1 : 0)}</span>
+                              <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">{formatBytes(f.size)}</span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </ScrollArea>
+        <div className="flex min-w-0 flex-1 flex-col gap-1.5" aria-label="结果预览">
+          {current ? (
+            <>
+              <div className="font-mono text-xs text-muted-foreground">
+                {outdir.replace(/\/$/, "")}/{current.path}
+              </div>
+              <ResultSource file={current} fullPath={`${outdir.replace(/\/$/, "")}/${current.path}`} workflow={workflow} tasks={tasks} />
+              {health.data?.mocked === false && <Button asChild variant="outline" size="sm" className="self-start"><a href={`/api/runs/${runId}/results/content?download=1&path=${encodeURIComponent(current.path)}`}>下载原始文件</a></Button>}
+              {current.preview === "html" && <p className="text-xs text-muted-foreground">静态预览；交互图表请下载报告后查看。</p>}
+              <Preview key={current.path} runId={runId} file={current} outdir={outdir} />
+            </>
+          ) : (
+            <DirectoryPlaceholder path={outdir} description="这个目录里还没有可预览的文件" />
           )}
-          <ul className="text-xs" aria-label="结果文件">
-            {groupByDir(files).map(([dir, group]) => {
-              const isCollapsed = collapsed.has(dir);
-              return (
-                <li key={dir}>
-                  {dir && (
-                    <button
-                      type="button"
-                      className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-muted-foreground hover:bg-accent"
-                      onClick={() =>
-                        setCollapsed((prev) => {
-                          const next = new Set(prev);
-                          if (next.has(dir)) next.delete(dir);
-                          else next.add(dir);
-                          return next;
-                        })
-                      }
-                    >
-                      {isCollapsed ? <Folder className="size-3.5" /> : <FolderOpen className="size-3.5" />}
-                      {dir}/<span className="ml-auto">{group.length}</span>
-                    </button>
-                  )}
-                  {!isCollapsed && (
-                    <ul>
-                      {group.map((f) => (
-                        <li key={f.path}>
-                          <button
-                            type="button"
-                            onClick={() => setChosen(f.path)}
-                            className={cn(
-                              "flex w-full items-center gap-1.5 rounded-md py-1 pr-2 pl-6 text-left font-mono hover:bg-accent",
-                              f.path === current?.path && "bg-glass-strong text-primary shadow-sm",
-                            )}
-                          >
-                            {f.path.endsWith("/") ? <Folder className="size-3.5 shrink-0" /> : <FileText className="size-3.5 shrink-0 text-muted-foreground" />}
-                            <span className="truncate">{f.path.slice(dir ? dir.length + 1 : 0)}</span>
-                            <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">{formatBytes(f.size)}</span>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
         </div>
-      </ScrollArea>
-      <div className="flex min-w-0 flex-1 flex-col gap-1.5" aria-label="结果预览">
-        {current ? (
-          <>
-            <div className="font-mono text-xs text-muted-foreground">
-              {outdir.replace(/\/$/, "")}/{current.path}
-            </div>
-            {health.data?.mocked === false && <Button asChild variant="outline" size="sm" className="self-start"><a href={`/api/runs/${runId}/results/content?download=1&path=${encodeURIComponent(current.path)}`}>下载原始文件</a></Button>}
-            {current.preview === "html" && <p className="text-xs text-muted-foreground">静态预览；交互图表请下载报告后查看。</p>}
-            <Preview key={current.path} runId={runId} file={current} outdir={outdir} />
-          </>
-        ) : (
-          <DirectoryPlaceholder path={outdir} description="这个目录里还没有可预览的文件" />
-        )}
       </div>
     </div>
   );

@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { Loader2, Play } from "lucide-react";
+import { Loader2, Play, Trash2 } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
@@ -15,7 +14,7 @@ import { CellOutputView } from "./cell-output";
 import { CellSourceEditor } from "./cell-source-editor";
 import { MarkdownView } from "./markdown-view";
 
-const ROLE_LABEL: Record<NotebookCellRole, string> = {
+export const CELL_ROLE_LABEL: Record<NotebookCellRole, string> = {
   code: "代码",
   markdown: "说明",
   input: "输入",
@@ -131,9 +130,9 @@ export function NotebookCellCard({
       aria-current={selected ? "true" : undefined}
       data-selected={selected ? "true" : "false"}
       className={cn(
-        "relative rounded-lg border transition-colors",
+        "group/cell relative rounded-xl transition-colors",
         menu ? "z-20 overflow-visible" : "overflow-hidden",
-        selected ? "border-primary bg-primary/10" : "border-border hover:border-primary/40",
+        selected ? "bg-primary/[0.06] ring-1 ring-primary/35" : "hover:bg-accent/40",
       )}
       onClick={(event) => {
         onSelect();
@@ -143,7 +142,7 @@ export function NotebookCellCard({
         onEnterCommand?.();
       }}
     >
-      <span aria-hidden className={cn("absolute inset-y-0 left-0 w-1", selected ? "bg-primary" : "bg-transparent")} />
+      <span aria-hidden className={cn("absolute inset-y-2 left-0 w-1 rounded-full", selected ? "bg-primary" : "bg-transparent")} />
       <div className="flex pl-1.5">
         <div className="flex w-11 shrink-0 flex-col items-center gap-1 py-2">
           {executable ? (
@@ -192,20 +191,23 @@ export function NotebookCellCard({
           </button>
         </div>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 py-1.5 pr-2 text-xs text-muted-foreground">
-            <Badge variant="outline">{ROLE_LABEL[cell.role]}</Badge>
+          <div className="flex h-8 items-center gap-1.5 pr-2 text-xs text-muted-foreground">
             <Select value={cell.role} disabled={readOnly} onValueChange={(role) => onRole(role as NotebookCellRole)}>
               <SelectTrigger
                 size="sm"
-                className="h-7 w-28 text-xs"
+                className={cn(
+                  "h-6 w-auto gap-1 border-transparent bg-transparent px-1.5 text-[11px] shadow-none hover:bg-accent",
+                  cell.role !== "code" && cell.role !== "markdown" && "bg-primary/10 text-primary",
+                  cell.role === "code" && !selected && "opacity-0 group-hover/cell:opacity-100 focus-visible:opacity-100",
+                )}
                 aria-label={`单元格 ${number} 类型`}
                 onFocus={onSelect}
               >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {(Object.keys(ROLE_LABEL) as NotebookCellRole[]).map((role) => (
-                  <SelectItem key={role} value={role}>{ROLE_LABEL[role]}</SelectItem>
+                {(Object.keys(CELL_ROLE_LABEL) as NotebookCellRole[]).map((role) => (
+                  <SelectItem key={role} value={role}>{CELL_ROLE_LABEL[role]}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -235,15 +237,21 @@ export function NotebookCellCard({
             <Button
               type="button"
               variant="ghost"
-              size="sm"
-              className={markdown && !readOnly && cell.source.trim().length > 0 ? undefined : "ml-auto"}
+              size="icon-sm"
+              aria-label={`删除单元格 ${number}`}
+              title="删除单元格（命令模式下按两次 D）"
+              className={cn(
+                "size-6 text-muted-foreground hover:text-destructive",
+                markdown && !readOnly && cell.source.trim().length > 0 ? undefined : "ml-auto",
+                !selected && "opacity-0 group-hover/cell:opacity-100 focus-visible:opacity-100",
+              )}
               disabled={readOnly || !canDelete}
               onClick={(event) => {
                 event.stopPropagation();
                 onDelete();
               }}
             >
-              删除
+              <Trash2 />
             </Button>
           </div>
           {showPreview ? (
@@ -275,6 +283,7 @@ export function NotebookCellCard({
               )}
             </section>
           ) : highlighted && language ? (
+            <div className="mr-3 rounded-lg border border-border bg-background/70">
             <CellSourceEditor
               cellId={cell.id}
               value={cell.source}
@@ -291,6 +300,7 @@ export function NotebookCellCard({
               }}
               onMenu={setMenu}
             />
+            </div>
           ) : (
             <Textarea
               ref={sourceRef}
@@ -310,7 +320,8 @@ export function NotebookCellCard({
               )}
             />
           )}
-          {executable && output && <CellOutputView output={output} />}
+          {executable && output && <div className="mr-3 pb-1"><CellOutputView output={output} /></div>}
+          {!output || !executable ? <div className="h-2" aria-hidden /> : null}
         </div>
       </div>
     </article>

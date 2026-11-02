@@ -4,7 +4,13 @@ import { EXAMPLE_MODULES } from "@/features/workflow/example-modules";
 import { defaultLaunchConfig } from "@/features/project/launch";
 import { NEXTFLOW_VERSION } from "@/features/project/templates";
 import type { RunDetail } from "@/features/runs/types";
+import { fsHandlers } from "./fs";
+import { settingsHandlers } from "./settings";
+import { storageHandlers } from "./storage";
+import { diagnosticsHandlers } from "./diagnostics";
+import { remoteHandlers } from "./remotes";
 import { kernelHandlers } from "./kernels";
+import type { Project, ProjectList } from "@/features/workspace/types";
 
 export const storyWorkflow = {
   ...demoWorkflow("wf_story"),
@@ -42,9 +48,22 @@ export const storyRun: RunDetail = {
   },
 };
 
+export const storyProject: Project = {
+  id: "p_story",
+  name: "PBMC 单细胞图谱",
+  path: "/home/demo/Projects/pbmc-atlas",
+  createdAt: "2026-01-01T12:00:00.000Z",
+  openedAt: "2026-01-02T12:00:00.000Z",
+};
+
 /** Deterministic, read-only fixtures. Unknown APIs fail here instead of reaching a runner. */
 export const storyHandlers = [
   ...kernelHandlers,
+  ...fsHandlers,
+  ...settingsHandlers,
+  ...storageHandlers,
+  ...diagnosticsHandlers,
+  ...remoteHandlers,
   http.get("/api/script-modules", () => HttpResponse.json({ modules: EXAMPLE_MODULES, references: {} })),
   http.get("/api/health", () =>
     HttpResponse.json({
@@ -62,6 +81,7 @@ export const storyHandlers = [
     ]),
   ),
   http.get("/api/workflows/:id", () => HttpResponse.json(storyWorkflow)),
+  http.get("/api/projects", () => HttpResponse.json<ProjectList>({ projects: [storyProject], current: storyProject.id })),
   http.get("/api/runs", () => HttpResponse.json([storyRun])),
   http.get("/api/runs/:id", () => HttpResponse.json(storyRun)),
   http.get("/api/runs/:id/tasks", () => HttpResponse.json([])),

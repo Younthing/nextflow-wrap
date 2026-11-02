@@ -1,3 +1,4 @@
+import { notebookProjectId } from "@/features/workspace/projects";
 import { countCellChanges } from "./changes";
 import type { NotebookDoc, NotebookRevision, NotebookSummary } from "./types";
 import type { ModuleDef } from "@/features/workflow/types";
@@ -28,6 +29,7 @@ export function summarizeNotebook(doc: NotebookDoc, modules: readonly ModuleDef[
     moduleName: published?.name,
     moduleId: published?.id,
     fromLibrary: Boolean(doc.libraryModuleId),
+    projectId: notebookProjectId(doc),
   };
 }
 

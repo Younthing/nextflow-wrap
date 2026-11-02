@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { StoredExecution } from "@/lib/server/database";
-import { historyStatus, nextQueued, slotLimits } from "./queue";
+import { historySession, historyStatus, nextQueued, slotLimits } from "./queue";
 
 const run = (id: string, executor: string, status: string, phase: string | undefined, submittedAt: string, projectDir = `/pipelines/${id}`) => ({
   projectDir, detail: { id, status, phase, submittedAt, launch: { executor } },
@@ -40,6 +40,13 @@ describe("nextQueued", () => {
       run("slurm", "slurm", "submitted", "queued", "2026-01-03"),
     ];
     expect(nextQueued(runs, limits)?.detail.id).toBe("slurm");
+  });
+
+  it("lets a run on a cluster's login node start while a local run is busy", () => {
+    const login = { ...run("login", "local", "submitted", "queued", "2026-01-03") } as StoredExecution;
+    login.detail.launch.remote = "hpc";
+    const runs = [run("busy", "local", "running", "executing", "2026-01-01"), login];
+    expect(nextQueued(runs, limits)?.detail.id).toBe("login");
   });
 
   it("caps concurrent cluster and cloud runs", () => {
@@ -87,5 +94,10 @@ describe("historyStatus", () => {
     expect(historyStatus(history, "live")).toBeUndefined();
     expect(historyStatus(history, "other")).toBeUndefined();
     expect(historyStatus("", "okrun")).toBeUndefined();
+  });
+
+  it("reads the session id a run used, for resume without weblog", () => {
+    expect(historySession(history, "badrun")).toBe("51b46c56-5311-4c21-bffb-dff647ef2868");
+    expect(historySession(history, "other")).toBeUndefined();
   });
 });

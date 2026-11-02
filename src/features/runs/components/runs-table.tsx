@@ -93,7 +93,7 @@ const columns = helper.columns([
   helper.accessor("executor", {
     header: "运行环境",
     sortFn: "text",
-    cell: (info) => <ExecutorCell executor={info.getValue()} profile={info.row.original.profile} />,
+    cell: (info) => <ExecutorCell executor={info.getValue()} profile={info.row.original.profile} remoteHost={info.row.original.remoteHost} />,
   }),
   helper.accessor(
     (r) =>
@@ -142,12 +142,12 @@ const columns = helper.columns([
   }),
 ]);
 
-function ExecutorCell({ executor, profile }: { executor: RunSummary["executor"]; profile: string }) {
+function ExecutorCell({ executor, profile, remoteHost }: { executor: RunSummary["executor"]; profile: string; remoteHost?: string }) {
   const health = useHealthStatus();
   return (
     <div className="grid">
       <span className="flex items-center gap-1.5">
-        {executorDef(executor).name}
+        {remoteHost ? `${remoteHost} · ${executor === "local" ? "登录节点" : executorDef(executor).name}` : executorDef(executor).name}
         {health.data?.mocked && <Badge variant="warning">预览</Badge>}
       </span>
       <span className="font-mono text-[11px] text-muted-foreground">

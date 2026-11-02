@@ -7,7 +7,9 @@ import { notebookFromIpynb, serializeIpynb } from "@/features/notebook/ipynb";
 import { handleNotebookApi } from "@/features/notebook/server/http";
 import { NotebookConflictError, NotebookFiles } from "@/features/notebook/server/notebook-files";
 import type { NotebookDoc } from "@/features/notebook/types";
+import { handleProjectsApi } from "@/features/workspace/server/http";
 import { ensureWorkspace } from "@/features/workspace/server/workspace";
+import type { Project } from "@/features/workspace/types";
 import { StudioStore } from "@/lib/server/database";
 
 const cleanup: (() => void)[] = [];
@@ -127,5 +129,28 @@ describe("notebook files", () => {
     const conflict = handleNotebookApi("PUT", ["notebooks", created.id], request("PUT", { name: "api qc", kernel: "py311-pandas", cells: [{ id: "c1", role: "code", source: "a = 9\n" }] }), db);
     await expect(conflict).rejects.toMatchObject({ status: 409 });
     expect(db.notebook(created.id)?.cells[0].source).toBe("a = 2\n");
+  });
+
+  it("keeps each project's notebooks in that project's folder", async () => {
+    const { db, folder } = await setup();
+    const request = (method: string, body?: unknown, query = "") => new Request(`http://studio.local/api/notebooks${query}`, {
+      method,
+      headers: { "content-type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const projectDir = mkdtempSync(join(tmpdir(), "studio-project-"));
+    cleanup.push(() => rmSync(projectDir, { recursive: true, force: true }));
+    const project = await (await handleProjectsApi("POST", ["projects", "open"], request("POST", { path: projectDir }), db)).json() as Project;
+
+    const created = await (await handleNotebookApi("POST", ["notebooks"], request("POST", { name: "atlas", kernel: "py311-pandas", cells: [] }), db)).json() as NotebookDoc;
+    expect(created.projectId).toBe(project.id);
+    expect(readdirSync(join(projectDir, "notebooks"))).toEqual(["atlas.ipynb"]);
+    expect(readdirSync(folder)).not.toContain("atlas.ipynb");
+
+    // A notebook made in Jupyter inside the project folder joins that project.
+    writeFileSync(join(projectDir, "notebooks", "jupyter.ipynb"), serializeIpynb({ ...notebook("nb_j", "jupyter"), id: "" }));
+    const listed = await (await handleNotebookApi("GET", ["notebooks"], request("GET", undefined, `?project=${project.id}`), db)).json() as { name: string; projectId: string }[];
+    expect(listed.map((row) => row.name).sort()).toEqual(["atlas", "jupyter"]);
+    expect(listed.every((row) => row.projectId === project.id)).toBe(true);
   });
 });

@@ -3,6 +3,7 @@ import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { expect, userEvent, within } from "storybook/test";
 import { EnvironmentForm } from "../components/environment-form";
 import { defaultLaunchConfig } from "@/features/project/launch";
+import { DEMO_REMOTE_HOST } from "@/mocks/remotes";
 
 const meta = {
   title: "Runs/EnvironmentForm",
@@ -42,5 +43,25 @@ export const ChangeExecutor: Story = {
     const option = canvas.getByRole("radio", { name: /Slurm/i });
     await userEvent.click(option);
     await expect(option).toHaveAttribute("aria-checked", "true");
+  },
+};
+export const OnCluster: Story = {
+  args: { real: true, remotes: [DEMO_REMOTE_HOST] },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByLabelText("工作目录（workDir）")).toBeDisabled();
+    await userEvent.click(canvas.getByLabelText("从哪里启动 Nextflow"));
+    await userEvent.click(await within(document.body).findByRole("option", { name: /实验室集群/ }));
+    // On a cluster only the login node and its schedulers are offered; cloud services start from this machine.
+    // The listbox keeps the form aria-hidden until it has closed.
+    await expect(await canvas.findByRole("radio", { name: /^登录节点/ })).toHaveAttribute("aria-checked", "true");
+    expect(canvas.queryByRole("radio", { name: /AWS Batch/ })).toBeNull();
+    await expect(canvas.getByText(/参数里的文件路径要写集群上的路径/)).toBeInTheDocument();
+    await expect(canvas.getByLabelText("工作目录（workDir）")).toBeEnabled();
+    await expect(canvas.getByText("填 work 时用 ~/nextflow-studio/work")).toBeInTheDocument();
+    const slurm = canvas.getByRole("radio", { name: /^SLURM/ });
+    await expect(slurm).toHaveAccessibleName(/Nextflow 在登录节点上提交作业/);
+    await userEvent.click(slurm);
+    await expect(slurm).toHaveAttribute("aria-checked", "true");
   },
 };

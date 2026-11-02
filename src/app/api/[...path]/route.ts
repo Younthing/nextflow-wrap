@@ -4,8 +4,20 @@ import { isAbsolute, join } from "node:path";
 import { ZodError } from "zod";
 import samplesheetSchema from "@/data/samplesheet-schema.json";
 import { containedFile, fileResponse, readTail, resultFiles } from "@/features/runs/server/files";
-import { active, assertSameOrigin, cancelRun, HttpError, requireRun, resumeRun, runnerReady, submitRun, workflowInput } from "@/features/runs/server/service";
+import { summarizeAnnData } from "@/features/runs/server/anndata";
+import { previewKind } from "@/features/runs/preview";
+import { active, assertSameOrigin, resumable, cancelRun, HttpError, requireRun, resumeRun, runnerReady, submitRun, workflowInput } from "@/features/runs/server/service";
 import { handleNotebookApi } from "@/features/notebook/server/http";
+import { handleSetupApi } from "@/features/setup/server/http";
+import { handleFsApi } from "@/features/files/server/http";
+import { handleSettingsApi } from "@/features/settings/server/http";
+import { handleStorageApi } from "@/features/storage/server/http";
+import { handleDiagnosticsApi } from "@/features/diagnostics/server/http";
+import { handleRemoteApi } from "@/features/remote/server/http";
+import { handleProjectsApi } from "@/features/workspace/server/http";
+import { remoteTaskLog } from "@/features/remote/server/remote-run";
+import { SshSession } from "@/features/remote/server/session";
+import { applyStoredSettings, readSettings } from "@/lib/server/settings";
 import type { HealthStatus } from "@/lib/api-types";
 import { store } from "@/lib/server/database";
 
@@ -28,6 +40,13 @@ async function handle(request: Request, context: Context): Promise<Response> {
       const ready = runnerReady();
       return json({ status: ready ? "ok" : "degraded", nextflowVersion: state?.versions?.nextflow ?? "未就绪", mocked: false, runnerReady: !!ready, diagnostics: state?.error ?? (ready ? undefined : "请启动 pnpm runner"), resources: state?.resources } satisfies HealthStatus);
     }
+    if (resource === "setup") return handleSetupApi(method, path, request);
+    if (resource === "fs") return handleFsApi(method, path, request);
+    if (resource === "settings" && !id) return handleSettingsApi(method, request);
+    if (resource === "storage") return handleStorageApi(method, path, request);
+    if (resource === "diagnostics" && !id) return handleDiagnosticsApi(method, request);
+    if (resource === "remotes") return handleRemoteApi(method, path, request);
+    if (resource === "projects") return handleProjectsApi(method, path, request);
     if (resource === "notebooks" || resource === "script-modules" || resource === "kernels") return handleNotebookApi(method, path, request);
     if (resource === "schemas" && id === "samplesheet" && method === "GET") return json(samplesheetSchema);
     if (resource === "workflows") {
@@ -52,7 +71,10 @@ async function handle(request: Request, context: Context): Promise<Response> {
     if (resource === "runs") {
       if (!id && method === "GET") {
         const workflowId = url.searchParams.get("workflowId");
-        return json(store().runs().map((run) => run.detail).filter((run) => !workflowId || run.workflowId === workflowId).map(({ id, runName, workflowId, workflowName, status, executor, profile, submittedAt, startedAt, completedAt, progress, errorMessage, phase }) => ({ id, runName, workflowId, workflowName, status, executor, profile, submittedAt, startedAt, completedAt, progress, errorMessage, phase })));
+        return json(store().runs().filter((run) => !workflowId || run.detail.workflowId === workflowId).map((run) => {
+          const { id, runName, workflowId, workflowName, status, executor, profile, submittedAt, startedAt, completedAt, progress, errorMessage, phase, remoteHost } = run.detail;
+          return { id, runName, workflowId, workflowName, status, executor, profile, submittedAt, startedAt, completedAt, progress, errorMessage, phase, remoteHost, resumable: resumable(run) };
+        }));
       }
       if (!id && method === "POST") {
         const key = request.headers.get("idempotency-key") ?? undefined;
@@ -79,6 +101,13 @@ async function handle(request: Request, context: Context): Promise<Response> {
         const task = store().tasks(id).find((task) => (task.id ?? task.hash) === key || task.hash === key);
         if (!task) throw new HttpError(404, "任务不存在");
         if (!task.workdir) return json({ text: "" });
+        if (run.detail.remote) {
+          // Task directories of a cluster run stay on its shared filesystem; read them there over ssh.
+          const host = readSettings().remotes.find((candidate) => candidate.id === run.detail.remote!.hostId);
+          if (!host) throw new HttpError(404, "这个远程集群已在设置页删除，无法读取任务日志");
+          applyStoredSettings();
+          return json({ text: await remoteTaskLog(new SshSession(host), run.detail.remote, task.workdir) });
+        }
         // The runner records the absolute work directory it used; runs from before that kept it beside the project.
         const workRoot = isAbsolute(run.detail.launch.workDir) ? run.detail.launch.workDir : join(run.projectDir, "../work");
         let text = "";
@@ -95,6 +124,11 @@ async function handle(request: Request, context: Context): Promise<Response> {
           const download = url.searchParams.get("download") === "1";
           if (!download && (await stat(path)).size > 10 * 1024 ** 2) throw new HttpError(413, "文件较大，请下载查看");
           return fileResponse(path, download);
+        }
+        if (path[3] === "summary") {
+          const file = await containedFile(String(run.detail.params.outdir), url.searchParams.get("path") ?? "");
+          if (previewKind(file) !== "anndata") throw new HttpError(400, "只有 .h5ad 文件有摘要");
+          return json(await summarizeAnnData(file));
         }
       }
     }

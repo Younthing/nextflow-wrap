@@ -1,35 +1,51 @@
 import { describe, expect, it } from "vitest";
 
-import { isShellNavActive, SHELL_NAV } from "./nav";
+import { FLOW_NAV, flowGroupOpen, isBareRoute, isFlowRoute, isNavActive, SETTINGS_NAV, WORKBENCH_NAV } from "./nav";
 
-describe("shell nav", () => {
-  it("is 流程, 笔记本, and 运行", () => {
-    expect(SHELL_NAV.map((item) => [item.href, item.label])).toEqual([
-      ["/workflows", "流程"],
-      ["/notebooks", "笔记本"],
-      ["/runs", "运行"],
+describe("sidebar nav", () => {
+  it("is 工作台, then 流程编排, 运行记录, 产物 and 模块库 in the 流程 group", () => {
+    expect(WORKBENCH_NAV).toEqual({ href: "/workbench", label: "工作台" });
+    expect(FLOW_NAV.map((item) => [item.href, item.label])).toEqual([
+      ["/workflows", "流程编排"],
+      ["/runs", "运行记录"],
+      ["/outputs", "产物"],
+      ["/modules", "模块库"],
     ]);
   });
 
-  it("keeps 流程 active on the library and the editor", () => {
-    expect(isShellNavActive("/workflows", "/workflows")).toBe(true);
-    expect(isShellNavActive("/workflows", "/workflows/wf_demo")).toBe(true);
-    expect(isShellNavActive("/workflows", "/runs")).toBe(false);
-    expect(isShellNavActive("/workflows", "/")).toBe(false);
-    expect(isShellNavActive("/workflows", "/workflows-extra")).toBe(false);
+  it("keeps 工作台 active on a notebook and its publish page", () => {
+    expect(isNavActive("/workbench", "/workbench")).toBe(true);
+    expect(isNavActive("/workbench", "/workbench/nb_1")).toBe(true);
+    expect(isNavActive("/workbench", "/workbench/nb_1/publish")).toBe(true);
+    expect(isNavActive("/workbench", "/workflows")).toBe(false);
   });
 
-  it("keeps 笔记本 active on the list, an editor, and publish", () => {
-    expect(isShellNavActive("/notebooks", "/notebooks")).toBe(true);
-    expect(isShellNavActive("/notebooks", "/notebooks/qc_summary")).toBe(true);
-    expect(isShellNavActive("/notebooks", "/notebooks/qc_summary/publish")).toBe(true);
-    expect(isShellNavActive("/notebooks", "/workflows/modules")).toBe(false);
-    expect(isShellNavActive("/workflows", "/workflows/modules")).toBe(true);
+  it("keeps each 流程 item active on its own pages only", () => {
+    expect(isNavActive("/workflows", "/workflows/wf_demo")).toBe(true);
+    expect(isNavActive("/workflows", "/workflows-extra")).toBe(false);
+    expect(isNavActive("/workflows", "/modules")).toBe(false);
+    expect(isNavActive("/runs", "/runs/run_1")).toBe(true);
+    expect(isNavActive("/modules", "/modules")).toBe(true);
+    expect(isNavActive("/outputs", "/outputs")).toBe(true);
   });
 
-  it("keeps 运行 active on the list and a run", () => {
-    expect(isShellNavActive("/runs", "/runs")).toBe(true);
-    expect(isShellNavActive("/runs", "/runs/run_1")).toBe(true);
-    expect(isShellNavActive("/runs", "/workflows/wf_demo")).toBe(false);
+  it("treats setup as part of 设置", () => {
+    expect(isNavActive(SETTINGS_NAV.href, "/settings")).toBe(true);
+    expect(isNavActive(SETTINGS_NAV.href, "/setup")).toBe(true);
+    expect(isNavActive(SETTINGS_NAV.href, "/workbench")).toBe(false);
+  });
+
+  it("knows the pipeline pages and the pages without a sidebar", () => {
+    expect(isFlowRoute("/runs/run_1")).toBe(true);
+    expect(isFlowRoute("/workbench")).toBe(false);
+    expect(isBareRoute("/")).toBe(true);
+    expect(isBareRoute("/setup")).toBe(true);
+    expect(isBareRoute("/settings")).toBe(false);
+  });
+
+  it("opens the 流程 group on pipeline pages and otherwise remembers it, closed by default", () => {
+    expect(flowGroupOpen("/workbench", null)).toBe(false);
+    expect(flowGroupOpen("/workbench", true)).toBe(true);
+    expect(flowGroupOpen("/runs", false)).toBe(true);
   });
 });

@@ -156,7 +156,7 @@ export function ModuleLibrary({
       <div className="border-t border-border px-3 py-2 text-[11px] text-muted-foreground">
         拖到画布或点击添加 · 双击画布或 {searchKeys} 搜索
         <div>
-          <Link href="/workflows/modules" className="text-primary hover:underline">管理模块库</Link>
+          <Link href="/modules" className="text-primary hover:underline">管理模块库</Link>
         </div>
       </div>
     </aside>

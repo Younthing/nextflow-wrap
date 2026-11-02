@@ -61,8 +61,9 @@ export function moduleLibraryDirectory(input?: PathEnv, data?: string): string {
 }
 
 /**
- * The workspace this server opens: one research project folder with `studio.json`, `notebooks/`, `modules/`,
- * `pipelines/`, `samplesheets/` and `runs/`. Set `NEXTFLOW_STUDIO_WORKSPACE` to open another folder.
+ * Folder of the example project: a workspace with `studio.json`, `notebooks/`, `modules/`, `pipelines/`,
+ * `samplesheets/` and `runs/`. Projects the user creates or opens use their own folders. Set
+ * `NEXTFLOW_STUDIO_WORKSPACE` to put the example project elsewhere.
  */
 export function workspaceDirectory(input?: PathEnv, data?: string): string {
   const { env } = context(input);

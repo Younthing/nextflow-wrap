@@ -1,0 +1,29 @@
+{
+  "name": "nextflow-studio-desktop",
+  "productName": "Nextflow Studio",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Nextflow Studio desktop app: Electron shell around the Next.js app and the Nextflow runner",
+  "main": "dist/main.js",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "bundle": "node scripts/bundle.mjs",
+    "start": "node scripts/bundle.mjs --skip-next && electron .",
+    "dev": "electron . --dev",
+    "dist": "node scripts/bundle.mjs && electron-builder --publish never",
+    "dist:mac": "node scripts/bundle.mjs && electron-builder --mac --publish never",
+    "dist:linux": "node scripts/bundle.mjs && electron-builder --linux --publish never",
+    "release": "node scripts/bundle.mjs && electron-builder --publish always"
+  },
+  "dependencies": {
+    "electron-updater": "6.8.11"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "electron": "45.2.1",
+    "electron-builder": "26.18.1",
+    "esbuild": "0.28.2",
+    "typescript": "^5"
+  },
+  "packageManager": "pnpm@12.17.0"
+}

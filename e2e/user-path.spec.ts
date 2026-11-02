@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { ensureProject, exportModule, flowNav, markCell } from "./helpers";
 
 /**
  * Real user path, once for Python and once for R:
@@ -163,7 +164,7 @@ function tryRunLog(page: Page) {
 }
 
 async function publish(page: Page, version: "v1" | "v2", condaYaml: string, image: string, shotName: string) {
-  await page.getByRole("button", { name: "发布为模块…" }).click();
+  await exportModule(page);
   await page.waitForURL(/\/publish\?step=1/);
   await expect(page.getByRole("button", { name: "下一步：试跑" })).toBeEnabled();
   await page.getByRole("button", { name: "下一步：试跑" }).click();
@@ -201,7 +202,7 @@ async function publish(page: Page, version: "v1" | "v2", condaYaml: string, imag
   if (version === "v2") await page.locator("#module-changelog").fill("第二次发布，画布上的 v1 复跑应命中缓存");
   await shot(page, shotName);
   await page.getByRole("button", { name: `保存为模块 ${version}` }).click();
-  await page.waitForURL("**/workflows/modules");
+  await page.waitForURL("**/modules");
 }
 
 async function runLanguage(page: Page, language: "python" | "r") {
@@ -215,17 +216,19 @@ async function runLanguage(page: Page, language: "python" | "r") {
   const table = language === "python" ? "py-table" : "r-table";
   const count = language === "python" ? "3" : "4";
 
+  await ensureProject(page);
   await page.goto("/workflows");
   const nav = page.getByRole("navigation", { name: "主导航" });
-  await expect(nav.getByRole("link", { name: "流程" })).toBeVisible();
-  await expect(nav.getByRole("link", { name: "笔记本" })).toBeVisible();
-  await expect(nav.getByRole("link", { name: "运行" })).toBeVisible();
+  await expect(nav.getByRole("link", { name: "工作台" })).toBeVisible();
+  await expect(nav.getByRole("button", { name: "流程" })).toHaveAttribute("aria-expanded", "true");
+  await expect(nav.getByRole("link", { name: "流程编排" })).toBeVisible();
+  await expect(nav.getByRole("link", { name: "运行记录" })).toBeVisible();
   await expect(page.getByText(/Nextflow \d/)).toBeVisible({ timeout: 60_000 });
   await expect(page.getByText(/Nextflow \d/)).not.toContainText("模拟");
 
-  await nav.getByRole("link", { name: "笔记本" }).click();
-  await page.getByRole("button", { name: "新建笔记本" }).click();
-  await page.waitForURL(/\/notebooks\/nb_/);
+  await nav.getByRole("link", { name: "工作台" }).click();
+  await page.getByRole("button", { name: "新建笔记本", exact: true }).click();
+  await page.waitForURL(/\/workbench\/nb_/);
   const notebookUrl = page.url().split("?")[0];
   await page.getByRole("textbox", { name: "笔记本名称" }).fill(moduleName);
   await page.getByRole("textbox", { name: "笔记本说明" }).fill(
@@ -249,10 +252,10 @@ async function runLanguage(page: Page, language: "python" | "r") {
 
   await page.getByRole("button", { name: "+ 代码" }).click();
   await fillCell(page, INPUT_CELL);
-  await page.getByRole("button", { name: "标为输入" }).click();
+  await markCell(page, "输入");
   await page.getByRole("button", { name: "+ 代码" }).click();
   await fillCell(page, outputCell(language));
-  await page.getByRole("button", { name: "标为输出" }).click();
+  await markCell(page, "输出");
   await expect(page.getByText(/入 · title/)).toBeVisible();
   await expect(page.getByText("出 · report · report.html")).toBeVisible();
   await expect(page.getByText("出 · table · table.csv")).toBeVisible();
@@ -260,7 +263,7 @@ async function runLanguage(page: Page, language: "python" | "r") {
 
   await publish(page, "v1", condaYaml, image, `e2e-${language}-publish-v1.png`);
 
-  await nav.getByRole("link", { name: "流程" }).click();
+  await flowNav(page, "流程编排");
   await page.waitForURL(/\/workflows$/);
   await page.getByRole("button", { name: "新建", exact: true }).click();
   await page.waitForURL(/\/workflows\/(?!modules$)[^/]+$/);
@@ -288,7 +291,7 @@ async function runLanguage(page: Page, language: "python" | "r") {
   await expect(dialog.getByText("不使用 -profile，进程在本机 shell 里直接执行")).toBeVisible();
   await openLocalProcess(dialog);
   const processFile = dialog.getByRole("tabpanel", { name: /项目文件/ }).locator("pre");
-  // The published module carries a copy of the conda file and points at it.
+  // Published modules copy the conda file next to main.nf (module library, #48).
   await expect(processFile).toContainText('conda "${moduleDir}/environment.yml"');
   await expect(processFile).toContainText(`container '${image}'`);
   await shot(page, `e2e-${language}-process.png`);
@@ -326,7 +329,7 @@ async function runLanguage(page: Page, language: "python" | "r") {
   await expect(page.getByText(/源已改动：跟钉住的原版/)).toBeVisible();
   await shot(page, `e2e-${language}-drift.png`);
   await page.getByRole("link", { name: /打开最新/ }).click();
-  await page.waitForURL(new RegExp(`/notebooks/`));
+  await page.waitForURL(new RegExp(`/workbench/`));
   await publish(page, "v2", condaYaml, image, `e2e-${language}-publish-v2.png`);
 
   await page.goto(runUrl);

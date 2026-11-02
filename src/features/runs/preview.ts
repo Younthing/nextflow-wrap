@@ -13,6 +13,10 @@ export type ResultPreview =
   | "svg"
   | "pdf"
   | "text"
+  /** `.h5ad`: summarised on the server (shape, obs/var columns, embeddings), never sent to the browser. */
+  | "anndata"
+  /** Structures and poses (PDB, PDBQT, SDF, MOL2, mmCIF), shown in a Mol* 3D view. */
+  | "molecule"
   | null;
 
 const TEXT_EXT = /\.(txt|log|json|ya?ml|out|summary|flagstat|stats|metrics|gtf)$/i;
@@ -30,8 +34,28 @@ export function previewKind(path: string): ResultPreview {
   if (/\.webp$/i.test(path)) return "webp";
   if (/\.svg$/i.test(path)) return "svg";
   if (/\.pdf$/i.test(path)) return "pdf";
+  if (/\.h5ad$/i.test(path)) return "anndata";
+  if (MOLECULE_EXT.test(path)) return "molecule";
   if (TEXT_EXT.test(path)) return "text";
   return null;
+}
+
+const MOLECULE_EXT = /\.(pdb|ent|pdbqt|sdf|mol|mol2|cif|mmcif)$/i;
+export const PREVIEW_MAX_BYTES = 10 * 1024 ** 2;
+
+/** Preview kind for a file of a known size. A large file cannot be opened inline, but an AnnData summary reads only metadata. */
+export function previewFor(path: string, size: number): ResultPreview {
+  const kind = previewKind(path);
+  return size > PREVIEW_MAX_BYTES && kind !== "anndata" ? null : kind;
+}
+
+/** Mol* trajectory format for a structure file. */
+export function moleculeFormat(path: string): "pdb" | "pdbqt" | "sdf" | "mol" | "mol2" | "mmcif" | undefined {
+  const ext = path.toLowerCase().split(".").at(-1);
+  if (ext === "pdb" || ext === "ent") return "pdb";
+  if (ext === "pdbqt" || ext === "sdf" || ext === "mol" || ext === "mol2") return ext;
+  if (ext === "cif" || ext === "mmcif") return "mmcif";
+  return undefined;
 }
 
 export function imageMime(preview: ResultPreview): ImageMime | undefined {
@@ -74,6 +98,10 @@ export function contentTypeOf(path: string): string {
       return "image/svg+xml";
     case "pdf":
       return "application/pdf";
+    case "molecule":
+      return "text/plain";
+    case "anndata":
+      return "application/x-hdf5";
     case "text":
       return /\.json$/i.test(path) ? "application/json" : "text/plain";
     default:

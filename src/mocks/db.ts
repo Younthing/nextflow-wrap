@@ -5,10 +5,12 @@
 import type { ModuleLibraryCopy } from "@/features/notebook/library-copy";
 import { demoLibraryCopies, demoNotebooks, demoRevisions, demoScriptModules } from "@/features/notebook/seed";
 import type { NotebookDoc, NotebookRevision, TryRunRecord } from "@/features/notebook/types";
-import { demoWorkflow } from "@/features/workflow/demo";
+import { demoWorkflow, dockingWorkflow } from "@/features/workflow/demo";
 import { EXAMPLE_MODULES } from "@/features/workflow/example-modules";
 import type { RunDetail } from "@/features/runs/types";
 import type { ModuleDef, WorkflowDoc } from "@/features/workflow/types";
+import type { Project } from "@/features/workspace/types";
+import { EXAMPLE_PROJECT_ID } from "@/features/workspace/projects";
 
 // Bumped when the seed changes shape, so old browsers start from the new seed.
 const KEY = "nf-studio-mock-db-v2";
@@ -24,12 +26,18 @@ interface MockDb {
   scriptModules: Record<string, ModuleDef>;
   libraryCopies: Record<string, ModuleLibraryCopy>;
   tryRuns: Record<string, TryRunRecord>;
+  projects: Record<string, Project>;
+  currentProject?: string;
 }
+
+/** Folder of the mock example project; `fs.ts` lists it. */
+export const MOCK_EXAMPLE_PROJECT_PATH = "/home/demo/projects/example";
 
 let memory: MockDb | null = null;
 
 function seed(): MockDb {
   const demo = demoWorkflow("wf_demo_scrna");
+  const docking = dockingWorkflow("wf_demo_docking");
   const notebooks = demoNotebooks();
   const revisionsList = demoRevisions(notebooks);
   const revisions: Record<string, NotebookRevision> = {};
@@ -40,13 +48,16 @@ function seed(): MockDb {
   const libraryCopies: Record<string, ModuleLibraryCopy> = {};
   for (const copy of demoLibraryCopies(notebooks, revisionsList, scriptList)) libraryCopies[copy.moduleId] = copy;
   return {
-    workflows: { [demo.id]: demo },
+    workflows: { [demo.id]: demo, [docking.id]: docking },
     runs: {},
     notebooks: Object.fromEntries(notebooks.map((doc) => [doc.id, doc])),
     revisions,
     scriptModules,
     libraryCopies,
     tryRuns: {},
+    projects: {
+      [EXAMPLE_PROJECT_ID]: { id: EXAMPLE_PROJECT_ID, name: "示例项目", path: MOCK_EXAMPLE_PROJECT_PATH, createdAt: "2026-01-01T00:00:00.000Z", openedAt: "1970-01-01T00:00:00.000Z", example: true },
+    },
   };
 }
 
@@ -64,6 +75,8 @@ export function readDb(): MockDb {
       scriptModules: parsed.scriptModules ?? base.scriptModules,
       libraryCopies: parsed.libraryCopies ?? base.libraryCopies,
       tryRuns: parsed.tryRuns ?? base.tryRuns,
+      projects: parsed.projects ?? base.projects,
+      currentProject: parsed.currentProject,
     };
   } catch {
     memory = seed();
