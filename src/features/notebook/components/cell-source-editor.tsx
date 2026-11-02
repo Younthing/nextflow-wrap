@@ -8,7 +8,7 @@ import { interpretNotebookKey, toNotebookKeyEvent } from "@/features/notebook/ke
 import type { NotebookLanguage } from "@/features/notebook/types";
 import { cn } from "@/lib/utils";
 
-const FIELD = "m-0 min-h-28 w-full whitespace-pre-wrap break-words px-3 py-2 font-mono text-xs leading-5";
+const FIELD = "m-0 min-h-10 w-full whitespace-pre-wrap break-words px-3 py-2 font-mono text-xs leading-5";
 
 export function CellSourceEditor({
   cellId,
