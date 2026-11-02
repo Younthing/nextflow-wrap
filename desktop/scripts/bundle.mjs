@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Builds everything the desktop app ships in resources/:
-//   app-server/   Next.js standalone server (+ .next/static and public/)
+//   app-server/   Next.js standalone server (+ .next/static and public/), also packed as app-server.tar.gz
 //   runner/       scripts/runner.ts bundled to one ESM file
 //   plugins/      nf-weblog unpacked by `nextflow plugin install`, so live progress works offline
 // and compiles the Electron main and preload scripts to dist/.
@@ -30,6 +30,10 @@ if (!skipNext) {
   cpSync(join(root, ".next", "standalone"), server, { recursive: true, verbatimSymlinks: true });
   cpSync(join(root, ".next", "static"), join(server, ".next", "static"), { recursive: true });
   cpSync(join(root, "public"), join(server, "public"), { recursive: true });
+  // electron-builder leaves node_modules out of extra resources, so the server ships as one archive that the
+  // app unpacks on first start of each version (see appServerDirectory in src/main.ts).
+  rmSync(join(resources, "app-server.tar.gz"), { force: true });
+  run("tar", ["-czf", join(resources, "app-server.tar.gz"), "-C", resources, "app-server"]);
 }
 
 // The runner runs in an Electron utility process (Node with node:sqlite); bundle it with the @/ alias resolved.

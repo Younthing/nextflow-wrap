@@ -55,11 +55,18 @@ export class StudioStore {
         }
       }
       if (appVersion) this.setMeta("appVersion", appVersion);
+      // The web server and the runner open the same file; whichever starts first upgrades it. Keep the result so
+      // the other process can still tell the user about it.
+      if (this.migration.applied.length) this.setMeta("lastMigration", JSON.stringify({ ...this.migration, at: new Date().toISOString() }));
     } catch (error) { this.db.close(); throw error; }
   }
   meta(key: string): string | undefined {
     const row = this.db.prepare("SELECT value FROM meta WHERE key=?").get(key);
     return row ? String(row.value) : undefined;
+  }
+  /** The most recent schema upgrade of this file, by any process. */
+  lastMigration(): (MigrationResult & { at: string }) | undefined {
+    try { return JSON.parse(this.meta("lastMigration") ?? "null") ?? undefined; } catch { return undefined; }
   }
   setMeta(key: string, value: string) { this.db.prepare("INSERT INTO meta(key, value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(key, value); }
   transaction<T>(fn: () => T): T {

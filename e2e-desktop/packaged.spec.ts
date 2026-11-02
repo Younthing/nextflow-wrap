@@ -60,7 +60,14 @@ async function launch(dataDir: string): Promise<{ app: ElectronApplication; page
 
 test.describe("packaged desktop app", () => {
   let app: ElectronApplication | undefined;
-  test.afterEach(async () => { await app?.close().catch(() => undefined); app = undefined; });
+  test.afterEach(async () => {
+    // A modal error box (a service that keeps crashing) would block a normal close; kill after 30 seconds.
+    const running = app;
+    app = undefined;
+    if (!running) return;
+    const closed = await Promise.race([running.close().then(() => true, () => true), new Promise<false>((resolve) => setTimeout(() => resolve(false), 30_000))]);
+    if (!closed) running.process().kill("SIGKILL");
+  });
 
   test("upgrades a data directory written by an older version", async () => {
     const dataDir = legacyDataDirectory();

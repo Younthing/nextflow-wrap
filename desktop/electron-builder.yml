@@ -13,8 +13,9 @@ files:
   - dist/**
   - package.json
 extraResources:
-  - from: resources/app-server
-    to: app-server
+  # The standalone server as an archive: electron-builder drops node_modules folders from extra resources.
+  - from: resources/app-server.tar.gz
+    to: app-server.tar.gz
   - from: resources/runner
     to: runner
   - from: resources/plugins

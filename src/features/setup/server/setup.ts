@@ -116,14 +116,14 @@ export async function setupStatus(): Promise<SetupStatus> {
   });
 
   const kernelPrefixes = new Set(python.map((kernel) => kernel.name));
-  const migration = store().migration;
+  const migration = store().migration.applied.length ? store().migration : store().lastMigration();
   return {
     tools: tools.map(withJob),
     ready: tools.filter((tool) => tool.required).every((tool) => tool.state === "ok"),
     platform: `${process.platform}-${process.arch}`,
     dataDirectory: dataDirectory(),
     condaEnvironments: await condaEnvironments(env, kernelPrefixes),
-    migration: migration.applied.length ? { from: migration.from, to: migration.to, backup: migration.backup } : undefined,
+    migration: migration?.applied.length ? { from: migration.from, to: migration.to, backup: migration.backup } : undefined,
     desktop: process.env.NEXTFLOW_STUDIO_DESKTOP === "1",
   };
 }

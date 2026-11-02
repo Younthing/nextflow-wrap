@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { execFile } from "node:child_process";
-import { createWriteStream, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync, type WriteStream } from "node:fs";
+import { createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync, type WriteStream } from "node:fs";
 import { createServer } from "node:net";
 import { join } from "node:path";
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, safeStorage, session, shell, Tray, utilityProcess, type UtilityProcess } from "electron";
@@ -93,6 +93,28 @@ function serviceLog(name: string): WriteStream {
   const file = join(dir, `${name}.log`);
   try { if (statSync(file).size > 0) renameSync(file, join(dir, `${name}.1.log`)); } catch { /* First launch. */ }
   return createWriteStream(file, { flags: "a" });
+}
+
+/**
+ * The packaged app carries the Next.js server as `app-server.tar.gz` and unpacks it once per app version into
+ * userData (a development build uses resources/app-server directly). Unpacking goes to a temporary folder that
+ * is renamed into place, so an interrupted first start never leaves a half-extracted server behind.
+ */
+async function appServerDirectory(): Promise<string> {
+  const archive = join(resources, "app-server.tar.gz");
+  if (!existsSync(archive)) return join(resources, "app-server");
+  const root = join(app.getPath("userData"), "app-server");
+  const target = join(root, app.getVersion());
+  if (existsSync(join(target, "app-server", "server.js"))) return join(target, "app-server");
+  const temporary = `${target}.${process.pid}.tmp`;
+  rmSync(temporary, { recursive: true, force: true });
+  mkdirSync(temporary, { recursive: true });
+  await new Promise<void>((resolve, reject) => execFile("tar", ["-xzf", archive, "-C", temporary], (error) => (error ? reject(error) : resolve())));
+  rmSync(target, { recursive: true, force: true });
+  renameSync(temporary, target);
+  // Older versions' copies are no longer needed.
+  for (const name of readdirSync(root)) if (name !== app.getVersion()) rmSync(join(root, name), { recursive: true, force: true });
+  return join(target, "app-server");
 }
 
 /** Start a hosted process and keep it alive: crash → backoff restart, too many → tell the user. */
@@ -267,7 +289,7 @@ app.whenReady().then(async () => {
   const origin = `http://127.0.0.1:${port}`;
   await session.defaultSession.cookies.set({ url: origin, name: SESSION_COOKIE, value: token, httpOnly: true, sameSite: "strict" });
   registerIpc();
-  const serverDir = join(resources, "app-server");
+  const serverDir = await appServerDirectory();
   const env = serviceEnv({ PORT: String(port), HOSTNAME: "127.0.0.1", NEXTFLOW_STUDIO_SESSION_TOKEN: token });
   supervise("web", join(serverDir, "server.js"), [], env, serverDir);
   supervise("runner", join(resources, "runner", "runner.mjs"), [], serviceEnv(), join(resources, "runner"));
