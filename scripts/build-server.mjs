@@ -18,6 +18,7 @@
 //   node scripts/build-server.mjs --no-node       rely on Node >= 22.5 on the target
 import { createHash } from "node:crypto";
 import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { buildStandalone, bundleScript, prefetchWeblog, root, run } from "./build-parts.mjs";
@@ -36,7 +37,8 @@ const version = option("--version", desktopVersion);
 const name = `nextflow-studio-server-${version}-linux-${arch}`;
 const out = join(root, "dist-server");
 const target = join(out, name);
-const cache = join(out, ".cache");
+// Outside the checkout: Next's file tracing copies dot-folders such as .cache into the standalone server.
+const cache = join(process.env.XDG_CACHE_HOME || join(homedir(), ".cache"), "nextflow-studio-build");
 
 rmSync(target, { recursive: true, force: true });
 mkdirSync(target, { recursive: true });
