@@ -1,4 +1,5 @@
 import type { LaunchConfig } from "@/features/project/launch";
+import type { RemoteRunState } from "@/features/remote/types";
 import type { PipelineParams, WorkflowDoc } from "@/features/workflow/types";
 import type { ResultPreview } from "./preview";
 
@@ -39,6 +40,8 @@ export interface RunSummary {
   completedAt?: string;
   progress: RunProgress;
   errorMessage?: string;
+  /** Name of the cluster the run went to over SSH; absent for runs started from this machine. */
+  remoteHost?: string;
 }
 
 export interface ProjectSnapshot {
@@ -73,6 +76,8 @@ export interface RunDetail extends RunSummary {
   workCleanedAt?: string;
   /** Published results were removed too. */
   resultsRemovedAt?: string;
+  /** Where the run lives on its cluster, once the runner has started it there. */
+  remote?: RemoteRunState;
 }
 
 export interface TaskRecord {

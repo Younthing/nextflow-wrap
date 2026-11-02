@@ -19,12 +19,17 @@ import {
   EXECUTORS,
   executorDef,
   EXTRA_PROFILES,
+  isGridExecutor,
   REGISTRIES,
   type ExecutorField,
   type ExecutorId,
   type LaunchConfig,
 } from "@/features/project/launch";
+import type { RemoteHost } from "@/features/remote/types";
 import { cn } from "@/lib/utils";
+
+/** From a cluster's login node Nextflow can run tasks there itself or submit them to the cluster's scheduler. */
+const onHost = (id: ExecutorId) => id === "local" || isGridExecutor(id);
 
 function executorIcon(id: ExecutorId): React.ComponentType<{ className?: string }> {
   if (id === "k8s") return Ship;
@@ -83,15 +88,37 @@ export function EnvironmentForm({
   config,
   onChange,
   real,
+  remotes = [],
 }: {
   config: LaunchConfig;
   onChange: (c: LaunchConfig) => void;
   real?: boolean;
+  /** Clusters from the settings page; with any, the form asks where Nextflow starts. */
+  remotes?: RemoteHost[];
 }) {
   const formId = React.useId();
   const def = executorDef(config.executor);
   const set = (patch: Partial<LaunchConfig>) =>
     onChange({ ...config, ...patch });
+  const host = remotes.find((candidate) => candidate.id === config.remote);
+  const executors = host ? EXECUTORS.filter((e) => onHost(e.id)) : EXECUTORS;
+  const chooseHost = (id: string) => {
+    const next = remotes.find((candidate) => candidate.id === id);
+    if (!next) {
+      // Back on this machine: the local executor keeps its own managed work directory.
+      onChange({ ...config, remote: undefined, workDir: config.executor === "local" ? "work" : config.workDir });
+      return;
+    }
+    const executor = onHost(config.executor) ? config.executor : "local";
+    onChange({
+      ...config,
+      remote: next.id,
+      executor,
+      settings: executor === config.executor ? config.settings : {},
+      engine: executorDef(executor).engines.includes(config.engine) ? config.engine : "shell",
+      workDir: config.remote ? config.workDir : "work",
+    });
+  };
 
   return (
     <div className="grid gap-6">
@@ -101,9 +128,28 @@ export function EnvironmentForm({
           <span>预览环境不会连接真实的集群或云执行器。启动后由模拟运行展示流程和结果。</span>
         </p>
       )}
+      {remotes.length > 0 && (
+        <section className="grid gap-2">
+          <Field
+            label="从哪里启动 Nextflow"
+            htmlFor={`${formId}-remote`}
+            hint={host ? `通过 SSH 在 ${host.host} 的登录节点上启动；断开连接或关掉电脑后继续运行。参数里的文件路径要写集群上的路径。` : "在这台电脑上启动"}
+          >
+            <Select value={config.remote ?? "here"} onValueChange={(value) => chooseHost(value === "here" ? "" : value)}>
+              <SelectTrigger id={`${formId}-remote`} className="sm:w-80"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="here">这台电脑</SelectItem>
+                {remotes.map((candidate) => (
+                  <SelectItem key={candidate.id} value={candidate.id}>{candidate.name}（{candidate.user ? `${candidate.user}@` : ""}{candidate.host}）</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+        </section>
+      )}
       <section className="grid gap-2">
         <h3 className="text-xs font-semibold text-muted-foreground">
-          运行在哪里
+          {host ? "任务在哪里执行" : "运行在哪里"}
         </h3>
         <RadioGroup.Root
           className="grid grid-cols-2 gap-2 lg:grid-cols-3"
@@ -121,7 +167,7 @@ export function EnvironmentForm({
             set({ executor: next.id, engine, workDir, settings: {} });
           }}
         >
-          {EXECUTORS.map((e) => {
+          {executors.map((e) => {
             const Icon = executorIcon(e.id);
             const active = e.id === config.executor;
             return (
@@ -143,10 +189,10 @@ export function EnvironmentForm({
                       active ? "text-primary" : "text-muted-foreground",
                     )}
                   />
-                  {e.name}
+                  {host && e.id === "local" ? "登录节点" : e.name}
                 </span>
                 <span className="text-[11px] leading-snug text-muted-foreground">
-                  {e.description}
+                  {host && e.id === "local" ? "在登录节点上直接执行任务，只适合轻量流程。" : host ? e.description.replace("Nextflow 在本机提交作业", "Nextflow 在登录节点上提交作业") : e.description}
                 </span>
               </RadioGroup.Item>
             );
@@ -184,7 +230,9 @@ export function EnvironmentForm({
             htmlFor={`${formId}-engine`}
             hint={
               config.engine === "shell"
-                ? "不使用 -profile，进程在本机 shell 里直接执行"
+                ? host
+                  ? "不使用 -profile，进程在集群节点的 shell 里直接执行"
+                  : "不使用 -profile，进程在本机 shell 里直接执行"
                 : undefined
             }
           >
@@ -223,12 +271,12 @@ export function EnvironmentForm({
               </SelectContent>
             </Select>
           </Field>
-          <Field label="工作目录（workDir）" htmlFor={`${formId}-workdir`}>
+          <Field label="工作目录（workDir）" htmlFor={`${formId}-workdir`} hint={host ? `填 work 时用 ${host.baseDir}/work` : undefined}>
             <Input
               id={`${formId}-workdir`}
-              disabled={real && config.executor === "local"}
+              disabled={real && config.executor === "local" && !host}
               value={config.workDir}
-              placeholder={def.workDirHint}
+              placeholder={host ? "work" : def.workDirHint}
               onChange={(e) => set({ workDir: e.target.value })}
               className="h-9 font-mono text-xs"
             />
@@ -281,9 +329,11 @@ export function EnvironmentForm({
           </Field>
           {real ? (
             <p className="self-end text-xs text-muted-foreground">
-              {config.executor === "local"
-                ? "本机工作目录自动隔离；"
-                : "集群和云上的工作目录需要计算节点也能访问；"}
+              {host
+                ? "结果在运行结束后取回本机；"
+                : config.executor === "local"
+                  ? "本机工作目录自动隔离；"
+                  : "集群和云上的工作目录需要计算节点也能访问；"}
               断点续跑请从运行详情选择来源记录。
             </p>
           ) : (

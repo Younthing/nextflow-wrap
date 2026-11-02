@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { expect, fn, userEvent, within } from "storybook/test";
 
 import { SettingsForm } from "../components/settings-form";
-import { defaultSettings } from "../types";
+import { defaultSettings, SECRET_KEYS, type SettingsView } from "../types";
 
 const meta = {
   title: "Settings/SettingsForm",
@@ -11,7 +11,7 @@ const meta = {
     onSave: fn(),
     view: {
       settings: defaultSettings(),
-      secrets: { ANTHROPIC_API_KEY: true, OPENAI_API_KEY: false, GOOGLE_API_KEY: false },
+      secrets: { ...(Object.fromEntries(SECRET_KEYS.map((key) => [key, false])) as SettingsView["secrets"]), ANTHROPIC_API_KEY: true },
       secretStorage: "keychain",
       environmentOverrides: ["NEXTFLOW_BIN"],
       runnerRestartNeeded: false,

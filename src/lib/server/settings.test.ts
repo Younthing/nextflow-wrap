@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { defaultSettings } from "@/features/settings/types";
-import { applySettingsToEnv, readSecrets, readSettings, saveSettings, settingsUpdateSchema } from "./settings";
+import { writeFileSync } from "node:fs";
+import { applySettingsToEnv, readSecrets, readSettings, saveSettings, settingsEnv, settingsUpdateSchema } from "./settings";
 
 const dirs: string[] = [];
 const temp = () => { const dir = mkdtempSync(join(tmpdir(), "studio-settings-")); dirs.push(dir); return dir; };
@@ -50,5 +51,41 @@ describe("settings", () => {
   it("rejects malformed values", () => {
     const bad = { settings: { ...defaultSettings(), runtime: { defaultEngine: "shell", memory: "lots", httpProxy: "socks5://x" } } };
     expect(settingsUpdateSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it("reads a settings file from before remote hosts and cloud settings existed", () => {
+    const dir = temp();
+    const old: Partial<ReturnType<typeof defaultSettings>> = defaultSettings();
+    delete old.remotes;
+    delete old.cloud;
+    writeFileSync(join(dir, "settings.json"), JSON.stringify({ ...old, runtime: { defaultEngine: "conda" } }));
+    expect(readSettings(dir)).toMatchObject({ runtime: { defaultEngine: "conda" }, remotes: [], cloud: {} });
+  });
+
+  it("checks remote hosts so their fields are safe on an ssh command line", () => {
+    const host = { id: "hpc", name: "HPC", host: "login.example.org", user: "ana", baseDir: "~/nf", nextflow: "~/bin/nextflow", setup: "module load nextflow" };
+    const parse = (remotes: unknown[]) => settingsUpdateSchema.safeParse({ settings: { ...defaultSettings(), remotes } });
+    expect(parse([host]).success).toBe(true);
+    for (const bad of [{ host: "-oProxyCommand=x" }, { host: "a b" }, { user: "a;b" }, { baseDir: "relative" }, { baseDir: "/a b" }, { baseDir: "/x/$(id)" }, { nextflow: "nextflow; rm" }, { id: "Bad Id" }, { port: 70000 }]) {
+      expect(parse([{ ...host, ...bad }]).success, JSON.stringify(bad)).toBe(false);
+    }
+    expect(parse([host, { ...host, name: "again" }]).success).toBe(false);
+  });
+
+  it("maps cloud settings and keys to the variables Nextflow reads", () => {
+    const settings = { ...defaultSettings(), cloud: { awsProfile: "lab", awsRegion: "eu-west-1", googleCredentials: "/keys/sa.json", azureBatchAccount: "labbatch", azureStorageAccount: "labstore" } };
+    expect(settingsEnv(settings, { AWS_ACCESS_KEY_ID: "AKIAEXAMPLE", AWS_SECRET_ACCESS_KEY: "secret-123456", AZURE_BATCH_ACCOUNT_KEY: "batch-key-1", AZURE_STORAGE_ACCOUNT_KEY: "store-key-1" })).toMatchObject({
+      AWS_PROFILE: "lab", AWS_REGION: "eu-west-1", AWS_DEFAULT_REGION: "eu-west-1", GOOGLE_APPLICATION_CREDENTIALS: "/keys/sa.json",
+      AZURE_BATCH_ACCOUNT_NAME: "labbatch", AZURE_STORAGE_ACCOUNT_NAME: "labstore",
+      AWS_ACCESS_KEY_ID: "AKIAEXAMPLE", AWS_SECRET_ACCESS_KEY: "secret-123456", AZURE_BATCH_ACCOUNT_KEY: "batch-key-1", AZURE_STORAGE_ACCOUNT_KEY: "store-key-1",
+    });
+    expect(settingsUpdateSchema.safeParse({ settings: { ...defaultSettings(), cloud: { awsRegion: "Frankfurt" } } }).success).toBe(false);
+  });
+
+  it("asks for a runner restart when cloud credentials change, not when only remote hosts do", () => {
+    const dir = temp();
+    expect(saveSettings({ settings: { ...defaultSettings(), remotes: [{ id: "hpc", name: "HPC", host: "h", baseDir: "~/nf" }] } }, dir, {}).runnerRestartNeeded).toBe(false);
+    expect(saveSettings({ settings: readSettings(dir), secrets: { AWS_SECRET_ACCESS_KEY: "secret-123456" } }, dir, {}).runnerRestartNeeded).toBe(true);
+    expect(saveSettings({ settings: { ...readSettings(dir), cloud: { awsProfile: "lab" } } }, dir, {}).runnerRestartNeeded).toBe(true);
   });
 });

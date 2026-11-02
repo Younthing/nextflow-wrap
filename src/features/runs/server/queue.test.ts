@@ -42,6 +42,13 @@ describe("nextQueued", () => {
     expect(nextQueued(runs, limits)?.detail.id).toBe("slurm");
   });
 
+  it("lets a run on a cluster's login node start while a local run is busy", () => {
+    const login = { ...run("login", "local", "submitted", "queued", "2026-01-03") } as StoredExecution;
+    login.detail.launch.remote = "hpc";
+    const runs = [run("busy", "local", "running", "executing", "2026-01-01"), login];
+    expect(nextQueued(runs, limits)?.detail.id).toBe("login");
+  });
+
   it("caps concurrent cluster and cloud runs", () => {
     const runs = [
       run("s1", "slurm", "running", "executing", "2026-01-01"),

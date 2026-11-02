@@ -111,6 +111,8 @@ function RunBody({ run: data }: { run: RunDetail }) {
             outdir={String(data.params.outdir ?? "results")}
             workflow={data.workflow}
             tasks={tasks.data ?? []}
+            remoteHost={data.remoteHost}
+            remote={data.remote}
           />
         </TabsContent>
         <TabsContent

@@ -1,10 +1,11 @@
 import { http, HttpResponse } from "msw";
 
-import { defaultSettings, type SettingsUpdate, type SettingsView } from "@/features/settings/types";
+import { defaultSettings, SECRET_KEYS, type SettingsUpdate, type SettingsView } from "@/features/settings/types";
+import { DEMO_REMOTE_HOST } from "./remotes";
 
 let view: SettingsView = {
-  settings: defaultSettings(),
-  secrets: { ANTHROPIC_API_KEY: false, OPENAI_API_KEY: false, GOOGLE_API_KEY: false },
+  settings: { ...defaultSettings(), remotes: [DEMO_REMOTE_HOST] },
+  secrets: Object.fromEntries(SECRET_KEYS.map((key) => [key, false])) as SettingsView["secrets"],
   secretStorage: "keychain",
   environmentOverrides: [],
   runnerRestartNeeded: false,

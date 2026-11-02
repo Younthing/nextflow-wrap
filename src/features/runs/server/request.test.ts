@@ -1,5 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { defaultLaunchConfig } from "@/features/project/launch";
+import { defaultSettings } from "@/features/settings/types";
 import { assertSameOrigin, checkedLaunch } from "./service";
 
 describe("local API origin validation", () => {
@@ -30,6 +34,30 @@ describe("launch validation", () => {
     expect(() => checkedLaunch({ ...base, settings: { memory: "lots" } })).toThrow("16.GB");
     expect(() => checkedLaunch({ ...base, executor: "slurm", workDir: "scratch" })).toThrow("绝对路径");
     expect(() => checkedLaunch({ ...base, executor: "aws-batch", engine: "conda", settings: { queue: "q", region: "r" }, workDir: "s3://b/w" })).toThrow("不支持");
+  });
+});
+
+describe("remote launch validation", () => {
+  const base = { ...defaultLaunchConfig(), extraProfiles: [] as ("gpu" | "debug")[], registry: "quay.io" as const };
+  let dir = "";
+  beforeAll(async () => {
+    dir = mkdtempSync(join(tmpdir(), "studio-remote-launch-"));
+    process.env.NEXTFLOW_STUDIO_DATA_DIR = dir;
+    const { saveSettings } = await import("@/lib/server/settings");
+    saveSettings({ settings: { ...defaultSettings(), remotes: [{ id: "hpc", name: "HPC", host: "login.example.org", baseDir: "~/nf" }] } }, dir, {});
+  });
+  afterAll(() => { delete process.env.NEXTFLOW_STUDIO_DATA_DIR; rmSync(dir, { recursive: true, force: true }); });
+
+  it("accepts a saved host for the login node and cluster schedulers", () => {
+    expect(checkedLaunch({ ...base, remote: "hpc" })).toMatchObject({ executor: "local", remote: "hpc", workDir: "work" });
+    expect(checkedLaunch({ ...base, remote: "hpc", executor: "slurm", engine: "apptainer", workDir: "/scratch/work" })).toMatchObject({ executor: "slurm", remote: "hpc" });
+    expect(checkedLaunch(base)).not.toHaveProperty("remote");
+  });
+
+  it("refuses unknown hosts, cloud executors and relative work directories on a host", () => {
+    expect(() => checkedLaunch({ ...base, remote: "gone" })).toThrow("已在设置页删除");
+    expect(() => checkedLaunch({ ...base, remote: "hpc", executor: "k8s", engine: "docker", workDir: "/w", settings: { namespace: "n", storageClaimName: "c" } })).toThrow("从本机提交");
+    expect(() => checkedLaunch({ ...base, remote: "hpc", workDir: "scratch" })).toThrow("绝对路径");
   });
 });
 

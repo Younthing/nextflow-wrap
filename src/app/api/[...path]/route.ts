@@ -13,6 +13,10 @@ import { handleFsApi } from "@/features/files/server/http";
 import { handleSettingsApi } from "@/features/settings/server/http";
 import { handleStorageApi } from "@/features/storage/server/http";
 import { handleDiagnosticsApi } from "@/features/diagnostics/server/http";
+import { handleRemoteApi } from "@/features/remote/server/http";
+import { remoteTaskLog } from "@/features/remote/server/remote-run";
+import { SshSession } from "@/features/remote/server/session";
+import { applyStoredSettings, readSettings } from "@/lib/server/settings";
 import type { HealthStatus } from "@/lib/api-types";
 import { store } from "@/lib/server/database";
 
@@ -40,6 +44,7 @@ async function handle(request: Request, context: Context): Promise<Response> {
     if (resource === "settings" && !id) return handleSettingsApi(method, request);
     if (resource === "storage") return handleStorageApi(method, path, request);
     if (resource === "diagnostics" && !id) return handleDiagnosticsApi(method, request);
+    if (resource === "remotes") return handleRemoteApi(method, path, request);
     if (resource === "notebooks" || resource === "script-modules" || resource === "kernels") return handleNotebookApi(method, path, request);
     if (resource === "schemas" && id === "samplesheet" && method === "GET") return json(samplesheetSchema);
     if (resource === "workflows") {
@@ -65,8 +70,8 @@ async function handle(request: Request, context: Context): Promise<Response> {
       if (!id && method === "GET") {
         const workflowId = url.searchParams.get("workflowId");
         return json(store().runs().filter((run) => !workflowId || run.detail.workflowId === workflowId).map((run) => {
-          const { id, runName, workflowId, workflowName, status, executor, profile, submittedAt, startedAt, completedAt, progress, errorMessage, phase } = run.detail;
-          return { id, runName, workflowId, workflowName, status, executor, profile, submittedAt, startedAt, completedAt, progress, errorMessage, phase, resumable: resumable(run) };
+          const { id, runName, workflowId, workflowName, status, executor, profile, submittedAt, startedAt, completedAt, progress, errorMessage, phase, remoteHost } = run.detail;
+          return { id, runName, workflowId, workflowName, status, executor, profile, submittedAt, startedAt, completedAt, progress, errorMessage, phase, remoteHost, resumable: resumable(run) };
         }));
       }
       if (!id && method === "POST") {
@@ -94,6 +99,13 @@ async function handle(request: Request, context: Context): Promise<Response> {
         const task = store().tasks(id).find((task) => (task.id ?? task.hash) === key || task.hash === key);
         if (!task) throw new HttpError(404, "任务不存在");
         if (!task.workdir) return json({ text: "" });
+        if (run.detail.remote) {
+          // Task directories of a cluster run stay on its shared filesystem; read them there over ssh.
+          const host = readSettings().remotes.find((candidate) => candidate.id === run.detail.remote!.hostId);
+          if (!host) throw new HttpError(404, "这个远程集群已在设置页删除，无法读取任务日志");
+          applyStoredSettings();
+          return json({ text: await remoteTaskLog(new SshSession(host), run.detail.remote, task.workdir) });
+        }
         // The runner records the absolute work directory it used; runs from before that kept it beside the project.
         const workRoot = isAbsolute(run.detail.launch.workDir) ? run.detail.launch.workDir : join(run.projectDir, "../work");
         let text = "";

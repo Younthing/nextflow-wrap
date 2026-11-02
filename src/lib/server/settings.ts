@@ -3,13 +3,27 @@ import { chmodSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "n
 import { join } from "node:path";
 import { z } from "zod";
 import { ENGINES, type ContainerEngine } from "@/features/project/launch";
-import { defaultSettings, SECRET_KEYS, type SecretKey, type SettingsUpdate, type SettingsView, type StudioSettings } from "@/features/settings/types";
+import { SAFE_COMMAND, SAFE_HOST, SAFE_PATH, SAFE_USER } from "@/features/remote/ssh";
+import { REMOTE_ID } from "@/features/remote/types";
+import { CLOUD_SECRET_KEYS, defaultSettings, SECRET_KEYS, type SecretKey, type SettingsUpdate, type SettingsView, type StudioSettings } from "@/features/settings/types";
 import { dataDirectory } from "./paths";
 
 type EnvMap = Partial<Record<string, string>>;
 
 const text = (max: number) => z.string().max(max).regex(/^[^\u0000-\u001f]*$/, "不能包含换行或控制字符");
 const optionalText = (max: number) => text(max).optional().transform((value) => value?.trim() || undefined);
+
+export const remoteHostSchema = z.object({
+  id: z.string().regex(REMOTE_ID),
+  name: text(80).min(1),
+  host: z.string().max(253).regex(SAFE_HOST, "主机名只能含字母、数字、点、下划线和连字符"),
+  user: optionalText(64).refine((value) => !value || SAFE_USER.test(value), "用户名只能含字母、数字、点、下划线和连字符"),
+  port: z.number().int().min(1).max(65535).optional(),
+  identityFile: optionalText(1000),
+  baseDir: z.string().max(500).regex(SAFE_PATH, "基础目录写成 ~/nextflow-studio 或 /scratch/me/nf 这样，不含空格和引号"),
+  nextflow: optionalText(500).refine((value) => !value || SAFE_COMMAND.test(value), "写成 nextflow 或 ~/bin/nextflow 这样的命令或路径"),
+  setup: optionalText(1000),
+});
 
 export const settingsSchema = z.object({
   version: z.literal(1),
@@ -28,6 +42,14 @@ export const settingsSchema = z.object({
     model: optionalText(200).refine((value) => !value || /^(anthropic|openai|google)\/[\w.:-]+$/.test(value), "写成 provider/model，例如 anthropic/claude-sonnet-5-5"),
     codexModel: optionalText(200),
   }),
+  remotes: z.array(remoteHostSchema).max(50).refine((hosts) => new Set(hosts.map((host) => host.id)).size === hosts.length, "远程主机 id 重复").default([]),
+  cloud: z.object({
+    awsProfile: optionalText(200),
+    awsRegion: optionalText(40).refine((value) => !value || /^[a-z]{2}(?:-[a-z]+)+-\d$/.test(value), "写成 us-east-1 这样的区域"),
+    googleCredentials: optionalText(1000),
+    azureBatchAccount: optionalText(100),
+    azureStorageAccount: optionalText(100),
+  }).prefault({}),
 });
 
 export const settingsUpdateSchema = z.object({
@@ -117,6 +139,12 @@ export function settingsEnv(settings: StudioSettings, secrets: Partial<Record<Se
   set("COPILOT_BACKEND", settings.assistant.backend === "auto" ? undefined : settings.assistant.backend);
   set("COPILOT_MODEL", settings.assistant.model);
   set("CODEX_MODEL", settings.assistant.codexModel);
+  set("AWS_PROFILE", settings.cloud.awsProfile);
+  set("AWS_REGION", settings.cloud.awsRegion);
+  set("AWS_DEFAULT_REGION", settings.cloud.awsRegion);
+  set("GOOGLE_APPLICATION_CREDENTIALS", settings.cloud.googleCredentials);
+  set("AZURE_BATCH_ACCOUNT_NAME", settings.cloud.azureBatchAccount);
+  set("AZURE_STORAGE_ACCOUNT_NAME", settings.cloud.azureStorageAccount);
   for (const name of SECRET_KEYS) set(name, secrets[name]);
   return env;
 }
@@ -148,7 +176,12 @@ export function settingsView(dir?: string, env: EnvMap = process.env): SettingsV
   const secrets = readSecrets(dir, env);
   const userKeys = state.studioSettingsApplied?.userKeys ?? new Set(Object.keys(env));
   const ours = state.studioSettingsApplied?.ours ?? new Set<string>();
-  const mapped = Object.keys(settingsEnv({ ...settings, runtime: { ...settings.runtime, javaHome: "x", nextflowBin: "x", jupyterPython: "x", httpProxy: "x" }, assistant: { backend: "codex", model: "x", codexModel: "x" } }, Object.fromEntries(SECRET_KEYS.map((key) => [key, "x"]))));
+  const mapped = Object.keys(settingsEnv({
+    ...settings,
+    runtime: { ...settings.runtime, javaHome: "x", nextflowBin: "x", jupyterPython: "x", httpProxy: "x" },
+    assistant: { backend: "codex", model: "x", codexModel: "x" },
+    cloud: { awsProfile: "x", awsRegion: "x", googleCredentials: "x", azureBatchAccount: "x", azureStorageAccount: "x" },
+  }, Object.fromEntries(SECRET_KEYS.map((key) => [key, "x"]))));
   return {
     settings,
     secrets: Object.fromEntries(SECRET_KEYS.map((key) => [key, Boolean(secrets[key])])) as Record<SecretKey, boolean>,
@@ -170,6 +203,9 @@ export function saveSettings(update: SettingsUpdate, dir?: string, env: EnvMap =
     writeSecrets(secrets, dir, env);
   }
   applySettingsToEnv(update.settings, secrets, env);
-  const runtimeChanged = JSON.stringify(previous.runtime) !== JSON.stringify(update.settings.runtime);
+  // The runner reads tool paths and cloud credentials from its environment when it starts; remote hosts per run.
+  const cloudSecretChanged = Object.keys(update.secrets ?? {}).some((name) => (CLOUD_SECRET_KEYS as readonly string[]).includes(name));
+  const runtimeChanged = JSON.stringify(previous.runtime) !== JSON.stringify(update.settings.runtime)
+    || JSON.stringify(previous.cloud) !== JSON.stringify(update.settings.cloud) || cloudSecretChanged;
   return { ...settingsView(dir, env), runnerRestartNeeded: runtimeChanged };
 }

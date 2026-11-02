@@ -1,7 +1,11 @@
 import type { ContainerEngine } from "@/features/project/launch";
+import type { RemoteHost } from "@/features/remote/types";
 
 export type AssistantBackend = "auto" | "codex" | "builtin";
-export const SECRET_KEYS = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GOOGLE_API_KEY"] as const;
+export const ASSISTANT_SECRET_KEYS = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GOOGLE_API_KEY"] as const;
+/** Cloud keys Nextflow reads from the environment for AWS Batch / S3 and Azure Batch / Blob. */
+export const CLOUD_SECRET_KEYS = ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AZURE_BATCH_ACCOUNT_KEY", "AZURE_STORAGE_ACCOUNT_KEY"] as const;
+export const SECRET_KEYS = [...ASSISTANT_SECRET_KEYS, ...CLOUD_SECRET_KEYS] as const;
 export type SecretKey = (typeof SECRET_KEYS)[number];
 
 /** Everything the settings page edits. Stored in `<data>/settings.json`; API keys separately in `secrets.json`. */
@@ -28,6 +32,18 @@ export interface StudioSettings {
     model?: string;
     codexModel?: string;
   };
+  /** Cluster login nodes runs can go to over SSH. */
+  remotes: RemoteHost[];
+  /** Non-secret cloud settings; the keys themselves are secrets. */
+  cloud: {
+    /** `AWS_PROFILE` from ~/.aws/config, instead of or besides access keys. */
+    awsProfile?: string;
+    awsRegion?: string;
+    /** Service account JSON file for Google Batch and GCS (`GOOGLE_APPLICATION_CREDENTIALS`). */
+    googleCredentials?: string;
+    azureBatchAccount?: string;
+    azureStorageAccount?: string;
+  };
 }
 
 /** What the API returns: secrets never leave the server, only whether each one is set and how it is stored. */
@@ -53,4 +69,6 @@ export const defaultSettings = (): StudioSettings => ({
   runtime: { defaultEngine: "shell" },
   notifications: { runFinished: true },
   assistant: { backend: "auto" },
+  remotes: [],
+  cloud: {},
 });

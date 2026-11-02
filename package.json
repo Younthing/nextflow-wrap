@@ -15,6 +15,7 @@
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
     "smoke:runner": "tsx scripts/smoke-runner.ts",
+    "smoke:remote": "tsx scripts/smoke-remote.ts",
     "codex:smoke": "tsx scripts/codex-smoke.ts",
     "test:storybook": "vitest run --config vitest.storybook.config.mts",
     "test:e2e": "playwright test"
