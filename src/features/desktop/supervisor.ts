@@ -32,7 +32,7 @@ export function quitPrompt(activeRuns: number): { needed: boolean; message: stri
   return {
     needed: activeRuns > 0,
     message: `还有 ${activeRuns} 个运行没有结束`,
-    detail: "后台继续：Nextflow 继续运行，下次打开应用时接着显示进度和结果。停止：取消这些运行再退出。",
+    detail: "后台继续的运行，下次打开应用时接着显示。",
     buttons: [
       { label: "后台继续", choice: "background" },
       { label: "停止运行并退出", choice: "stop" },

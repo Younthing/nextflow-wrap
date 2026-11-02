@@ -90,7 +90,7 @@ export async function setupStatus(): Promise<SetupStatus> {
     id: "weblog", label: TOOLCHAIN.weblog.label, required: false,
     state: weblog ? "ok" : "missing", version: weblog ? TOOLCHAIN.weblog.version : undefined,
     source: weblog ? (pluginInstalled(paths.plugins) ? "managed" : "system") : undefined,
-    detail: weblog ? undefined : "没有它也能运行，进度改为每隔几秒读取 trace 文件",
+    detail: weblog ? undefined : "未安装时改为轮询 trace 文件",
     install: { label: `预装 ${WEBLOG_PLUGIN}`, version: TOOLCHAIN.weblog.version },
   });
 
@@ -100,7 +100,7 @@ export async function setupStatus(): Promise<SetupStatus> {
     id: "conda", label: "conda / mamba", required: false,
     state: conda ? "ok" : "missing", version: conda?.version, path: conda?.bin,
     source: conda ? (existsSync(paths.micromamba) && conda.bin === "micromamba" ? "managed" : "system") : undefined,
-    detail: conda ? undefined : "用 conda 或 mamba profile 运行时需要",
+    detail: conda ? undefined : "conda / mamba profile 需要",
     install: { label: "安装 micromamba", version: TOOLCHAIN.micromamba.version },
   });
 
@@ -117,7 +117,7 @@ export async function setupStatus(): Promise<SetupStatus> {
   const docker = await quiet(process.env.DOCKER_BIN || "docker", ["info", "--format", "{{.ServerVersion}}"], env).then((out) => out.trim()).catch(() => undefined);
   tools.push({
     id: "docker", label: "Docker", required: false, state: docker ? "ok" : "missing", version: docker || undefined,
-    detail: docker ? undefined : "可选：只有选择 docker profile 时需要",
+    detail: docker ? undefined : "docker profile 需要",
   });
 
   const kernelPrefixes = new Set(python.map((kernel) => kernel.name));

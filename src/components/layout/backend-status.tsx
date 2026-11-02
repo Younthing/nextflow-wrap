@@ -52,7 +52,7 @@ export function BackendStatus({ collapsed = false }: { collapsed?: boolean }) {
   );
 
   return (
-    <Badge variant={data.mocked ? "warning" : "success"} className="max-w-full font-mono" title={data.mocked ? "API 由浏览器内的模拟服务应答，不会真的运行 Nextflow" : undefined}>
+    <Badge variant={data.mocked ? "warning" : "success"} className="max-w-full font-mono" title={data.mocked ? "演示模式：不运行 Nextflow" : undefined}>
       <span className="size-1.5 shrink-0 rounded-full bg-current" />
       <span className="truncate">Nextflow {data.nextflowVersion}</span>
       {data.mocked ? <span className="font-sans">· 模拟</span> : null}

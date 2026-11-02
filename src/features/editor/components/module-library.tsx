@@ -15,8 +15,6 @@ import { groupByCategory, searchModules } from "@/features/workflow/catalog";
 import { modulesForDrawer } from "@/features/workflow/origin";
 import type { ModuleDef } from "@/features/workflow/types";
 import { cn } from "@/lib/utils";
-import { useShortcutLabels } from "@/lib/use-action-shortcuts";
-import { EDITOR_ACTIONS } from "../commands";
 import { EDITOR_CHROME_CLASS } from "../marquee-text";
 import { categoryColor } from "../port-style";
 
@@ -117,7 +115,6 @@ export function ModuleLibrary({
 }) {
   const [query, setQuery] = React.useState("");
   const [collapsed, setCollapsed] = React.useState<Set<string>>(new Set(["通道"]));
-  const searchKeys = useShortcutLabels(EDITOR_ACTIONS.search.shortcut);
   const visible = React.useMemo(() => modulesForDrawer(modules), [modules]);
 
   return (
@@ -152,11 +149,8 @@ export function ModuleLibrary({
           />
         </div>
       </ScrollArea>
-      <div className="border-t border-border px-3 py-2 text-[11px] text-muted-foreground">
-        拖到画布或点击添加 · 双击画布或 {searchKeys} 搜索
-        <div>
-          <Link href="/modules" className="text-primary hover:underline">管理模块库</Link>
-        </div>
+      <div className="border-t border-border px-3 py-2 text-[11px]">
+        <Link href="/modules" className="text-primary hover:underline">管理模块库</Link>
       </div>
     </aside>
   );

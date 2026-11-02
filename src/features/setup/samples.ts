@@ -20,11 +20,11 @@ export function sampleSetupStatus(kind: "ready" | "fresh" | "installing" = "read
         ? { id: "nextflow", label: "Nextflow", required: true, state: "missing", install: { label: "下载 Nextflow", version: "26.10.4" } }
         : { id: "nextflow", label: "Nextflow", required: true, state: "ok", version: "26.10.4", source: "system", path: "/usr/local/bin/nextflow" },
       fresh
-        ? { id: "weblog", label: "nf-weblog 插件（实时进度）", required: false, state: "missing", detail: "没有它也能运行，进度改为每隔几秒读取 trace 文件", install: { label: "预装 nf-weblog@1.2.0", version: "1.2.0" } }
+        ? { id: "weblog", label: "nf-weblog 插件（实时进度）", required: false, state: "missing", detail: "未安装时改为轮询 trace 文件", install: { label: "预装 nf-weblog@1.2.0", version: "1.2.0" } }
         : { id: "weblog", label: "nf-weblog 插件（实时进度）", required: false, state: "ok", version: "1.2.0", source: "managed" },
       { id: "conda", label: "conda / mamba", required: false, state: fresh ? "missing" : "ok", version: fresh ? undefined : "conda 24.11.3", install: { label: "安装 micromamba", version: "2.4.0-1" } },
       { id: "jupyter", label: "Jupyter 内核", required: false, state: fresh ? "missing" : "ok", version: fresh ? undefined : "python3、scanpy", install: { label: "创建笔记本环境（scanpy、RDKit、Vina）", version: "2.4.0-1" } },
-      { id: "docker", label: "Docker", required: false, state: "missing", detail: "可选：只有选择 docker profile 时需要" },
+      { id: "docker", label: "Docker", required: false, state: "missing", detail: "docker profile 需要" },
     ],
   };
 }

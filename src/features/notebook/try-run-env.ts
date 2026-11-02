@@ -49,7 +49,7 @@ export function selectTryRunEngine(
     return {
       via: "container",
       tool: tools.container,
-      note: conda ? "conda 与 container 都已填写。本机有容器运行时，试跑选用容器。" : undefined,
+      note: conda ? "已同时填写 conda 和 container，试跑选用容器" : undefined,
     };
   }
   if (conda && tools.conda) {

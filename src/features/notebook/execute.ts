@@ -289,9 +289,9 @@ async function readCellResults(dir: string, cells: { id: string }[], fallback: s
   }
 }
 
-const R_EDIT_ONLY = "没有 R 内核时 R 单元格只作编辑；发布后的试跑会调用 Rscript。";
-const R_KERNEL_HINT = "在 R 里运行 install.packages(\"IRkernel\"); IRkernel::installspec() 后，R 单元格在常驻内核里运行。";
-const ONESHOT_HINT = "单元格每次从头在新进程里运行。安装 ipykernel 后改用常驻 Jupyter 内核：python3 -m pip install ipykernel";
+const R_EDIT_ONLY = "没有 R 内核，R 单元格不在这里运行（发布后的试跑用 Rscript）。";
+const R_KERNEL_HINT = "安装 R 内核：install.packages(\"IRkernel\"); IRkernel::installspec()。";
+const ONESHOT_HINT = "单元格每次从头运行；安装 ipykernel 后保留变量：python3 -m pip install ipykernel";
 
 /**
  * Runs notebook cells the Jupyter way. A cell id runs just that cell in the notebook's persistent kernel,
