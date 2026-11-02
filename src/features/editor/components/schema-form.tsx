@@ -125,6 +125,7 @@ function Field({
     return (
       <FormField label={label}>
         <PathInput
+          upload
           id={id}
           value={value === undefined ? "" : String(value)}
           placeholder={placeholder}

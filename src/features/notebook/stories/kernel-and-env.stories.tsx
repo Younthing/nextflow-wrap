@@ -80,8 +80,7 @@ export const JupyterKernels: Story = {
     const canvas = within(canvasElement);
     const body = within(canvasElement.ownerDocument.body);
     await userEvent.click(canvas.getByRole("button", { name: /py311-pandas/ }));
-    await expect(await body.findByText("本机 Jupyter 内核")).toBeInTheDocument();
-    await userEvent.click(body.getByRole("option", { name: "Python (scanpy) · scanpy" }));
+    await userEvent.click(await body.findByRole("option", { name: "Python (scanpy) · scanpy" }));
     await expect(canvas.getByRole("button", { name: /scanpy/ })).toBeInTheDocument();
   },
 };

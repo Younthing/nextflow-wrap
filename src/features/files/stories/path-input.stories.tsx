@@ -30,6 +30,7 @@ export const BrowseOnWeb: Story = {
 
 /** In a browser (or with a remote backend) a dropped file is uploaded to the project's data/ and its server path filled in. */
 export const DropUploadsOnWeb: Story = {
+  args: { upload: true },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const field = canvas.getByLabelText("输入文件");
@@ -42,6 +43,7 @@ export const DropUploadsOnWeb: Story = {
 
 /** Pasting a file into the field uploads it too; pasted text is left to the input. */
 export const PasteUploadsOnWeb: Story = {
+  args: { upload: true },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const field = canvas.getByLabelText("输入文件");
@@ -49,6 +51,18 @@ export const PasteUploadsOnWeb: Story = {
     transfer.items.add(new File(["x"], "markers.csv"));
     field.dispatchEvent(new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData: transfer }));
     await waitFor(() => expect(field).toHaveValue("/home/demo/Projects/pbmc-atlas/data/markers.csv"));
+  },
+};
+
+/** Configuration fields (an interpreter, a key file) need a server path: a drop that would need an upload is refused. */
+export const DropRefusedForConfig: Story = {
+  play: async ({ canvasElement }) => {
+    const field = within(canvasElement).getByLabelText("输入文件");
+    const transfer = new DataTransfer();
+    transfer.items.add(new File(["x"], "python3"));
+    field.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: transfer }));
+    await expect(await within(canvasElement.ownerDocument.body).findByText("这里需要服务端上的路径，请点浏览选择")).toBeInTheDocument();
+    expect(field).toHaveValue("");
   },
 };
 

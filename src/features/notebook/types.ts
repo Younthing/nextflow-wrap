@@ -204,6 +204,7 @@ export interface TryRunRecord {
   bindings?: TryRunInputBinding[];
 }
 
+/** Demo kernels: names the in-browser demo and its seed notebooks use. A real server lists its Jupyter kernels. */
 export const KERNELS = {
   "py311-pandas": { label: "Python 3.11 · py311-pandas", language: "python" },
   "r-deseq2": { label: "R 4.3 · r-deseq2", language: "r" },
@@ -216,11 +217,15 @@ export function kernelLabel(kernel: string): string {
   return kernel in KERNELS ? KERNELS[kernel as KernelId].label : kernel;
 }
 
+/** Standard Jupyter kernelspec names: ipykernel's `python3` and IRkernel's `ir`. */
+export const DEFAULT_KERNEL: Record<NotebookLanguage, string> = { python: "python3", r: "ir" };
+
 export function languageForKernel(kernel: string): NotebookLanguage {
   if (kernel in KERNELS) return KERNELS[kernel as KernelId].language;
   const name = kernel.trim().toLowerCase();
   if (
-    name.startsWith("r ")
+    name === "ir"
+    || name.startsWith("r ")
     || name.startsWith("r:")
     || name.startsWith("r-")
     || name.startsWith("r.")

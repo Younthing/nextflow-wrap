@@ -6,7 +6,7 @@ import { File, FolderOpen, Folder, ArrowUp, Home } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { nativeFiles, type PickPathOptions } from "@/lib/desktop";
+import { nativeDialogs, type PickPathOptions } from "@/lib/desktop";
 import { cn } from "@/lib/utils";
 import { useFileIntake, useFsListing } from "../queries";
 import type { FsEntry } from "../types";
@@ -23,7 +23,7 @@ const sizeLabel = (bytes?: number) => {
 const matches = (entry: FsEntry, extensions?: string[]) =>
   !extensions?.length || extensions.some((ext) => entry.name.toLowerCase().endsWith(`.${ext.toLowerCase()}`));
 
-/** Folder browser for the web build, reading the runner machine through `/api/fs/list`. */
+/** Browses the server's files through `/api/fs/list`: the picker everywhere except a desktop app with a local server. */
 export function PathBrowserDialog({
   open,
   onOpenChange,
@@ -95,15 +95,16 @@ export function PathBrowserDialog({
 }
 
 /**
- * Text field for a server path with a browse button, a drop target and file paste. With native paths (desktop app
- * on the server's machine or WSL) it opens the native dialog and uses dropped files where they are; otherwise it
- * browses the server and uploads dropped or pasted files into the project's `data/`.
+ * Text field for a server path with a browse button, a drop target and file paste. Browse opens the native dialog
+ * only when the server runs on this computer, and otherwise browses the server. Dropped files are used where they
+ * are when the server can reach them (local, WSL), and uploaded into the project's `data/` otherwise.
  */
 export function PathInput({
   value,
   onChange,
   kind = "file",
   extensions,
+  upload = false,
   className,
   ...props
 }: Omit<React.ComponentProps<typeof Input>, "value" | "onChange"> & {
@@ -111,16 +112,18 @@ export function PathInput({
   onChange: (value: string) => void;
   kind?: PickPathOptions["kind"];
   extensions?: string[];
+  /** Data inputs: files dropped from a computer the server cannot read are uploaded into the project's `data/`. */
+  upload?: boolean;
 }) {
   const [browsing, setBrowsing] = React.useState(false);
   const [dragging, setDragging] = React.useState(false);
   const options: PickPathOptions = { kind, extensions, defaultPath: value || undefined };
   const intake = useFileIntake();
   const take = (transfer: DataTransfer) => {
-    void intake(transfer).then(([first]) => { if (first) onChange(first.path); });
+    void intake(transfer, { upload }).then(([first]) => { if (first) onChange(first.path); });
   };
   const browse = async () => {
-    const bridge = nativeFiles();
+    const bridge = nativeDialogs();
     if (!bridge) { setBrowsing(true); return; }
     const [picked] = await bridge.pickPath(options);
     if (picked) onChange(picked);

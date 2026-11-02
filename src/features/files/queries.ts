@@ -31,7 +31,7 @@ export interface IntakePath { path: string; folder: boolean }
  */
 export function useFileIntake() {
   const qc = useQueryClient();
-  return React.useCallback((transfer: DataTransfer): Promise<IntakePath[]> => {
+  return React.useCallback((transfer: DataTransfer, options: { upload?: boolean } = {}): Promise<IntakePath[]> => {
     const bridge = nativeFiles();
     if (bridge) {
       const native = Array.from(transfer.items).filter((item) => item.kind === "file").flatMap((item) => {
@@ -40,6 +40,11 @@ export function useFileIntake() {
         return path ? [{ path, folder: item.webkitGetAsEntry?.()?.isDirectory === true }] : [];
       });
       if (native.length) return Promise.resolve(native);
+    }
+    // Settings and other configuration need a path that already exists on the server, not a copy in data/.
+    if (options.upload === false) {
+      if (transfer.files.length) toast.warning("这里需要服务端上的路径，请点浏览选择");
+      return Promise.resolve([]);
     }
     const collected = collectItems(transfer);
     return (async () => {

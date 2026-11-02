@@ -68,10 +68,20 @@ export const desktop = (): StudioDesktop | undefined => (typeof window === "unde
 export const isDesktop = () => desktop() !== undefined;
 
 /**
- * The bridge, when paths on this computer are paths on the server: native file dialogs, real paths of dropped
- * files, show in folder and open with the default app. `undefined` in a browser and for a remote backend.
+ * The bridge, when this computer's paths can be turned into server paths and back: real paths of dropped files,
+ * show in folder and open with the default app. True for a local server and for WSL; `undefined` in a browser and
+ * for a remote backend (drops are uploaded there).
  */
 export const nativeFiles = (): StudioDesktop | undefined => {
   const bridge = desktop();
   return bridge && bridge.backend?.nativePaths !== false ? bridge : undefined;
+};
+
+/**
+ * The bridge, when choosing a server path (a Python, a project folder, a key file) can use the native dialog:
+ * only when the server runs on this computer. Everywhere else, picking a path browses the server itself.
+ */
+export const nativeDialogs = (): StudioDesktop | undefined => {
+  const bridge = desktop();
+  return bridge && (!bridge.backend || bridge.backend.kind === "local") ? bridge : undefined;
 };

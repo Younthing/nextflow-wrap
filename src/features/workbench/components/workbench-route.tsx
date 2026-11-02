@@ -22,6 +22,8 @@ import { shownWidth } from "@/lib/panel-size";
 import { toast } from "@/lib/toast";
 import { WorkbenchFiles } from "./workbench-files";
 import { WorkbenchRuntimes } from "./workbench-runtimes";
+import { defaultKernel } from "@/features/notebook/kernel-choices";
+import { mockingActive } from "@/lib/mocking";
 import { WorkbenchStart } from "./workbench-start";
 import { WorkbenchTabs } from "./workbench-tabs";
 
@@ -73,7 +75,7 @@ function WorkbenchFrame({ project, path }: { project: Project; path?: string[] }
   const names = Object.fromEntries(list.map((nb) => [nb.id, nb.name]));
   const active: NotebookSummary | undefined = list.find((nb) => nb.id === activeId);
 
-  const createNotebook = (kernel = "py311-pandas") => {
+  const createNotebook = (kernel = defaultKernel("python", mockingActive())) => {
     create.mutate(
       { name: "未命名笔记本", description: "", kernel, cells: [{ id: "c1", role: "code", source: "" }], projectId: project.id },
       { onSuccess: (doc) => router.push(`/workbench/${doc.id}`), onError: (err) => toast.error(err.message) },

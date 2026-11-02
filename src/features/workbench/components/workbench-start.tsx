@@ -3,14 +3,16 @@
 import Link from "next/link";
 import { Loader2, NotebookText, Plus } from "lucide-react";
 
+import { defaultKernel } from "@/features/notebook/kernel-choices";
 import { formatRelative } from "@/features/notebook/library";
-import type { NotebookSummary } from "@/features/notebook/types";
+import type { NotebookLanguage, NotebookSummary } from "@/features/notebook/types";
+import { mockingActive } from "@/lib/mocking";
 import type { Project } from "@/features/workspace/types";
 
-const STARTERS = [
-  { kernel: "py311-pandas", title: "Python 笔记本", hint: "pandas、scanpy 一类分析" },
-  { kernel: "r-deseq2", title: "R 笔记本", hint: "DESeq2、Seurat 一类分析" },
-] as const;
+const STARTERS: { language: NotebookLanguage; title: string }[] = [
+  { language: "python", title: "Python 笔记本" },
+  { language: "r", title: "R 笔记本" },
+];
 
 /** `/workbench` with nothing open: start a notebook or pick up a recent one. */
 export function WorkbenchStart({
@@ -35,7 +37,7 @@ export function WorkbenchStart({
         <section aria-labelledby="workbench-new" className="grid gap-3">
           <h2 id="workbench-new" className="text-[11px] font-bold tracking-[0.1em] text-muted-foreground">新建</h2>
           <div className="grid gap-3 sm:grid-cols-2">
-            {STARTERS.map((starter) => (
+            {STARTERS.map((starter) => ({ ...starter, kernel: defaultKernel(starter.language, mockingActive()) })).map((starter) => (
               <button
                 key={starter.kernel}
                 type="button"
@@ -46,10 +48,7 @@ export function WorkbenchStart({
                 <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/12 text-primary">
                   {creating === starter.kernel ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
                 </span>
-                <span className="grid">
-                  <span className="text-sm font-medium">空白 {starter.title}</span>
-                  <span className="text-xs text-muted-foreground">{starter.hint}</span>
-                </span>
+                <span className="text-sm font-medium">空白 {starter.title}</span>
               </button>
             ))}
           </div>

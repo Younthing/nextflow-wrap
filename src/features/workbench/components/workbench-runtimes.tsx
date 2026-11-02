@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useKernelInfo, useKernelSpecs } from "@/features/notebook/queries";
 import type { KernelState, NotebookSummary } from "@/features/notebook/types";
 import { runtimeRows } from "@/features/workbench/runtimes";
+import { mockingActive } from "@/lib/mocking";
 import { cn } from "@/lib/utils";
 
 const DOT: Record<KernelState, string> = {
@@ -19,7 +20,7 @@ const DOT: Record<KernelState, string> = {
 export function WorkbenchRuntimes({ notebooks, active }: { notebooks: NotebookSummary[]; active?: NotebookSummary }) {
   const specs = useKernelSpecs();
   const info = useKernelInfo(active?.id ?? "", !!active && active.language === "python");
-  const rows = runtimeRows(notebooks, specs.data?.kernels ?? []);
+  const rows = runtimeRows(notebooks, specs.data?.kernels ?? [], mockingActive());
   const activeState: KernelState = info.data?.state ?? "stopped";
   return (
     <section aria-labelledby="workbench-runtimes" className="grid gap-0.5 border-t border-border px-1 pt-3">
@@ -37,7 +38,7 @@ export function WorkbenchRuntimes({ notebooks, active }: { notebooks: NotebookSu
               <span className="grid min-w-0">
                 <span className={cn("truncate", current && "font-medium")}>{row.label}</span>
                 <span className="truncate text-[11px] text-muted-foreground">
-                  {current ? `当前笔记本 · ${STATE_LABEL[activeState]}` : row.users ? `${row.users} 个笔记本在用` : "空闲"}
+                  {row.missing ? "未安装 · 用 python3 运行" : current ? `当前笔记本 · ${STATE_LABEL[activeState]}` : row.users ? `${row.users} 个笔记本在用` : "空闲"}
                 </span>
               </span>
             </li>

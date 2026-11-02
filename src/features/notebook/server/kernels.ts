@@ -1,6 +1,7 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 
@@ -27,13 +28,43 @@ export class KernelUnavailableError extends Error {
 const IDLE_SHUTDOWN_MS = Number(process.env.NEXTFLOW_STUDIO_KERNEL_IDLE_MS ?? 2 * 60 * 60_000);
 const START_TIMEOUT_MS = 180_000;
 
+/**
+ * Pythons that may have Jupyter, most specific first. A server started by the desktop app over WSL or SSH runs in a
+ * login shell that never ran `conda init`, so the conda Python people use in their terminal is not on PATH.
+ */
+export function jupyterPythonCandidates(env: Partial<Record<string, string>> = process.env, home = homedir()): string[] {
+  const candidates = env.CONDA_PREFIX ? [join(env.CONDA_PREFIX, "bin", "python3")] : [];
+  candidates.push("python3");
+  for (const root of ["miniconda3", "miniforge3", "mambaforge", "anaconda3", "micromamba"]) candidates.push(join(home, root, "bin", "python3"));
+  candidates.push("/opt/conda/bin/python3");
+  return [...new Set(candidates)];
+}
+
+const importsJupyter = (python: string) => {
+  if (python.includes("/") && !existsSync(python)) return false;
+  return spawnSync(/* turbopackIgnore: true */ python, ["-c", "import jupyter_client"], { stdio: "ignore", timeout: 20_000 }).status === 0;
+};
+
+/** The first candidate that can import jupyter_client. */
+export function findJupyterPython(candidates: readonly string[], probe: (python: string) => boolean = importsJupyter): string | undefined {
+  return candidates.find((python) => probe(python));
+}
+
+const detected = globalThis as typeof globalThis & { __nfStudioJupyterPython?: { python?: string; at: number } };
+
 /** Interpreter that runs the bridge and, through it, the default python3 kernelspec. */
 export const bridgePython = () => {
   const configured = process.env.NEXTFLOW_STUDIO_JUPYTER_PYTHON?.trim();
   if (configured) return configured;
   // The setup page's notebook environment, created when this machine had no Jupyter of its own.
   const managed = managedPaths().notebookPython;
-  return existsSync(managed) ? managed : "python3";
+  if (existsSync(managed)) return managed;
+  // A found Python is kept for the process; not finding one is checked again after a minute (pip install ipykernel).
+  const cached = detected.__nfStudioJupyterPython;
+  if (!cached || (!cached.python && Date.now() - cached.at > 60_000)) {
+    detected.__nfStudioJupyterPython = { python: findJupyterPython(jupyterPythonCandidates()), at: Date.now() };
+  }
+  return detected.__nfStudioJupyterPython!.python ?? "python3";
 };
 
 /** Working directory a notebook's kernel keeps between runs. Files written by cells stay here. */

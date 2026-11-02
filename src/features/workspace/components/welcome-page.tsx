@@ -16,7 +16,7 @@ import { useHealthStatus } from "@/features/runs/queries";
 import { displayPath, filterProjects, openedLabel } from "@/features/workspace/projects";
 import { useCreateProject, useForgetProject, useOpenProject, useProjects, useReopenProject } from "@/features/workspace/queries";
 import type { CreateProjectRequest, Project } from "@/features/workspace/types";
-import { nativeFiles } from "@/lib/desktop";
+import { nativeDialogs, nativeFiles } from "@/lib/desktop";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import { NewProjectDialog } from "./new-project-dialog";
@@ -176,7 +176,7 @@ export function WelcomePage() {
   const fail = (error: Error) => toast.error(error.message);
 
   const openDirectory = async () => {
-    const bridge = nativeFiles();
+    const bridge = nativeDialogs();
     if (!bridge) { setBrowsing(true); return; }
     const [picked] = await bridge.pickPath({ kind: "directory", title: "打开目录作为项目" });
     if (picked) openPath.mutate(picked, { onSuccess: enter, onError: fail });

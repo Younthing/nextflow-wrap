@@ -7,10 +7,10 @@ import { Popover } from "radix-ui";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useKernelSpecs } from "@/features/notebook/queries";
-import { KERNELS, kernelLabel, normalizeKernelName, type KernelId } from "@/features/notebook/types";
+import { kernelChoices } from "@/features/notebook/kernel-choices";
+import { kernelLabel, normalizeKernelName } from "@/features/notebook/types";
+import { mockingActive } from "@/lib/mocking";
 import { cn } from "@/lib/utils";
-
-const KERNEL_IDS = Object.keys(KERNELS) as KernelId[];
 
 export function KernelPicker({
   value,
@@ -29,8 +29,9 @@ export function KernelPicker({
   const [draft, setDraft] = React.useState("");
   const [error, setError] = React.useState("");
   const specs = useKernelSpecs();
-  const jupyter = (specs.data?.kernels ?? []).filter((spec) => !(spec.name in KERNELS));
-  const known = value in KERNELS || jupyter.some((spec) => spec.name === value);
+  // The same list as the workbench's runtimes: installed kernels, plus this notebook's kernel if it is not one.
+  const choices = kernelChoices(specs.data?.kernels ?? [], { demo: mockingActive(), inUse: [value] });
+  const current = choices.find((choice) => choice.name === value);
 
   const choose = (kernel: string) => {
     onChange(kernel);
@@ -62,7 +63,7 @@ export function KernelPicker({
         >
           <span className={cn(subtle ? "sr-only" : "text-muted-foreground")}>内核</span>
           <span className="size-1.5 shrink-0 rounded-full bg-success" aria-hidden />
-          <span className={cn("truncate", subtle ? "font-medium" : "font-semibold")}>{kernelLabel(value)}</span>
+          <span className={cn("truncate", subtle ? "font-medium" : "font-semibold")}>{current?.label ?? kernelLabel(value)}</span>
           <ChevronDown className="size-3.5 shrink-0 opacity-70" aria-hidden />
         </button>
       </Popover.Trigger>
@@ -73,26 +74,12 @@ export function KernelPicker({
           className="z-50 w-72 rounded-lg border border-border bg-background p-1 text-foreground shadow-lg outline-none"
         >
           <div role="listbox" aria-label="内核" className="grid gap-0.5">
-            {!known && (
-              <KernelOption selected label={kernelLabel(value)} onSelect={() => choose(value)} />
-            )}
-            {KERNEL_IDS.map((id) => (
+            {choices.map((choice) => (
               <KernelOption
-                key={id}
-                selected={id === value}
-                label={KERNELS[id].label}
-                onSelect={() => choose(id)}
-              />
-            ))}
-            {jupyter.length > 0 && (
-              <p className="px-2.5 pt-2 pb-1 text-[11px] text-muted-foreground">本机 Jupyter 内核</p>
-            )}
-            {jupyter.map((spec) => (
-              <KernelOption
-                key={spec.name}
-                selected={spec.name === value}
-                label={spec.displayName === spec.name ? spec.name : `${spec.displayName} · ${spec.name}`}
-                onSelect={() => choose(spec.name)}
+                key={choice.name}
+                selected={choice.name === value}
+                label={choice.missing ? `${choice.label} · 未安装` : choice.label}
+                onSelect={() => choose(choice.name)}
               />
             ))}
           </div>
