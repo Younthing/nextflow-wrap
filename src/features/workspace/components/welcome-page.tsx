@@ -133,7 +133,7 @@ export function WelcomeView({ projects, home, environment, busyId, onNew, onOpen
                       type="button"
                       size="icon-sm"
                       variant="ghost"
-                      aria-label={`${project.name} 的操作`}
+                      aria-label={`更多操作：${project.name}`}
                       className="absolute top-1/2 right-2.5 -translate-y-1/2 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100"
                     >
                       <MoreHorizontal />

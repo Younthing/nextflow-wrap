@@ -27,7 +27,8 @@ export function WorkbenchRuntimes({ notebooks, active }: { notebooks: NotebookSu
         <h2 id="workbench-runtimes" className="text-[11px] font-bold tracking-[0.1em] text-muted-foreground">运行时</h2>
         <Link href="/settings" className="ml-auto text-xs text-primary hover:underline">管理</Link>
       </div>
-      <ul className="grid max-h-48 gap-0.5 overflow-y-auto">
+      {/* Focusable so the list can be scrolled from the keyboard when there are many kernels. */}
+      <ul aria-label="可用的运行时" tabIndex={0} className="grid max-h-48 gap-0.5 overflow-y-auto rounded-lg focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-none">
         {rows.map((row) => {
           const current = row.name === active?.kernel;
           return (

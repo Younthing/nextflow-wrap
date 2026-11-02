@@ -44,10 +44,10 @@ export function Sidebar() {
       <Link
         href="/"
         className="mb-3 flex items-center gap-2.5 rounded-lg px-1.5 py-1 focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-none"
-        aria-label="Nextflow Studio · 回到欢迎页"
+        title="回到欢迎页"
       >
-        <span className="grid size-8 place-items-center rounded-[10px] bg-primary font-mono text-xs font-bold text-primary-foreground shadow-sm">nf</span>
-        <span className="font-serif text-[15px] font-bold">Studio</span>
+        <span aria-hidden className="grid size-8 place-items-center rounded-[10px] bg-primary font-mono text-xs font-bold text-primary-foreground shadow-sm">nf</span>
+        <span className="font-serif text-[15px] font-bold">Studio<span className="sr-only">，回到欢迎页</span></span>
       </Link>
 
       <Link

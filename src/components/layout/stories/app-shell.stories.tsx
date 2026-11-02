@@ -6,6 +6,7 @@ const meta = {
   title: "Layout/AppShell",
   component: AppShell,
   args: { children: <div className="glass h-full rounded-xl p-5">工作区</div> },
+  parameters: { nextjs: { navigation: { pathname: "/workbench" } } },
   decorators: [
     (Story) => (
       <div className="h-[640px]">
@@ -28,3 +29,11 @@ export const Light: Story = {
   },
 };
 export const Dark: Story = { globals: { theme: "dark" } };
+
+/** The welcome page and setup draw their own layout: no sidebar, no top bar. */
+export const Bare: Story = {
+  parameters: { nextjs: { navigation: { pathname: "/" } } },
+  play: async ({ canvasElement }) => {
+    expect(within(canvasElement).queryByRole("navigation", { name: "主导航" })).toBeNull();
+  },
+};

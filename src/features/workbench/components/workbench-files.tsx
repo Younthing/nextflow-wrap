@@ -22,11 +22,11 @@ export function relativeToProject(project: Pick<Project, "path">, path: string):
   return path.startsWith(`${project.path}/`) ? path.slice(project.path.length + 1) : path;
 }
 
+/** Copy the absolute path: notebook kernels run in their own scratch folder, so a relative path would not resolve. */
 function copyPath(project: Project, entry: FsEntry) {
-  const relative = relativeToProject(project, entry.path);
-  void navigator.clipboard?.writeText(relative).then(
-    () => toast.success(`已复制路径 ${relative}`),
-    () => toast.warning(`无法写入剪贴板：${relative}`),
+  void navigator.clipboard?.writeText(entry.path).then(
+    () => toast.success(`已复制 ${relativeToProject(project, entry.path)} 的完整路径`),
+    () => toast.warning(`无法写入剪贴板：${entry.path}`),
   );
 }
 
@@ -52,7 +52,7 @@ function Listing({ project, path, depth }: { project: Project; path: string; dep
   const entries = listing.data.path === path ? listing.data.entries : [];
   if (!entries.length) return <p className="py-1 text-xs text-muted-foreground" style={{ paddingLeft: `${26 + depth * 14}px` }}>空文件夹</p>;
   return (
-    <ul role={depth === 0 ? "tree" : "group"} aria-label={depth === 0 ? "项目文件" : undefined}>
+    <ul aria-label={depth === 0 ? "项目文件" : undefined}>
       {entries.map((entry) =>
         entry.kind === "directory" ? (
           <Directory key={entry.path} project={project} entry={entry} depth={depth} />
@@ -62,7 +62,7 @@ function Listing({ project, path, depth }: { project: Project; path: string; dep
               type="button"
               className={rowClass}
               style={{ paddingLeft: `${26 + depth * 14}px` }}
-              title={`${relativeToProject(project, entry.path)} · ${formatBytes(entry.size)}\n单击复制相对路径${desktop() ? "，双击用默认程序打开" : ""}`}
+              title={`${relativeToProject(project, entry.path)} · ${formatBytes(entry.size)}\n单击复制完整路径${desktop() ? "，双击用默认程序打开" : ""}`}
               onClick={() => copyPath(project, entry)}
               onDoubleClick={() => { void desktop()?.openPath(entry.path); }}
             >
