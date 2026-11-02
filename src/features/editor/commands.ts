@@ -7,6 +7,7 @@ type CommandSpec = {
   allowWhileTyping?: boolean;
   allowWhileDialog?: boolean;
   yieldToTextSelection?: boolean;
+  yieldWhenDisabled?: boolean;
 };
 
 /**
@@ -66,6 +67,8 @@ export const EDITOR_ACTIONS: {
     id: "Comfy.Canvas.PasteFromClipboard",
     label: "粘贴",
     shortcut: { key: "v", ctrl: true },
+    // With no copied nodes, Ctrl/⌘+V pastes files from the system clipboard instead (workflow-canvas.tsx).
+    yieldWhenDisabled: true,
   },
   duplicate: {
     id: "Comfy.Canvas.DuplicateSelected",

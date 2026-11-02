@@ -7,12 +7,14 @@ import type { CreateProjectRequest, Project, ProjectList } from "./types";
 
 export const projectKeys = { all: ["projects"] as const };
 
+export const projectsQuery = {
+  queryKey: projectKeys.all,
+  queryFn: () => api<ProjectList>("/projects"),
+  staleTime: 10_000,
+};
+
 export function useProjects() {
-  return useQuery({
-    queryKey: projectKeys.all,
-    queryFn: () => api<ProjectList>("/projects"),
-    staleTime: 10_000,
-  });
+  return useQuery(projectsQuery);
 }
 
 /** The open project. `undefined` while loading; `null` once the list says nothing is open. */

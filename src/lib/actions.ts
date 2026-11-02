@@ -64,6 +64,11 @@ export type Action = {
    * selected. Copy does this. Other chords still run.
    */
   yieldToTextSelection?: boolean;
+  /**
+   * Leave the chord to the browser while the command is disabled. Paste does this, so Ctrl/⌘+V with an empty
+   * node clipboard still fires the page's `paste` event (pasted files).
+   */
+  yieldWhenDisabled?: boolean;
 };
 
 export type ShortcutPlatform = "mac" | "other";
@@ -180,6 +185,7 @@ export function handleShortcutKey(actions: readonly Action[], event: KeyEvent, g
   );
   if (!action) return false;
   if (isActionEnabled(action)) action.run();
+  else if (action.yieldWhenDisabled) return false;
   return true;
 }
 

@@ -16,7 +16,7 @@ import { useHealthStatus } from "@/features/runs/queries";
 import { displayPath, filterProjects, openedLabel } from "@/features/workspace/projects";
 import { useCreateProject, useForgetProject, useOpenProject, useProjects, useReopenProject } from "@/features/workspace/queries";
 import type { CreateProjectRequest, Project } from "@/features/workspace/types";
-import { desktop } from "@/lib/desktop";
+import { nativeFiles } from "@/lib/desktop";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import { NewProjectDialog } from "./new-project-dialog";
@@ -88,7 +88,7 @@ export function WelcomeView({ projects, home, environment, busyId, onNew, onOpen
           const file = event.dataTransfer.files[0];
           if (!onDropPath || !file) return;
           event.preventDefault();
-          const path = desktop()?.pathForFile(file);
+          const path = nativeFiles()?.pathForFile(file);
           if (path) onDropPath(path);
         }}
       >
@@ -137,8 +137,8 @@ export function WelcomeView({ projects, home, environment, busyId, onNew, onOpen
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    {desktop() ? (
-                      <DropdownMenuItem onSelect={() => void desktop()?.showItemInFolder(project.path)}>
+                    {nativeFiles() ? (
+                      <DropdownMenuItem onSelect={() => void nativeFiles()?.showItemInFolder(project.path)}>
                         <FolderOpen />
                         在文件管理器中显示
                       </DropdownMenuItem>
@@ -176,7 +176,7 @@ export function WelcomePage() {
   const fail = (error: Error) => toast.error(error.message);
 
   const openDirectory = async () => {
-    const bridge = desktop();
+    const bridge = nativeFiles();
     if (!bridge) { setBrowsing(true); return; }
     const [picked] = await bridge.pickPath({ kind: "directory", title: "打开目录作为项目" });
     if (picked) openPath.mutate(picked, { onSuccess: enter, onError: fail });
@@ -200,7 +200,7 @@ export function WelcomePage() {
           onSuccess: () => toast.info(`已从列表移除「${project.name}」，文件夹还在 ${project.path}`),
           onError: fail,
         })}
-        onDropPath={desktop() ? (path) => openPath.mutate(path, { onSuccess: enter, onError: fail }) : undefined}
+        onDropPath={nativeFiles() ? (path) => openPath.mutate(path, { onSuccess: enter, onError: fail }) : undefined}
       />
       <NewProjectDialog
         open={creating}

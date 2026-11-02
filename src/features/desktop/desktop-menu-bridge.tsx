@@ -4,11 +4,12 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 
 import { useLayoutStore } from "@/components/layout/layout-store";
+import { PathBrowserDialog } from "@/features/files/components/path-input";
 import { useFsListing } from "@/features/files/queries";
 import { NewProjectDialog } from "@/features/workspace/components/new-project-dialog";
 import { useCloseProject, useCreateProject, useOpenProject, useProjects, useReopenProject } from "@/features/workspace/queries";
 import type { CreateProjectRequest } from "@/features/workspace/types";
-import { desktop, type DesktopMenuAction } from "@/lib/desktop";
+import { desktop, nativeFiles, type DesktopMenuAction } from "@/lib/desktop";
 import { toast } from "@/lib/toast";
 import { useIsDesktop } from "@/lib/use-desktop";
 import { projectMenuState } from "./project-menu";
@@ -32,7 +33,8 @@ function MenuBridge() {
   const close = useCloseProject();
   const togglePanel = useLayoutStore((state) => state.togglePanel);
   const [creating, setCreating] = React.useState(false);
-  const home = useFsListing(undefined, creating).data?.home;
+  const [browsing, setBrowsing] = React.useState(false);
+  const home = useFsListing(undefined, creating || browsing).data?.home;
 
   React.useEffect(() => {
     if (projects.data) desktop()?.setProjectMenu?.(projectMenuState(projects.data));
@@ -48,7 +50,10 @@ function MenuBridge() {
         setCreating(true);
         return;
       case "open-folder": {
-        const [picked] = (await desktop()?.pickPath({ kind: "directory", title: "打开目录作为项目" })) ?? [];
+        // A remote backend cannot use this computer's folders: browse the server instead.
+        const bridge = nativeFiles();
+        if (!bridge) { setBrowsing(true); return; }
+        const [picked] = await bridge.pickPath({ kind: "directory", title: "打开目录作为项目" });
         if (picked) openPath.mutate(picked, { onSuccess: enter, onError: fail });
         return;
       }
@@ -67,13 +72,23 @@ function MenuBridge() {
   React.useEffect(() => desktop()?.onMenuAction?.((action) => void handle(action)), []);
 
   return (
-    <NewProjectDialog
-      open={creating}
-      onOpenChange={setCreating}
-      defaultParent={home ?? ""}
-      pending={create.isPending}
-      error={create.error?.message}
-      onCreate={(request: CreateProjectRequest) => create.mutate(request, { onSuccess: () => { setCreating(false); enter(); } })}
-    />
+    <>
+      <NewProjectDialog
+        open={creating}
+        onOpenChange={setCreating}
+        defaultParent={home ?? ""}
+        pending={create.isPending}
+        error={create.error?.message}
+        onCreate={(request: CreateProjectRequest) => create.mutate(request, { onSuccess: () => { setCreating(false); enter(); } })}
+      />
+      {browsing ? (
+        <PathBrowserDialog
+          open={browsing}
+          onOpenChange={setBrowsing}
+          options={{ kind: "directory", title: "打开目录作为项目", defaultPath: home }}
+          onPick={(path) => openPath.mutate(path, { onSuccess: enter, onError: fail })}
+        />
+      ) : null}
+    </>
   );
 }

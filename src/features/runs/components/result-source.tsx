@@ -6,7 +6,7 @@ import { ClipboardCopy, ExternalLink, FolderSearch, NotebookText, Workflow } fro
 import { Button } from "@/components/ui/button";
 import { useModuleCatalog } from "@/features/workflow/queries";
 import type { WorkflowDoc } from "@/features/workflow/types";
-import { desktop } from "@/lib/desktop";
+import { nativeFiles } from "@/lib/desktop";
 import { toast } from "@/lib/toast";
 import { notebookSnippet, traceResult } from "../trace";
 import type { ResultFile, TaskRecord } from "../types";
@@ -18,7 +18,7 @@ import type { ResultFile, TaskRecord } from "../types";
 export function ResultSource({ file, fullPath, workflow, tasks }: { file: ResultFile; fullPath: string; workflow?: WorkflowDoc; tasks: TaskRecord[] }) {
   const catalog = useModuleCatalog();
   const source = workflow ? traceResult(file, workflow, catalog.data?.index, tasks) : undefined;
-  const bridge = desktop();
+  const bridge = nativeFiles();
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground" aria-label="结果来源">
       {source && (

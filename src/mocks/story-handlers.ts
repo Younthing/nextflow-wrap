@@ -59,6 +59,15 @@ export const storyProject: Project = {
 /** Deterministic, read-only fixtures. Unknown APIs fail here instead of reaching a runner. */
 export const storyHandlers = [
   ...kernelHandlers,
+  // Uploads go into the story project's data/; the bytes are dropped.
+  http.post("/api/fs/reserve", async ({ request }) => {
+    const { name } = await request.json() as { name: string };
+    return HttpResponse.json({ name, path: `${storyProject.path}/data/${name}` }, { status: 201 });
+  }),
+  http.put("/api/fs/upload", async ({ request }) => {
+    const path = new URL(request.url).searchParams.get("path") ?? "";
+    return HttpResponse.json({ path: `${storyProject.path}/data/${path}`, bytes: (await request.arrayBuffer()).byteLength }, { status: 201 });
+  }),
   ...fsHandlers,
   ...settingsHandlers,
   ...storageHandlers,

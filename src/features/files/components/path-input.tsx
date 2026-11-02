@@ -6,10 +6,9 @@ import { File, FolderOpen, Folder, ArrowUp, Home } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { desktop, type PickPathOptions } from "@/lib/desktop";
-import { toast } from "@/lib/toast";
+import { nativeFiles, type PickPathOptions } from "@/lib/desktop";
 import { cn } from "@/lib/utils";
-import { useFsListing } from "../queries";
+import { useFileIntake, useFsListing } from "../queries";
 import type { FsEntry } from "../types";
 
 const sizeLabel = (bytes?: number) => {
@@ -96,8 +95,9 @@ export function PathBrowserDialog({
 }
 
 /**
- * Text field for a local path with a browse button and a drop target. The desktop app opens the native dialog and
- * reads dropped files' real paths; the web build browses the runner machine instead.
+ * Text field for a server path with a browse button, a drop target and file paste. With native paths (desktop app
+ * on the server's machine or WSL) it opens the native dialog and uses dropped files where they are; otherwise it
+ * browses the server and uploads dropped or pasted files into the project's `data/`.
  */
 export function PathInput({
   value,
@@ -115,8 +115,12 @@ export function PathInput({
   const [browsing, setBrowsing] = React.useState(false);
   const [dragging, setDragging] = React.useState(false);
   const options: PickPathOptions = { kind, extensions, defaultPath: value || undefined };
+  const intake = useFileIntake();
+  const take = (transfer: DataTransfer) => {
+    void intake(transfer).then(([first]) => { if (first) onChange(first.path); });
+  };
   const browse = async () => {
-    const bridge = desktop();
+    const bridge = nativeFiles();
     if (!bridge) { setBrowsing(true); return; }
     const [picked] = await bridge.pickPath(options);
     if (picked) onChange(picked);
@@ -128,12 +132,15 @@ export function PathInput({
       onDragLeave={() => setDragging(false)}
       onDrop={(event) => {
         setDragging(false);
-        const file = event.dataTransfer.files[0];
-        if (!file) return;
+        if (!event.dataTransfer.files.length) return;
         event.preventDefault();
-        const path = desktop()?.pathForFile(file);
-        if (path) onChange(path);
-        else toast.warning("浏览器拿不到文件的本机路径，请用「浏览」选择，或在桌面版里拖入");
+        take(event.dataTransfer);
+      }}
+      onPaste={(event) => {
+        // Text pastes into the field as usual; only pasted files are taken.
+        if (!event.clipboardData.files.length) return;
+        event.preventDefault();
+        take(event.clipboardData);
       }}
     >
       <Input value={value} onChange={(event) => onChange(event.target.value)} className={cn("font-mono", className)} {...props} />

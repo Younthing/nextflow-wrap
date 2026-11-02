@@ -66,6 +66,13 @@ describe("handleShortcutKey", () => {
     expect(action.run).not.toHaveBeenCalled();
   });
 
+  it("leaves the chord to the browser when a disabled command yields", () => {
+    const paste: Action = { id: "paste", label: "粘贴", shortcut: { key: "v", ctrl: true }, enabled: () => false, yieldWhenDisabled: true, run: vi.fn() };
+    expect(handleShortcutKey([paste], { key: "v", ctrlKey: true }, idle)).toBe(false);
+    expect(handleShortcutKey([{ ...paste, enabled: () => true }], { key: "v", ctrlKey: true }, idle)).toBe(true);
+    expect(paste.run).toHaveBeenCalledTimes(1);
+  });
+
   it("treats Shift+1 as the digit chord, and lets an open menu keep the key", () => {
     const fit: Action = {
       id: "Comfy.Canvas.FitView",

@@ -11,7 +11,7 @@ import type { FsEntry } from "@/features/files/types";
 import type { NotebookSummary } from "@/features/notebook/types";
 import { formatBytes } from "@/features/runs/format";
 import type { Project } from "@/features/workspace/types";
-import { desktop } from "@/lib/desktop";
+import { nativeFiles } from "@/lib/desktop";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 
@@ -62,9 +62,9 @@ function Listing({ project, path, depth }: { project: Project; path: string; dep
               type="button"
               className={rowClass}
               style={{ paddingLeft: `${26 + depth * 14}px` }}
-              title={`${relativeToProject(project, entry.path)} · ${formatBytes(entry.size)}\n单击复制完整路径${desktop() ? "，双击用默认程序打开" : ""}`}
+              title={`${relativeToProject(project, entry.path)} · ${formatBytes(entry.size)}\n单击复制完整路径${nativeFiles() ? "，双击用默认程序打开" : ""}`}
               onClick={() => copyPath(project, entry)}
-              onDoubleClick={() => { void desktop()?.openPath(entry.path); }}
+              onDoubleClick={() => { void nativeFiles()?.openPath(entry.path); }}
             >
               <File className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
               <span className="truncate">{entry.name}</span>

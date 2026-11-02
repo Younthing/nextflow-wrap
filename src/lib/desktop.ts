@@ -29,9 +29,22 @@ export type DesktopMenuAction =
   | { type: "close-project" }
   | { type: "toggle-panel"; panel: "nav" | "explorer" };
 
+/**
+ * Where the server this window talks to runs. `nativePaths` is false when paths on this computer mean nothing to
+ * the server (a remote machine): native dialogs, dropped-file paths and "show in folder" are then unavailable and
+ * the page browses the server and uploads instead. WSL maps paths both ways, so it keeps them.
+ */
+export interface DesktopBackend {
+  kind: "local" | "wsl" | "ssh" | "url";
+  label: string;
+  nativePaths: boolean;
+}
+
 export interface StudioDesktop {
   version: string;
   platform: string;
+  /** Missing in shells from before remote backends; those always run the server locally. */
+  backend?: DesktopBackend;
   /** Native open dialog. Resolves to absolute paths, empty when cancelled. */
   pickPath: (options: PickPathOptions) => Promise<string[]>;
   /** Absolute path of a file dragged in from Finder or a file manager. */
@@ -53,3 +66,12 @@ declare global {
 
 export const desktop = (): StudioDesktop | undefined => (typeof window === "undefined" ? undefined : window.studioDesktop);
 export const isDesktop = () => desktop() !== undefined;
+
+/**
+ * The bridge, when paths on this computer are paths on the server: native file dialogs, real paths of dropped
+ * files, show in folder and open with the default app. `undefined` in a browser and for a remote backend.
+ */
+export const nativeFiles = (): StudioDesktop | undefined => {
+  const bridge = desktop();
+  return bridge && bridge.backend?.nativePaths !== false ? bridge : undefined;
+};

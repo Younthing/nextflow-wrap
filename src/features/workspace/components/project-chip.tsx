@@ -6,7 +6,7 @@ import { ChevronDown, FolderOpen, LogOut } from "lucide-react";
 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useCloseProject, useCurrentProject } from "@/features/workspace/queries";
-import { desktop } from "@/lib/desktop";
+import { nativeFiles } from "@/lib/desktop";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import { ProjectBadge } from "./project-badge";
@@ -34,7 +34,7 @@ export function ProjectChip({ collapsed = false }: { collapsed?: boolean }) {
       </Link>
     );
   }
-  const bridge = desktop();
+  const bridge = nativeFiles();
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>

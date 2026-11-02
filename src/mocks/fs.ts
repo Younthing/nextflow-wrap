@@ -74,15 +74,54 @@ function createdTree(): Record<string, FsEntry[]> {
   return tree;
 }
 
+/** Files "uploaded" in the demo, by folder, so the picker and the data/ folder show them. */
+const uploads: Record<string, FsEntry[]> = {};
+
+function uploadedTree(tree: Record<string, FsEntry[]>): Record<string, FsEntry[]> {
+  const merged: Record<string, FsEntry[]> = {};
+  for (const [dir, entries] of Object.entries(uploads)) merged[dir] = [...(tree[dir] ?? []), ...entries.filter((entry) => !(tree[dir] ?? []).some((known) => known.path === entry.path))];
+  return merged;
+}
+
 export const knownDirectory = (path: string) => path in TREE || path in createdTree();
+
+function addUpload(path: string, kind: FsEntry["kind"], size?: number) {
+  const dir = path.slice(0, path.lastIndexOf("/"));
+  const list = (uploads[dir] ??= []);
+  if (!list.some((entry) => entry.path === path)) list.push({ name: path.slice(dir.length + 1), path, kind, size });
+  if (kind === "directory") uploads[path] ??= [];
+}
 
 export const fsHandlers = [
   http.get("/api/fs/list", ({ request }) => {
-    const tree = { ...TREE, ...createdTree() };
+    const base = { ...TREE, ...createdTree() };
+    const tree = { ...base, ...uploadedTree(base) };
     const requested = new URL(request.url).searchParams.get("path") ?? "/home/demo";
     const up = requested.slice(0, requested.lastIndexOf("/"));
     const path = tree[requested] ? requested : up in tree ? up : "/home/demo";
     const parent = path === "/home/demo" ? "/home" : path.slice(0, path.lastIndexOf("/"));
     return HttpResponse.json<FsListing>({ path, parent: path === "/home" ? undefined : parent, entries: tree[path] ?? [], home: "/home/demo" });
+  }),
+  // Upload into the project's data/: a free top-level name first, then the bytes (discarded in the demo).
+  http.post("/api/fs/reserve", async ({ request }) => {
+    const body = await request.json() as { project: string; name: string; kind: FsEntry["kind"] };
+    const project = readDb().projects[body.project];
+    if (!project) return HttpResponse.json({ message: "项目不存在" }, { status: 404 });
+    const data = `${project.path}/data`;
+    const taken = new Set([...(TREE[data] ?? []), ...(uploads[data] ?? [])].map((entry) => entry.name));
+    const dot = body.kind === "file" && body.name.lastIndexOf(".") > 0 ? body.name.lastIndexOf(".") : body.name.length;
+    let name = body.name;
+    for (let n = 1; taken.has(name); n++) name = `${body.name.slice(0, dot)} (${n})${body.name.slice(dot)}`;
+    addUpload(`${data}/${name}`, body.kind, body.kind === "file" ? 0 : undefined);
+    return HttpResponse.json({ name, path: `${data}/${name}` }, { status: 201 });
+  }),
+  http.put("/api/fs/upload", async ({ request }) => {
+    const url = new URL(request.url);
+    const project = readDb().projects[url.searchParams.get("project") ?? ""];
+    if (!project) return HttpResponse.json({ message: "项目不存在" }, { status: 404 });
+    const bytes = (await request.arrayBuffer()).byteLength;
+    const path = `${project.path}/data/${url.searchParams.get("path")}`;
+    addUpload(path, "file", bytes);
+    return HttpResponse.json({ path, bytes }, { status: 201 });
   }),
 ];

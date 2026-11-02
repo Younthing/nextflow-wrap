@@ -214,7 +214,7 @@ describe("editor commands", () => {
     expect(copy).toHaveBeenCalledTimes(1);
   });
 
-  it("consumes copy, paste, delete, and fit when they have nothing to do", () => {
+  it("consumes copy, delete, and fit when they have nothing to do, and leaves paste to the browser", () => {
     const copy = vi.fn();
     const paste = vi.fn();
     const remove = vi.fn();
@@ -233,7 +233,8 @@ describe("editor commands", () => {
     );
     const idle = { typing: false, dialogOpen: false };
     expect(handleShortcutKey(actions, press("c", { ctrlKey: true }), idle)).toBe(true);
-    expect(handleShortcutKey(actions, press("v", { ctrlKey: true }), idle)).toBe(true);
+    // An empty node clipboard lets the browser fire `paste`, so pasted files reach the canvas.
+    expect(handleShortcutKey(actions, press("v", { ctrlKey: true }), idle)).toBe(false);
     expect(handleShortcutKey(actions, press("Delete"), idle)).toBe(true);
     expect(handleShortcutKey(actions, press("Backspace"), idle)).toBe(true);
     expect(handleShortcutKey(actions, press("f"), idle)).toBe(true);

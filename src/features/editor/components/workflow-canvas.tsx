@@ -16,7 +16,7 @@ import "@xyflow/react/dist/style.css";
 
 import { FILE_ID, FOLDER_ID } from "@/features/workflow/builtins";
 import { resolveNodeDef } from "@/features/workflow/catalog";
-import { desktop } from "@/lib/desktop";
+import { useFileIntake, type IntakePath } from "@/features/files/queries";
 import { checkCompatibility, findPort } from "@/features/workflow/ports";
 import { EDITOR_CANVAS_CLASS, isEditableTarget } from "@/lib/actions";
 import { useShortcutLabels } from "@/lib/use-action-shortcuts";
@@ -44,19 +44,6 @@ import { ModuleNode } from "./module-node";
 import type { SearchRequest } from "./node-search-dialog";
 
 const nodeTypes = { module: ModuleNode };
-
-/** Real paths of files and folders dropped from the desktop. Only the desktop app can read them. */
-function droppedPaths(transfer: DataTransfer): { path: string; folder: boolean }[] {
-  const bridge = desktop();
-  if (!bridge) return [];
-  const items = Array.from(transfer.items).filter((item) => item.kind === "file");
-  return items.flatMap((item) => {
-    const file = item.getAsFile();
-    const path = file ? bridge.pathForFile(file) : undefined;
-    if (!path) return [];
-    return [{ path, folder: item.webkitGetAsEntry?.()?.isDirectory === true }];
-  });
-}
 
 export function WorkflowCanvas({
   onRequestSearch,
@@ -134,21 +121,26 @@ export function WorkflowCanvas({
     [index, onRequestSearch, screenToFlowPosition],
   );
 
+  const intake = useFileIntake();
+  /** File or folder input nodes for dropped or pasted files, stacked from a screen point. */
+  const placeFiles = React.useCallback(
+    (paths: IntakePath[], x: number, y: number) => {
+      paths.forEach(({ path, folder }, i) => {
+        const def = index.get(folder ? FOLDER_ID : FILE_ID);
+        if (!def) return;
+        addNode(def, screenToFlowPosition({ x: x - 120, y: y - 20 + i * 120 }), { path });
+      });
+    },
+    [addNode, index, screenToFlowPosition],
+  );
+
   const onDrop = React.useCallback(
     (e: React.DragEvent) => {
       if (e.defaultPrevented) return;
       if (e.dataTransfer.types.includes("Files")) {
         e.preventDefault();
-        const dropped = droppedPaths(e.dataTransfer);
-        if (!dropped.length) {
-          toast.warning("浏览器拿不到文件的本机路径，请在节点上用「浏览」选择，或在桌面版里拖入");
-          return;
-        }
-        dropped.forEach(({ path, folder }, i) => {
-          const def = index.get(folder ? FOLDER_ID : FILE_ID);
-          if (!def) return;
-          addNode(def, screenToFlowPosition({ x: e.clientX - 120, y: e.clientY - 20 + i * 120 }), { path });
-        });
+        const { clientX, clientY } = e;
+        void intake(e.dataTransfer).then((paths) => placeFiles(paths, clientX, clientY));
         return;
       }
       const id = e.dataTransfer.getData(MODULE_DRAG_TYPE);
@@ -160,7 +152,7 @@ export function WorkflowCanvas({
         screenToFlowPosition({ x: e.clientX - 120, y: e.clientY - 20 }),
       );
     },
-    [addNode, index, screenToFlowPosition],
+    [addNode, index, intake, placeFiles, screenToFlowPosition],
   );
 
   const onNodeContextMenu = React.useCallback(
@@ -178,6 +170,21 @@ export function WorkflowCanvas({
   );
 
   const surfaceRef = React.useRef<HTMLDivElement>(null);
+
+  // Files pasted while the canvas has focus (not a text field) become input nodes in the middle of the view.
+  // Ctrl/⌘+V reaches this only when the node clipboard is empty; see EDITOR_ACTIONS.paste.
+  React.useEffect(() => {
+    const onPaste = (event: ClipboardEvent) => {
+      const surface = surfaceRef.current;
+      if (!surface || !event.clipboardData?.files.length || isEditableTarget(event.target)) return;
+      if (document.querySelector("[role='dialog'][data-state='open']")) return;
+      event.preventDefault();
+      const rect = surface.getBoundingClientRect();
+      void intake(event.clipboardData).then((paths) => placeFiles(paths, rect.left + rect.width / 2, rect.top + rect.height / 2));
+    };
+    document.addEventListener("paste", onPaste);
+    return () => document.removeEventListener("paste", onPaste);
+  }, [intake, placeFiles]);
   const marqueeRef = React.useRef(false);
   const releaseMarquee = React.useCallback(() => {
     if (!marqueeRef.current) return;
