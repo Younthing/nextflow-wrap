@@ -20,8 +20,10 @@ export function groupSessions(runs: StoredExecution[]): SessionGroup[] {
   return [...groups].map(([key, members]) => ({ key, runs: members.sort((a, b) => a.detail.submittedAt.localeCompare(b.detail.submittedAt)) }));
 }
 
-/** Work root a run used: an absolute local path, or undefined for object storage. */
+/** Work root a run used: an absolute local path, or undefined for object storage and remote hosts. */
 export function localWorkRoot(run: StoredExecution): string | undefined {
+  // A run on a remote host keeps its task directories on that host's filesystem.
+  if (run.detail.launch.remote) return undefined;
   const workDir = run.detail.launch.workDir;
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(workDir)) return undefined;
   return isAbsolute(workDir) ? workDir : resolve(run.projectDir, "../work");
