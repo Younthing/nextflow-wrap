@@ -35,7 +35,7 @@ export class SshSession {
   /** Runs `command` on the host; with `stdout` the output streams there instead of being returned. */
   exec(command: string, options: Exec & { stdout?: NodeJS.WritableStream } = {}): Promise<string> {
     return new Promise((resolve, reject) => {
-      const child = spawn(sshBinary(this.env), [...this.args, command], { env: this.env, stdio: ["pipe", "pipe", "pipe"] });
+      const child = spawn(/* turbopackIgnore: true */ sshBinary(this.env), [...this.args, command], { env: this.env, stdio: ["pipe", "pipe", "pipe"] });
       let out = "";
       let err = "";
       const timer = setTimeout(() => child.kill("SIGTERM"), options.timeoutMs ?? 120_000);

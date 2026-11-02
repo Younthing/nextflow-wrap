@@ -60,7 +60,8 @@ export function probeScript(host: RemoteHost, extraTools: string[] = []): string
     `N=$(command -v ${nextflowCommand(host)} 2>/dev/null || true)`,
     'echo "@@NEXTFLOW $N"',
     `if [ -n "$N" ]; then echo "@@NFVERSION $(NXF_ANSI_LOG=false "$N" -version 2>&1 | grep -o 'version [0-9][^ ]*' | head -n 1)"; fi`,
-    'echo "@@JAVA $(java -version 2>&1 | head -n 1)"',
+    // JAVA_TOOL_OPTIONS makes java print a "Picked up" line first.
+    'echo "@@JAVA $(java -version 2>&1 | grep -i version | head -n 1)"',
     `for t in ${tools.join(" ")}; do if command -v "$t" >/dev/null 2>&1; then echo "@@TOOL $t"; fi; done`,
     "",
   ].filter((line, index) => line || index > 0).join("\n");

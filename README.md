@@ -139,6 +139,25 @@ runner 启动时写入一个内置示例流程（host-chain：用本机 shell �
 
 日志接口返回有界尾部，下载接口返回完整文件；HTML 使用去脚本的沙箱静态预览，完整交互报告可下载。
 
+### 远程集群（SSH）
+
+设置页「远程集群」保存登录节点（主机、用户、端口、私钥、集群上的基础目录、Nextflow 命令、登录后执行的一行命令），运行时选「从哪里启动 Nextflow」。runner 用系统 `ssh`（`BatchMode=yes`，控制套接字复用连接；脚本经 stdin 交给 `sh -s` / `bash -l -s`，不经登录 shell 解析）：
+
+1. 检查集群上的 Nextflow、调度器命令和运行时；
+2. 把流程的启动目录用 tar（保留修改时间，`-resume` 才能命中缓存）复制到 `<基础目录>/pipelines/<流程 id>/`，`run.config`、`params.json` 放到 `<基础目录>/runs/<运行 id>/`，默认 work 目录是 `<基础目录>/work`；
+3. 在登录节点上用 `setsid nohup` 启动 Nextflow（退出码写入 `exit-code`），记录 pid 和启动时间；
+4. 每 `NEXTFLOW_STUDIO_REMOTE_POLL_MS`（默认 10000）毫秒经 ssh 读一次存活状态、trace 和控制台尾部；取消发 SIGTERM，60 秒后 SIGKILL；ssh 断开 30 分钟内持续重试；runner 重启后按记录的 pid 重新接管；
+5. 结束后取回日志、报告、`.nextflow/history`（拿到 session 供续跑）和结果；结果超过 `NEXTFLOW_STUDIO_REMOTE_FETCH_MAX_MB`（默认 2048）时留在集群上。任务日志在查看时经 ssh 读取。
+
+`NEXTFLOW_STUDIO_SSH` 可换用别的 ssh 程序；`scripts/ssh-shim.sh` 把"远程"命令改在本机执行，测试和下面的验收用它，不需要真实集群：
+
+```bash
+NEXTFLOW_STUDIO_SSH=$PWD/scripts/ssh-shim.sh NEXTFLOW_STUDIO_REMOTE_POLL_MS=1000 pnpm runner   # 另开终端启动 web（同样的环境变量）
+pnpm smoke:remote # 测试连接 → 集群上运行成功 → 结果取回 → 经 ssh 读任务日志 → 集群缓存续跑 → 停止
+```
+
+云端执行器（AWS / Google / Azure Batch、Kubernetes）仍由本机 Nextflow 提交；设置页「云端凭据」里的 profile、区域、服务账号文件和账户名映射为 `AWS_PROFILE`、`AWS_REGION`、`GOOGLE_APPLICATION_CREDENTIALS`、`AZURE_BATCH_ACCOUNT_NAME` 等变量，访问密钥（`AWS_ACCESS_KEY_ID`、`AWS_SECRET_ACCESS_KEY`、`AZURE_BATCH_ACCOUNT_KEY`、`AZURE_STORAGE_ACCOUNT_KEY`）和 API key 一样只写、加密保存，runner 重启后生效。
+
 可执行完整 API 验收（需要 web 和 runner 都已启动，会新增验收记录）：
 
 ```bash
