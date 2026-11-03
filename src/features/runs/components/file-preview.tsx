@@ -58,7 +58,7 @@ export function FilePreview({ source, file, fullPath }: { source: PreviewSource;
       );
     }
     return (
-      <AsyncPlaceholder status="empty" className="flex-1" icon={<PackageOpen />} description={`无法预览的文件 · ${formatBytes(file.size)}`}>
+      <AsyncPlaceholder status="empty" className="flex-1" icon={<PackageOpen />} description={`二进制文件 · ${formatBytes(file.size)}`}>
         <code className="rounded bg-secondary px-2 py-1 font-mono text-xs">{fullPath}</code>
       </AsyncPlaceholder>
     );
