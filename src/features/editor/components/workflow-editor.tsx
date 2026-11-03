@@ -6,7 +6,7 @@ import { ReactFlowProvider, useReactFlow } from "@xyflow/react";
 import { PanelLoading, PanelNotice } from "@/components/ui/panel-notice";
 
 import { Button } from "@/components/ui/button";
-import { EditorAssistant } from "@/features/assistant/editor-assistant";
+import { EditorAssistant } from "@/features/assistant/surfaces/canvas";
 import { ExportProjectDialog } from "@/features/runs/components/export-project-dialog";
 import { RunSettingsDialog } from "@/features/runs/components/run-settings-dialog";
 import { useRunNow } from "@/features/runs/use-run-now";

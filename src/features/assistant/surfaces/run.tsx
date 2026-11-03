@@ -4,43 +4,14 @@ import * as React from "react";
 import { useAgentContext, useConfigureSuggestions, useFrontendTool, type JsonSerializable } from "@copilotkit/react-core/v2";
 import { z } from "zod";
 
+import { findTask, runSummary } from "@/features/runs/assistant-actions";
 import { fetchRunLog, fetchTaskLog, isActive } from "@/features/runs/queries";
 import type { RunDetail, TaskRecord } from "@/features/runs/types";
-import { useAssistantStatus } from "./assistant-provider";
-import { useAssistantModule } from "./modules/activation";
-import { moduleTool } from "./modules/contract";
-import { RUN_LOG_TAIL, runDiagnosticsModule } from "./modules/run-diagnostics";
-import { RunControlTools } from "./run-control-tools";
-
-/** What the assistant needs to explain a run, without the generated files. */
-export function runSummary(run: RunDetail, tasks: TaskRecord[]) {
-  const alias = new Map(run.workflow.nodes.map((n) => [n.id, n.data.alias]));
-  const failed = tasks.filter((t) => t.status === "failed");
-  return {
-    runId: run.id,
-    runName: run.runName,
-    workflow: run.workflowName,
-    status: run.status,
-    ...(run.errorMessage && { errorMessage: run.errorMessage }),
-    executor: run.executor,
-    profile: run.profile,
-    command: run.command,
-    params: run.params,
-    progress: run.progress,
-    failedTasks: failed.map((t) => ({
-      id: t.id ?? t.hash,
-      attempt: t.attempt,
-      name: t.name,
-      hash: t.hash,
-      node: alias.get(t.nodeId),
-      exitStatus: t.exitStatus,
-      cpus: t.cpus,
-      peakRss: t.peakRss,
-      workdir: t.workdir,
-    })),
-    edges: run.workflow.edges.map((e) => `${alias.get(e.source)} -> ${alias.get(e.target)}`),
-  };
-}
+import { useAssistantStatus } from "../assistant-provider";
+import { useAssistantModule } from "../modules/activation";
+import { moduleTool } from "../modules/contract";
+import { RUN_LOG_TAIL, runDiagnosticsModule } from "../modules/run-diagnostics";
+import { RunControlTools } from "./run-control";
 
 function RunTools({ run, tasks }: { run: RunDetail; tasks: TaskRecord[] }) {
   const summary = React.useMemo(() => runSummary(run, tasks), [run, tasks]);
@@ -61,7 +32,7 @@ function RunTools({ run, tasks }: { run: RunDetail; tasks: TaskRecord[] }) {
       description: moduleTool(runDiagnosticsModule, "get_task_log").description,
       parameters: z.object({ task: z.string().describe("任务哈希（如 3f/a1b2c3）或任务名（如 FASTQC (S1)）") }),
       handler: async ({ task }) => {
-        const match = tasks.find((t) => t.id === task || t.hash === task || t.name === task);
+        const match = findTask(tasks, task);
         if (!match) return { error: `找不到任务 ${task}` };
         const { text } = await fetchTaskLog(run.id, match.id ?? match.hash);
         return { task: match.name, status: match.status, exitStatus: match.exitStatus, log: text };

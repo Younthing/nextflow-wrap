@@ -4,7 +4,7 @@ import { createEditorStore, type EditorStore } from "@/features/editor/store";
 import { indexModules } from "@/features/workflow/catalog";
 import { emptyWorkflow } from "@/features/workflow/document";
 import { FIXTURE_FASTQ_QC_ID, FIXTURE_MODULES, FIXTURE_REPORT_ID, FIXTURE_TRIM_ID } from "@/features/workflow/fixture-modules";
-import { createEditorActions } from "./editor-actions";
+import { createEditorActions } from "./assistant-actions";
 
 let store: EditorStore;
 let actions: ReturnType<typeof createEditorActions>;

@@ -15,18 +15,15 @@ export const HOST_PROMPT = `你是 Nextflow Studio 里的 AI 助手。Nextflow S
 - 返回 declined 表示用户没有确认，不要立刻再次调用，除非用户明确改口。返回 blocked 和 problems 时说明原因，不要擅自重试。`;
 
 /**
- * `undefined` keeps the modules marked `defaultActive` (editor and run, so a
- * request that never names modules still matches the previous assistant).
- * An array, including an empty one, selects exactly those known ids.
- * Unknown ids are ignored. Order follows the registry, not the request.
+ * Exactly the known ids the client mounted. Unknown ids are ignored and an
+ * empty list selects nothing. Order follows the registry, not the request.
  */
-export function selectAssistantModules(moduleIds?: readonly string[]): readonly AssistantModule[] {
-  if (moduleIds === undefined) return ASSISTANT_MODULES.filter((module) => module.defaultActive);
+export function selectAssistantModules(moduleIds: readonly string[]): readonly AssistantModule[] {
   const wanted = new Set(moduleIds);
   return ASSISTANT_MODULES.filter((module) => wanted.has(module.id));
 }
 
-export function composeAssistantPrompt(moduleIds?: readonly string[]): string {
+export function composeAssistantPrompt(moduleIds: readonly string[]): string {
   const parts = [HOST_PROMPT, ...selectAssistantModules(moduleIds).map((module) => module.prompt)];
   return parts.map((part) => part.trim()).filter(Boolean).join("\n\n");
 }

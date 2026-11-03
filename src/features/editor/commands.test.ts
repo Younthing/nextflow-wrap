@@ -118,7 +118,7 @@ describe("editor commands", () => {
     expect(readme).toContain("或 / 打开节点搜索");
     expect(readme).toContain("Esc 取消选择");
     expect(readme).toContain(`F 或 ${shortcutHint(combosOf(EDITOR_ACTIONS.fit)[1]!)}`);
-    expect(composeAssistantPrompt()).toContain(shortcutHint(EDITOR_ACTIONS.undo.shortcut));
+    expect(composeAssistantPrompt(["canvas-edit"])).toContain(shortcutHint(EDITOR_ACTIONS.undo.shortcut));
   });
 
   it("runs canvas chords only when the canvas has the keyboard", () => {

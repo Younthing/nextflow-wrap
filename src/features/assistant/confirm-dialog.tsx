@@ -5,7 +5,7 @@ import { Check, Info, Loader2, Square, Undo2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import type { RunConfirmView } from "./run-actions";
+import type { ConfirmView } from "./confirm";
 
 /** Above CopilotKit's sidebar (z-index 1100) so the confirm stays in front of the chat. */
 const LAYER = "z-[1200]";
@@ -16,7 +16,7 @@ const LAYER = "z-[1200]";
  * `true`. `info` has a single 好 button because the action cannot run.
  * Stop uses the destructive `delete` row, labeled 停止 rather than 删除.
  */
-export function RunConfirmDialog({
+export function ConfirmDialog({
   open,
   view,
   busy,
@@ -24,7 +24,7 @@ export function RunConfirmDialog({
   onDismiss,
 }: {
   open: boolean;
-  view: RunConfirmView | null;
+  view: ConfirmView | null;
   busy: boolean;
   onConfirm: () => void;
   onDismiss: () => void;
@@ -80,18 +80,18 @@ export function RunConfirmDialog({
   );
 }
 
-export interface RunConfirmApi {
-  view: RunConfirmView | null;
+export interface ConfirmDialogApi {
+  view: ConfirmView | null;
   busy: boolean;
-  ask: (view: RunConfirmView) => Promise<true | null>;
+  ask: (view: ConfirmView) => Promise<true | null>;
   confirm: () => void;
   dismiss: () => void;
   close: () => void;
 }
 
 /** One confirmation at a time. Unmount, or asking after it, counts as cancel. */
-export function useRunConfirm(): RunConfirmApi {
-  const [view, setView] = React.useState<RunConfirmView | null>(null);
+export function useConfirmDialog(): ConfirmDialogApi {
+  const [view, setView] = React.useState<ConfirmView | null>(null);
   const [busy, setBusy] = React.useState(false);
   const busyRef = React.useRef(false);
   const pending = React.useRef<((decision: true | null) => void) | null>(null);
@@ -125,7 +125,7 @@ export function useRunConfirm(): RunConfirmApi {
     setView(null);
   }, [setBusyState]);
 
-  const ask = React.useCallback((next: RunConfirmView) => {
+  const ask = React.useCallback((next: ConfirmView) => {
     // Preparation can finish after the editor unmounts. The chat provider
     // stays mounted, so a promise with no dialog would never settle.
     if (!mounted.current || busyRef.current) return Promise.resolve(null);

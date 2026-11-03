@@ -18,24 +18,27 @@ import {
   rememberLaunchConfig,
 } from "@/features/runs/saved-launch";
 import { useSaveWorkflow } from "@/features/workflow/queries";
-import { loadHealth, loadCatalog } from "./queries";
-import { useAssistantPanel } from "./assistant-provider";
-import { canvasEditModule } from "./modules/canvas-edit";
-import { moduleTool } from "./modules/contract";
-import { RunConfirmDialog, subscribeAbort, useRunConfirm } from "./run-confirm";
-import { RunToolCard } from "./run-tool-card";
 import {
-  clipReason,
-  confirmThenRun,
-  createConfirmQueue,
-  declinedResult,
   ensureWorkflowSaved,
   prepareStartRun,
-  runToolParameters,
   startConfirmView,
   startPlanStamp,
   type StartRunPlan,
-} from "./run-actions";
+} from "@/features/editor/assistant-start-run";
+import type { AcceptedRun } from "@/features/runs/assistant-actions";
+import { loadHealth, loadCatalog } from "../queries";
+import { useAssistantPanel } from "../assistant-provider";
+import {
+  clipReason,
+  confirmReasonParameters,
+  confirmThenRun,
+  createConfirmQueue,
+  declinedResult,
+} from "../confirm";
+import { ConfirmDialog, subscribeAbort, useConfirmDialog } from "../confirm-dialog";
+import { ConfirmToolCard } from "../confirm-tool-card";
+import { canvasEditModule } from "../modules/canvas-edit";
+import { moduleTool } from "../modules/contract";
 
 /**
  * `start_run` for the editor. The handler does not call the launch API until
@@ -48,7 +51,7 @@ export function StartRunTool() {
   const router = useRouter();
   const qc = useQueryClient();
   const { setOpen } = useAssistantPanel();
-  const confirm = useRunConfirm();
+  const confirm = useConfirmDialog();
   const live = React.useRef({
     launch,
     save,
@@ -66,14 +69,14 @@ export function StartRunTool() {
   useFrontendTool({
     name: moduleTool(canvasEditModule, "start_run").name,
     description: moduleTool(canvasEditModule, "start_run").description,
-    parameters: runToolParameters,
+    parameters: confirmReasonParameters,
     handler: (args, context) =>
       queue.current(() => startRun(args.reason, context, live)),
-    render: RunToolCard,
+    render: ConfirmToolCard,
   });
 
   return (
-    <RunConfirmDialog
+    <ConfirmDialog
       open={confirm.view !== null}
       view={confirm.view}
       busy={confirm.busy}
@@ -93,7 +96,7 @@ async function startRun(
     router: ReturnType<typeof useRouter>;
     qc: ReturnType<typeof useQueryClient>;
     setOpen: (open: boolean) => void;
-    confirm: ReturnType<typeof useRunConfirm>;
+    confirm: ReturnType<typeof useConfirmDialog>;
   }>,
 ) {
   if (context?.isReplay)
@@ -141,7 +144,7 @@ async function startRun(
           return ["确认时流程或启动设置已变化，没有启动。请再试一次。"];
         return fresh.problems;
       },
-      execute: async () => {
+      execute: async (): Promise<AcceptedRun> => {
         const latest = store.getState();
         if (latest.docId && selectIsDirty(latest)) {
           const saved = await ensureWorkflowSaved(

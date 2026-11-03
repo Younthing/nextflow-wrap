@@ -13,23 +13,15 @@ import {
   useEditorStore,
   useEditorStoreApi,
 } from "@/features/editor/editor-provider";
-import { useAssistantStatus } from "./assistant-provider";
-import { createEditorActions } from "./editor-actions";
-import { useAssistantModule } from "./modules/activation";
-import { canvasEditModule } from "./modules/canvas-edit";
-import { moduleTool } from "./modules/contract";
-import { StartRunTool } from "./start-run-tool";
+import { createEditorActions } from "@/features/editor/assistant-actions";
+import { useAssistantStatus } from "../assistant-provider";
+import { attempt } from "./attempt";
+import { useAssistantModule } from "../modules/activation";
+import { canvasEditModule } from "../modules/canvas-edit";
+import { moduleTool } from "../modules/contract";
+import { StartRunTool } from "./canvas-start-run";
 
 const widgetValue = z.union([z.string(), z.number(), z.boolean()]);
-
-/** Runs an action and hands the model either its result or the error to fix. */
-function attempt<T>(fn: () => T): Promise<T | { error: string }> {
-  try {
-    return Promise.resolve(fn());
-  } catch (err) {
-    return Promise.resolve({ error: (err as Error).message });
-  }
-}
 
 function EditorTools({ onCanvasChange }: { onCanvasChange: () => void }) {
   const store = useEditorStoreApi();

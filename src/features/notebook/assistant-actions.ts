@@ -1,0 +1,232 @@
+import { infoConfirmView, type AcceptedResult, type ConfirmView } from "@/features/assistant/confirm";
+import { insertCellAt, removeCell } from "./edit";
+import { segmentsOf } from "./outputs";
+import type { CellRunResult, NotebookCell, NotebookCellRole, NotebookDoc, NotebookRunResult } from "./types";
+
+/*
+ * What the notebook assistant can see and do, mirroring VS Code's notebook
+ * tools (GetNotebookSummary, EditNotebook, RunNotebookCell, ReadCellOutput).
+ * Everything goes through {@link NotebookCommands}, the same draft, autosave,
+ * and run path the editor's buttons use. Failures throw with a message the
+ * model can read and correct itself from.
+ */
+
+export const NOTEBOOK_CELL_KINDS = ["code", "markdown", "input", "output", "explore"] as const satisfies readonly NotebookCellRole[];
+
+/** Text the model gets back per stream, so a chatty cell cannot flood the turn. */
+export const NOTEBOOK_OUTPUT_LIMIT = 4_000;
+const PREVIEW_LINES = 3;
+const PREVIEW_CHARS = 240;
+
+/** The open notebook as the editor holds it, and the commands its toolbar and keyboard use. */
+export interface NotebookCommands {
+  /** Latest draft (unsaved edits included), outputs shown under each cell, and whether a run is in flight. */
+  read(): { doc: NotebookDoc; outputs: Readonly<Record<string, CellRunResult>>; busy: boolean };
+  /** Replaces the cells as one edit. The editor autosaves it like a keystroke. */
+  setCells(cells: NotebookCell[], select?: string): void;
+  /** Saves a dirty draft, then runs one cell like Shift+Enter. Rejects with the API error. */
+  runCell(cellId: string): Promise<NotebookRunResult>;
+}
+
+export type NotebookEditType = "insert" | "delete" | "edit";
+
+export interface NotebookEditInput {
+  editType: NotebookEditType;
+  /** Target for edit/delete. For insert: the cell to insert below, or `TOP` / `BOTTOM`. */
+  cellId?: string;
+  kind?: NotebookCellRole;
+  source?: string;
+}
+
+export interface NotebookCellOutputView {
+  cellId: string;
+  status: "ok" | "error";
+  executionCount?: number;
+  stdout?: string;
+  stderr?: string;
+  error?: string;
+  /** Rich results (tables, images, HTML) by MIME type; the model only gets text/plain. */
+  results?: { mime: string[]; text?: string }[];
+}
+
+export interface RanNotebookCell extends AcceptedResult, NotebookCellOutputView {
+  /** Cells the run executed, including earlier ones for a one-shot (R) run. */
+  ranCells: number;
+  kernelNote?: string;
+}
+
+export function newNotebookCell(role: NotebookCellRole, source = ""): NotebookCell {
+  return { id: `c_${Math.random().toString(36).slice(2, 8)}`, role, source };
+}
+
+function clip(text: string, limit = NOTEBOOK_OUTPUT_LIMIT): string {
+  if (text.length <= limit) return text;
+  return `${text.slice(0, limit)}\n…（已截断，共 ${text.length} 字符）`;
+}
+
+function preview(source: string): string {
+  const lines = source.split("\n");
+  const head = lines.slice(0, PREVIEW_LINES).join("\n");
+  const shown = head.length > PREVIEW_CHARS ? `${head.slice(0, PREVIEW_CHARS)}…` : head;
+  return lines.length > PREVIEW_LINES && shown === head ? `${shown}\n…` : shown;
+}
+
+function isKind(value: unknown): value is NotebookCellRole {
+  return typeof value === "string" && (NOTEBOOK_CELL_KINDS as readonly string[]).includes(value);
+}
+
+function findCell(doc: NotebookDoc, cellId: string | undefined): { cell: NotebookCell; index: number } {
+  const id = cellId?.trim();
+  if (!id) throw new Error("需要 cellId。先用 get_notebook_summary 查单元格 id");
+  const index = doc.cells.findIndex((cell) => cell.id === id);
+  const cell = doc.cells[index];
+  if (!cell) throw new Error(`找不到单元格 ${id}。先用 get_notebook_summary 查单元格 id`);
+  return { cell, index };
+}
+
+/** Text the model can read from one cell's output segments. */
+export function describeCellOutput(result: CellRunResult): NotebookCellOutputView {
+  const segments = segmentsOf(result);
+  const stdout = segments.flatMap((item) => (item.outputType === "stream" && item.name === "stdout" ? [item.text] : [])).join("");
+  const stderr = segments.flatMap((item) => (item.outputType === "stream" && item.name === "stderr" ? [item.text] : [])).join("");
+  const error = segments.find((item) => item.outputType === "error");
+  const results = segments.flatMap((item) => {
+    if (item.outputType !== "display_data" && item.outputType !== "execute_result") return [];
+    const text = item.data["text/plain"] ?? item.data["text/markdown"] ?? item.data["text/csv"];
+    return [{ mime: Object.keys(item.data), ...(text ? { text: clip(text) } : {}) }];
+  });
+  return {
+    cellId: result.id,
+    status: error ? "error" : "ok",
+    ...(result.executionCount !== undefined && { executionCount: result.executionCount }),
+    ...(stdout && { stdout: clip(stdout) }),
+    ...(stderr && { stderr: clip(stderr) }),
+    ...(error && { error: clip(error.traceback) }),
+    ...(results.length > 0 && { results }),
+  };
+}
+
+/** Why `run_notebook_cell` would refuse this cell right now. Empty means it can run. */
+export function runCellBlockers(state: ReturnType<NotebookCommands["read"]>, cellId: string): string[] {
+  const cell = state.doc.cells.find((item) => item.id === cellId);
+  if (!cell) return [`找不到单元格 ${cellId}。`];
+  if (cell.role === "markdown") return ["说明单元格不能运行，选一个代码单元格。"];
+  if (state.busy) return ["笔记本正在运行，等它结束再试。"];
+  return [];
+}
+
+/** The confirm shown before the assistant executes a cell, like VS Code's Run Notebook Cell prompt. */
+export function runCellConfirmView(doc: NotebookDoc, cellId: string, problems: string[], reason?: string): ConfirmView {
+  const index = doc.cells.findIndex((cell) => cell.id === cellId);
+  const label = index >= 0 ? `单元格 ${index + 1}` : cellId;
+  if (problems.length) {
+    return infoConfirmView("无法运行", `不能运行${label}。`, problems, "用户关闭了确认，没有运行单元格。", reason);
+  }
+  const source = doc.cells[index]?.source ?? "";
+  const oneshot = doc.language !== "python";
+  return {
+    title: "运行单元格",
+    message: oneshot
+      ? `将在「${doc.name}」的项目目录里从第一格运行到${label}。点确认之后才会执行。`
+      : `将在「${doc.name}」的常驻内核里运行${label}。点确认之后才会执行。`,
+    type: "default",
+    itemList: [preview(source) || "（空单元格）"],
+    hint: reason,
+    problems: [],
+    declinedMessage: "用户取消了确认，没有运行单元格。",
+  };
+}
+
+/** Cell list the model plans edits from: ids, kinds, a short preview, and what ran. */
+export function notebookSummary({ doc, outputs, busy }: ReturnType<NotebookCommands["read"]>) {
+  return {
+    notebookId: doc.id,
+    name: doc.name,
+    language: doc.language,
+    kernel: doc.kernel,
+    busy,
+    cells: doc.cells.map((cell, index) => {
+      const output = outputs[cell.id];
+      const view = output ? describeCellOutput(output) : undefined;
+      return {
+        index,
+        id: cell.id,
+        kind: cell.role,
+        lines: cell.source ? cell.source.split("\n").length : 0,
+        preview: preview(cell.source),
+        hasOutput: !!view,
+        ...(view?.status === "error" && { hasError: true }),
+        ...(view?.executionCount !== undefined && { executionCount: view.executionCount }),
+      };
+    }),
+  };
+}
+
+export function createNotebookActions(commands: NotebookCommands, makeCell = newNotebookCell) {
+  const summary = () => notebookSummary(commands.read());
+
+  function editCell(input: NotebookEditInput) {
+    const { doc } = commands.read();
+    if (input.kind !== undefined && !isKind(input.kind)) {
+      throw new Error(`单元格类型只能是 ${NOTEBOOK_CELL_KINDS.join("、")}`);
+    }
+    if (input.editType === "insert") {
+      const cell = makeCell(input.kind ?? "code", input.source ?? "");
+      const anchor = input.cellId?.trim() || "BOTTOM";
+      let cells: NotebookCell[];
+      if (anchor === "TOP") cells = [cell, ...doc.cells];
+      else if (anchor === "BOTTOM") cells = [...doc.cells, cell];
+      else cells = insertCellAt(doc.cells, findCell(doc, anchor).cell.id, "below", cell);
+      commands.setCells(cells, cell.id);
+      return { inserted: cell.id, index: cells.indexOf(cell), kind: cell.role };
+    }
+    if (input.editType === "delete") {
+      const { cell } = findCell(doc, input.cellId);
+      const next = removeCell(doc.cells, cell.id);
+      if (!next) throw new Error("笔记本至少要保留一个单元格");
+      commands.setCells(next.cells, next.selectedId);
+      return { deleted: cell.id, remaining: next.cells.length };
+    }
+    if (input.editType === "edit") {
+      const { cell, index } = findCell(doc, input.cellId);
+      if (input.source === undefined && input.kind === undefined) throw new Error("edit 需要 source 或 kind");
+      const updated: NotebookCell = {
+        ...cell,
+        ...(input.source !== undefined && { source: input.source }),
+        ...(input.kind !== undefined && { role: input.kind }),
+      };
+      commands.setCells(doc.cells.map((item) => (item.id === cell.id ? updated : item)), cell.id);
+      return { edited: cell.id, index, kind: updated.role };
+    }
+    throw new Error("editType 只能是 insert、delete 或 edit");
+  }
+
+  /** Runs after the surface's confirm. Re-checks blockers, so a stale accept never runs the wrong cell. */
+  async function runCell(cellId: string): Promise<RanNotebookCell> {
+    const problems = runCellBlockers(commands.read(), cellId);
+    if (problems.length) throw new Error(problems.join("；"));
+    const result = await commands.runCell(cellId);
+    const own = result.cells.find((cell) => cell.id === cellId);
+    const view = own ? describeCellOutput(own) : { cellId, status: "ok" as const };
+    const failed = result.cells.find((cell) => cell.id !== cellId && describeCellOutput(cell).status === "error");
+    return {
+      accepted: true,
+      ...view,
+      ranCells: result.cells.length,
+      ...(result.kernel?.note && { kernelNote: result.kernel.note }),
+      message: own
+        ? view.status === "error" ? "单元格运行出错" : "单元格已运行"
+        : failed ? `前面的单元格 ${failed.id} 出错，没有运行到这一格` : "单元格已运行，没有输出",
+    };
+  }
+
+  function readOutput(cellId: string) {
+    const { doc, outputs } = commands.read();
+    const { cell } = findCell(doc, cellId);
+    const output = outputs[cell.id];
+    if (!output) return { cellId: cell.id, hasOutput: false, note: "这一格还没有输出。需要时先用 run_notebook_cell 运行。" };
+    return { hasOutput: true, ...describeCellOutput(output) };
+  }
+
+  return { summary, editCell, runCell, readOutput };
+}

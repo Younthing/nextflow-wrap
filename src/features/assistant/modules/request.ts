@@ -6,16 +6,15 @@ const MAX_IDS = 32;
 const MAX_ID_LENGTH = 64;
 
 /**
- * Module ids from a CopilotKit run body. `undefined` means the field was
- * absent or malformed, so the caller keeps the default modules. An array
- * is an explicit selection, even when every entry is ignored.
+ * Module ids from a CopilotKit run body. A missing or malformed field is an
+ * empty selection: the host prompt runs alone, with no scenario tools.
  */
-export function readAssistantModuleIds(body: unknown): readonly string[] | undefined {
-  if (!isRecord(body)) return undefined;
+export function readAssistantModuleIds(body: unknown): readonly string[] {
+  if (!isRecord(body)) return [];
   const forwarded = body.forwardedProps;
-  if (!isRecord(forwarded) || !Object.prototype.hasOwnProperty.call(forwarded, ASSISTANT_MODULES_PROP)) return undefined;
+  if (!isRecord(forwarded)) return [];
   const value = forwarded[ASSISTANT_MODULES_PROP];
-  if (!Array.isArray(value)) return undefined;
+  if (!Array.isArray(value)) return [];
   const ids: string[] = [];
   for (const item of value) {
     if (typeof item !== "string") continue;
@@ -29,24 +28,24 @@ export function readAssistantModuleIds(body: unknown): readonly string[] | undef
 
 /**
  * Reads module ids without consuming the body the Copilot handler still needs.
- * Non-JSON requests keep the default prompt and the original request.
+ * GET, HEAD, and non-JSON requests carry no module list, so they get the host prompt alone.
  */
 export async function requestAssistantPrompt(request: Request): Promise<{ request: Request; prompt: string }> {
   if (request.method === "GET" || request.method === "HEAD") {
-    return { request, prompt: composeAssistantPrompt() };
+    return { request, prompt: composeAssistantPrompt([]) };
   }
   const type = request.headers.get("content-type") ?? "";
   if (!type.toLowerCase().includes("json")) {
-    return { request, prompt: composeAssistantPrompt() };
+    return { request, prompt: composeAssistantPrompt([]) };
   }
   const text = await request.text();
   const rebuilt = new Request(request, { body: text });
-  let moduleIds: readonly string[] | undefined;
+  let moduleIds: readonly string[] = [];
   if (text) {
     try {
       moduleIds = readAssistantModuleIds(JSON.parse(text) as unknown);
     } catch {
-      moduleIds = undefined;
+      moduleIds = [];
     }
   }
   return { request: rebuilt, prompt: composeAssistantPrompt(moduleIds) };

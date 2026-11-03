@@ -10,7 +10,7 @@ import { LabeledCode } from "@/features/project/components/labeled-code";
 import { ProjectPreview } from "@/features/project/components/project-preview";
 import { ApiError } from "@/lib/api";
 import { useModuleCatalog } from "@/features/workflow/queries";
-import { RunAssistant } from "@/features/assistant/run-assistant";
+import { RunAssistant } from "@/features/assistant/surfaces/run";
 import { isActive, useRefreshWhenDone, useRun, useRunTasks } from "../queries";
 import type { RunDetail } from "../types";
 import { RunGraph } from "./run-graph";

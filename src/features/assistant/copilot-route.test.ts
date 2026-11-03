@@ -251,8 +251,9 @@ describe("CopilotKit route with a fake Codex harness", () => {
     expect(harness.prompts[0]).toContain("看一下当前流程");
     expect(harness.prompts[0]).toContain("当前流程");
     expect(harness.prompts[0]).toContain("Nextflow Studio");
-    expect(harness.prompts[0]).toContain("search_modules");
-    expect(harness.prompts[0]).toContain("get_task_log");
+    // No mounted module: the host prompt runs alone, with no scenario fragments.
+    expect(harness.prompts[0]).not.toContain("search_modules");
+    expect(harness.prompts[0]).not.toContain("get_task_log");
     expect(harness.closes).toBe(1);
     expect(harness.interrupts).toBe(0);
   });
@@ -271,6 +272,7 @@ describe("CopilotKit route with a fake Codex harness", () => {
     await readEvents(response);
     const prompt = harness.prompts[0] ?? "";
     expect(prompt).toContain("脚本笔记本");
+    expect(prompt).toContain("get_notebook_summary");
     expect(prompt).toContain("Nextflow Studio");
     expect(prompt).not.toContain("search_modules");
     expect(prompt).not.toContain("get_task_log");

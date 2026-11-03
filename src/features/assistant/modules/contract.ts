@@ -1,14 +1,17 @@
 /**
- * Assistant module contract.
+ * Assistant module contract, shaped like VS Code's Language Model Tools split.
  *
- * The host owns the session (Copilot route, provider, concurrency) and the
- * confirmation dialog. A module owns one prompt fragment and the browser tools
- * it registers. Adding a scenario means adding a module and mounting it on
- * its page — not editing the Copilot route.
+ * - Host (Copilot route, provider): session, backend, concurrency, the confirm
+ *   dialog. It registers no tools and carries no scenario instructions.
+ * - Module (this contract): id, a standalone prompt fragment, and the name and
+ *   description of each tool. Like a `languageModelTools` contribution.
+ * - Surface (`../surfaces/*`): mounted on the page that owns the store. It calls
+ *   `useAssistantModule(id)` and registers the tools with `useFrontendTool`.
+ * - Domain (`features/<domain>/assistant-actions.ts`): what the tools do,
+ *   written against that domain's store or command API.
  *
- * Page mount is `useAssistantModule(id)` (or a thin surface component).
- * Unmount removes that id from the next request. That is the hook a later
- * per-page lifecycle can call; this skeleton does not add a router loader.
+ * Only mounted modules reach the model. A request names them in
+ * {@link ASSISTANT_MODULES_PROP}; no list means no scenario at all.
  */
 
 export const ASSISTANT_MODULES_PROP = "assistantModules";
@@ -29,13 +32,8 @@ export interface AssistantModule {
    * It must stand alone and must not name another module's tools.
    */
   prompt: string;
-  /** Browser tools this module registers. Empty when the module is prompt-only. */
+  /** Browser tools this module's surface registers. Empty when the module is prompt-only. */
   tools: readonly AssistantToolSpec[];
-  /**
-   * Used when a request omits {@link ASSISTANT_MODULES_PROP} (older clients
-   * and direct route tests). A mounted page sends an explicit list instead.
-   */
-  defaultActive: boolean;
 }
 
 export function moduleTool<const T extends AssistantModule>(
