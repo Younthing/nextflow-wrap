@@ -84,7 +84,20 @@ function fetchNode() {
   mkdirSync(node, { recursive: true });
   run("tar", ["-xJf", archive, "-C", node, "--strip-components=1", `node-${NODE_VERSION}-linux-${arch}/bin/node`, `node-${NODE_VERSION}-linux-${arch}/LICENSE`]);
 }
-if (!flag("--no-node")) fetchNode();
+/**
+ * The desktop's WSL build (desktop/scripts/wsl-bootstrap.sh) already installed this exact release:
+ * NEXTFLOW_STUDIO_BUILD_NODE is its folder, copied instead of downloaded again (no curl or xz needed).
+ */
+function copyBuildNode(dir) {
+  // Only the same release for the same architecture (the folder is node-<version>-linux-<arch>).
+  if (!dir.replace(/\/+$/, "").endsWith(`node-${NODE_VERSION}-linux-${arch}`)) return false;
+  mkdirSync(join(target, "node", "bin"), { recursive: true });
+  cpSync(join(dir, "bin", "node"), join(target, "node", "bin", "node"));
+  cpSync(join(dir, "LICENSE"), join(target, "node", "LICENSE"));
+  return true;
+}
+const buildNode = process.env.NEXTFLOW_STUDIO_BUILD_NODE;
+if (!flag("--no-node") && !(buildNode && existsSync(join(buildNode, "bin", "node")) && copyBuildNode(buildNode))) fetchNode();
 
 rmSync(`${target}.tar.gz`, { force: true });
 // Next to the archive, so a shell can tell whether the installed server is this build without unpacking it.

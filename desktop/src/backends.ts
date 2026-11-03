@@ -361,7 +361,7 @@ export async function clearServerData(connection: Connection, context: BackendCo
 
 /**
  * Runs a build step from the window ("重新构建"): its output goes to `<logs>/rebuild.log` and, line by line, to the
- * status line. Used for scripts/dev-win-build.sh in WSL (the server half of `pnpm dev:win`) and, on macOS and
+ * status line. Used for wsl-bootstrap.sh in WSL (the server half of `pnpm dev:win`) and, on macOS and
  * Linux, for desktop/scripts/bundle.mjs.
  */
 export function runLogged(command: string, args: string[], options: { input?: string; cwd?: string }, context: BackendContext): Promise<void> {

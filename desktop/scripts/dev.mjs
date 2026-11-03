@@ -14,7 +14,8 @@ import { bundleShell } from "./bundle-shell.mjs";
 const desktop = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 if (process.platform === "win32") {
-  await import("./dev-win.mjs");
+  const { devWin } = await import("./dev-win.mjs");
+  await devWin();
 } else {
   await bundleShell();
   const electronBinary = createRequire(import.meta.url)("electron");

@@ -544,19 +544,20 @@ async function switchTo(connection: Connection, token?: string) {
 }
 
 /**
- * Builds the server from this checkout (development shells only): in WSL with scripts/dev-win-build.sh on Windows,
- * as `pnpm dev:win` does, and with desktop/scripts/bundle.mjs on macOS and Linux.
+ * Builds the server from this checkout (development shells only). On Windows this is the WSL half of `pnpm dev:win`:
+ * desktop/scripts/wsl-bootstrap.sh piped to /bin/sh in the distro (it installs its own Node.js and pnpm, reads no rc
+ * files, and runs dev-server-build.mjs); on macOS and Linux, desktop/scripts/bundle.mjs.
  */
 async function rebuild(connection: Connection) {
   const ctx = context();
   if (process.platform === "win32") {
-    const script = ["wsl-node.sh", "dev-win-build.sh"].map((name) => readFileSync(join(repoRoot, "desktop", "scripts", name), "utf8")).join("\n").replace(/\r\n/g, "\n");
+    const script = readFileSync(join(repoRoot, "desktop", "scripts", "wsl-bootstrap.sh"), "utf8").replace(/\r\n/g, "\n");
     const distro = connection.kind === "wsl" ? connection.distro : process.env.NEXTFLOW_STUDIO_WSL_DISTRO;
     ctx.status("在 WSL 里用当前代码构建服务端…");
-    await runLogged("wsl.exe", [...(distro ? ["-d", distro] : []), "--exec", "sh", "-l", "-s", "--", repoRoot, "0"], { input: script }, ctx);
+    await runLogged("wsl.exe", [...(distro ? ["-d", distro] : []), "--exec", "/bin/sh", "-s", "--", repoRoot], { input: script }, ctx);
   } else {
     ctx.status("用当前代码构建服务端…");
-    await runLogged("node", [join(repoRoot, "desktop", "scripts", "bundle.mjs")], { cwd: repoRoot }, ctx);
+    await runLogged(process.env.NEXTFLOW_STUDIO_NODE || "node", [join(repoRoot, "desktop", "scripts", "bundle.mjs")], { cwd: repoRoot }, ctx);
   }
 }
 

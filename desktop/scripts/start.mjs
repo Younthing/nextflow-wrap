@@ -8,7 +8,8 @@ import { fileURLToPath } from "node:url";
 const desktop = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 if (process.platform === "win32") {
-  await import("./dev-win.mjs");
+  const { devWin } = await import("./dev-win.mjs");
+  await devWin();
 } else {
   const bundled = spawnSync(process.execPath, [join(desktop, "scripts", "bundle.mjs"), "--skip-server"], { cwd: desktop, stdio: "inherit" });
   if (bundled.status !== 0) process.exit(bundled.status ?? 1);

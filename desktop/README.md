@@ -20,7 +20,7 @@ Windows 上没有 WSL 时，连接页的「安装 WSL」以管理员身份运行
 | 操作 | 做什么 |
 | ---- | ---- |
 | 重启 | 停掉服务端（SSH 的也真的停掉）再启动 |
-| 重新安装服务端 | 用应用自带的包覆盖安装后重启。开发版这里是「用当前代码重新构建」：Windows 上在 WSL 里跑 `scripts/dev-win-build.sh`（同 `pnpm dev:win`），macOS / Linux 跑 `scripts/bundle.mjs` |
+| 重新安装服务端 | 用应用自带的包覆盖安装后重启。开发版这里是「用当前代码重新构建」：Windows 上在 WSL 里跑 `scripts/wsl-bootstrap.sh`（同 `pnpm dev:win`），macOS / Linux 跑 `scripts/bundle.mjs` |
 | 清除数据 | 停掉服务端，删掉数据库、示例项目、运行记录、启动目录和 `work/`，再启动。设置（`settings.json`、`secrets.json`）、工具链、日志和自己文件夹里的项目保留 |
 | 切换 | 已保存的后端和新建 WSL / SSH / 地址连接。同一个发行版、主机或地址只保存一条 |
 
@@ -67,7 +67,7 @@ pnpm dev:win --fresh      # 另外清空 WSL 里的数据目录（toolchain/ 和
 pnpm dev:win --skip-server  # 只重打包外壳，沿用 resources/server 里上次的服务端包
 ```
 
-`dev:win` 把仓库同步到 WSL 的 `~/.cache/nextflow-studio/dev-src`（那里的 node_modules 和 .next 保留，之后是增量构建），用 `scripts/build-server.mjs` 构建 Linux 服务端包，停掉 WSL 里正在运行的服务端，把包放进 `desktop/resources/server/`。每个包有自己的构建号，所以连接 WSL 或 SSH 时会装上它，而不是继续用旧的。数据目录的格式版本和当前代码不同时（没有迁移），会自动清空。WSL 里不用预先装什么：Node.js 22.5 以上不管是用 nvm、fnm、volta、asdf、mise、n 还是 apt 装的都会被找到（取最新的一个），都没有时自动下载官方版本到 `~/.cache/nextflow-studio`（校验 SHA-256，不需要 root）；pnpm 用 corepack 按 package.json 的版本取；没有 rsync 时用 tar 复制源码。`NEXTFLOW_STUDIO_WSL_DISTRO` 指定发行版。
+`dev:win` 在 WSL 里构建服务端，WSL 里不需要预先装任何东西，也不读取 `.bashrc`、`.profile` 等 shell 配置（它们可能启动 conda、ssh-agent 或等待输入，让构建卡住）。`scripts/wsl-bootstrap.sh` 用 `/bin/sh` 运行，把构建要用的东西装进我们自己的目录 `~/.local/share/nextflow-studio/toolchain/build/`：服务端包自带的同一版 Node.js（从 nodejs.org 下载并校验 SHA-256；没有 curl、wget 和 python3 时，在不需要密码的情况下先装 curl），以及 package.json 指定版本的 pnpm（用这个 Node 的 npm 安装）。然后用这个 Node 运行 `scripts/dev-server-build.mjs`，分 6 步并逐步输出：准备 pnpm → 把仓库同步到 `~/.cache/nextflow-studio/dev-src`（只复制改动的文件，那里的 node_modules 和 .next 保留，之后是增量构建；不需要 rsync）→ 安装依赖 → 构建 Linux 服务端包 → 停掉 WSL 里正在运行的服务端（数据格式版本和当前代码不同时清除数据）→ 把包放进 `desktop/resources/server/`。长时间没有输出的步骤每 30 秒报一次进度，超过时限会停止并给出日志位置（WSL 里的 `~/.local/share/nextflow-studio/logs/dev-build.log`）。每个包有自己的构建号，所以连接 WSL 或 SSH 时会装上它，而不是继续用旧的。`NEXTFLOW_STUDIO_WSL_DISTRO` 指定发行版，`NEXTFLOW_STUDIO_NODE_MIRROR` 指定 Node.js 下载镜像。
 
 开发版（未打包）连接 WSL 或 SSH 时，没有服务端包会直接报错，不会悄悄沿用之前装的服务端。每次连接都会清掉窗口的 HTTP 缓存和 service worker。
 
