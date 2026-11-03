@@ -1,5 +1,5 @@
 #!/bin/sh
-# Run by desktop/scripts/dev-win.mjs inside WSL: builds the server package from the Windows checkout ($1, a Windows
+# Run by desktop/scripts/dev-win.mjs (and "用当前代码重新构建" in the app) inside WSL, after wsl-node.sh: builds the server package from the Windows checkout ($1, a Windows
 # path), stops the running server, clears an incompatible data directory (or any, with $2 = 1), and copies the
 # package to desktop/resources/server. The whole script is one function, so sh has read all of it from stdin before
 # anything runs, and no command can swallow the rest of it.
@@ -11,25 +11,48 @@ main() {
   data="${XDG_DATA_HOME:-$HOME/.local/share}/nextflow-studio"
   fail() { echo "dev:win: $*" >&2; exit 3; }
 
-  # nvm and fnm set up node in ~/.bashrc, which a login sh does not read.
-  [ -s "$HOME/.nvm/nvm.sh" ] && . "$HOME/.nvm/nvm.sh" >/dev/null 2>&1 || true
-  command -v node >/dev/null 2>&1 || fail "WSL 里没有 node。装 Node 22.5 以上（例如 nvm install 22）后重试"
-  node -e 'const [a, b] = process.versions.node.split(".").map(Number); process.exit(a > 22 || (a === 22 && b >= 5) ? 0 : 1)' \
-    || fail "WSL 里的 node $(node -v) 太旧，需要 22.5 以上"
-  command -v rsync >/dev/null 2>&1 || fail "WSL 里没有 rsync：sudo apt install rsync"
   case "$(uname -m)" in x86_64|amd64) arch=x64 ;; aarch64|arm64) arch=arm64 ;; *) fail "不支持的架构 $(uname -m)" ;; esac
+
+  # Node.js 22.5+: the person's own (nvm, fnm, volta, apt…; see wsl-node.sh), else a private download of the
+  # release the server package ships.
+  node_bin=$(find_node)
+  if [ -z "$node_bin" ]; then
+    want_node=$(sed -n 's/^const NODE_VERSION = "\(v[0-9.]*\)";.*/\1/p' "$src/scripts/build-server.mjs")
+    node_bin=$(download_node "${want_node:-v24.7.0}" "$arch") || fail "WSL 里没有 22.5 以上的 Node.js，自动下载也失败了。检查 WSL 能否访问 nodejs.org，或自己装一个（例如 nvm install 22）后重试"
+  fi
+  node_dir=$(dirname "$node_bin")
+  PATH="$node_dir:$PATH"
+  export PATH
+  echo "== Node.js $(node -v)：$node_bin"
+
+  # pnpm at the version package.json names: corepack when this Node has it, npx otherwise. Never a prompt.
+  COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+  export COREPACK_ENABLE_DOWNLOAD_PROMPT
+  pnpm_spec=$(sed -n 's/.*"packageManager": *"\(pnpm@[^"+]*\).*/\1/p' "$src/package.json")
+  if [ -x "$node_dir/corepack" ]; then pnpm() { "$node_dir/corepack" pnpm "$@"; }
+  else pnpm() { "$node_dir/npx" --yes "${pnpm_spec:-pnpm}" "$@"; }
+  fi
 
   echo "== 同步源码到 WSL：$work"
   mkdir -p "$work"
-  rsync -a --delete \
-    --exclude=/.git --exclude=/node_modules --exclude=/.next --exclude=/dist-server --exclude=/.codegraph \
-    --exclude=/storybook-static --exclude=/test-results --exclude=/playwright-report --exclude='/nxf-tmp.*' \
-    --exclude=/desktop/node_modules --exclude=/desktop/dist --exclude=/desktop/resources --exclude=/desktop/release \
-    "$src/" "$work/"
+  if command -v rsync >/dev/null 2>&1; then
+    rsync -a --delete \
+      --exclude=/.git --exclude=/node_modules --exclude=/.next --exclude=/dist-server --exclude=/.codegraph \
+      --exclude=/storybook-static --exclude=/test-results --exclude=/playwright-report --exclude='/nxf-tmp.*' \
+      --exclude=/desktop/node_modules --exclude=/desktop/dist --exclude=/desktop/resources --exclude=/desktop/release \
+      "$src/" "$work/"
+  else
+    # No rsync: empty the copy (keeping node_modules and .next, so the build stays incremental) and copy with tar.
+    find "$work" -mindepth 1 -maxdepth 1 ! -name node_modules ! -name .next -exec rm -rf {} +
+    (cd "$src" && tar -cf - \
+      --exclude=./.git --exclude=./node_modules --exclude=./.next --exclude=./dist-server --exclude=./.codegraph \
+      --exclude=./storybook-static --exclude=./test-results --exclude=./playwright-report --exclude='./nxf-tmp.*' \
+      --exclude=./desktop/node_modules --exclude=./desktop/dist --exclude=./desktop/resources --exclude=./desktop/release \
+      .) | (cd "$work" && tar -xf -)
+  fi
   cd "$work"
 
   echo "== 安装依赖并构建服务端（linux-$arch）"
-  if command -v corepack >/dev/null 2>&1; then pnpm() { corepack pnpm "$@"; }; fi
   pnpm install --frozen-lockfile
   rm -rf dist-server
   node scripts/build-server.mjs --arch "$arch"

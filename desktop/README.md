@@ -67,7 +67,7 @@ pnpm dev:win --fresh      # 另外清空 WSL 里的数据目录（toolchain/ 和
 pnpm dev:win --skip-server  # 只重打包外壳，沿用 resources/server 里上次的服务端包
 ```
 
-`dev:win` 把仓库同步到 WSL 的 `~/.cache/nextflow-studio/dev-src`（那里的 node_modules 和 .next 保留，之后是增量构建），用 `scripts/build-server.mjs` 构建 Linux 服务端包，停掉 WSL 里正在运行的服务端，把包放进 `desktop/resources/server/`。每个包有自己的构建号，所以连接 WSL 或 SSH 时会装上它，而不是继续用旧的。数据目录的格式版本和当前代码不同时（没有迁移），会自动清空。WSL 里需要 Node 22.5 以上（带 corepack）和 rsync；`NEXTFLOW_STUDIO_WSL_DISTRO` 指定发行版。
+`dev:win` 把仓库同步到 WSL 的 `~/.cache/nextflow-studio/dev-src`（那里的 node_modules 和 .next 保留，之后是增量构建），用 `scripts/build-server.mjs` 构建 Linux 服务端包，停掉 WSL 里正在运行的服务端，把包放进 `desktop/resources/server/`。每个包有自己的构建号，所以连接 WSL 或 SSH 时会装上它，而不是继续用旧的。数据目录的格式版本和当前代码不同时（没有迁移），会自动清空。WSL 里不用预先装什么：Node.js 22.5 以上不管是用 nvm、fnm、volta、asdf、mise、n 还是 apt 装的都会被找到（取最新的一个），都没有时自动下载官方版本到 `~/.cache/nextflow-studio`（校验 SHA-256，不需要 root）；pnpm 用 corepack 按 package.json 的版本取；没有 rsync 时用 tar 复制源码。`NEXTFLOW_STUDIO_WSL_DISTRO` 指定发行版。
 
 开发版（未打包）连接 WSL 或 SSH 时，没有服务端包会直接报错，不会悄悄沿用之前装的服务端。每次连接都会清掉窗口的 HTTP 缓存和 service worker。
 

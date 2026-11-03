@@ -15,7 +15,8 @@
 //   pnpm dev:win --skip-server   only the shell; the last package in resources/server is used
 //   NEXTFLOW_STUDIO_WSL_DISTRO=Ubuntu-24.04 pnpm dev:win    build in that distro (default: the WSL default)
 //
-// WSL needs Node 22.5+ (with corepack) and rsync: `sudo apt install rsync`.
+// WSL needs nothing set up: a Node.js 22.5+ is found wherever it was installed (nvm, fnm, volta, apt…) or downloaded
+// once into ~/.cache/nextflow-studio; without rsync the source is copied with tar.
 import { spawn, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -29,7 +30,8 @@ const root = resolve(desktop, "..");
 const args = process.argv.slice(2);
 
 // Read here and piped to sh, so line endings from a Windows checkout do not matter.
-const BUILD = readFileSync(join(desktop, "scripts", "dev-win-build.sh"), "utf8").replace(/\r\n/g, "\n");
+// wsl-node.sh (finding or fetching Node.js) goes first: the build script calls its functions.
+const BUILD = ["wsl-node.sh", "dev-win-build.sh"].map((name) => readFileSync(join(desktop, "scripts", name), "utf8")).join("\n").replace(/\r\n/g, "\n");
 
 function wsl(script, scriptArgs) {
   const distro = process.env.NEXTFLOW_STUDIO_WSL_DISTRO;

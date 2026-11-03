@@ -550,7 +550,7 @@ async function switchTo(connection: Connection, token?: string) {
 async function rebuild(connection: Connection) {
   const ctx = context();
   if (process.platform === "win32") {
-    const script = readFileSync(join(repoRoot, "desktop", "scripts", "dev-win-build.sh"), "utf8").replace(/\r\n/g, "\n");
+    const script = ["wsl-node.sh", "dev-win-build.sh"].map((name) => readFileSync(join(repoRoot, "desktop", "scripts", name), "utf8")).join("\n").replace(/\r\n/g, "\n");
     const distro = connection.kind === "wsl" ? connection.distro : process.env.NEXTFLOW_STUDIO_WSL_DISTRO;
     ctx.status("在 WSL 里用当前代码构建服务端…");
     await runLogged("wsl.exe", [...(distro ? ["-d", distro] : []), "--exec", "sh", "-l", "-s", "--", repoRoot, "0"], { input: script }, ctx);
