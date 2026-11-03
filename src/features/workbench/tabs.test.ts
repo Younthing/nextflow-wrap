@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { closeTab, MAX_TABS, openTab, pruneTabs, workbenchView } from "./tabs";
+import { closeTab, MAX_TABS, openTab, pruneTabs, workbenchPathFromPathname, workbenchView } from "./tabs";
 
 describe("workbench tabs", () => {
   it("open each notebook once, newest last", () => {
@@ -35,4 +35,13 @@ describe("workbench tabs", () => {
     expect(workbenchView(["../x"])).toEqual({ kind: "missing" });
     expect(workbenchView(["nb_1", "publish", "x"])).toEqual({ kind: "missing" });
   });
+
+  it("read path segments from the pathname", () => {
+    expect(workbenchPathFromPathname("/workbench")).toBeUndefined();
+    expect(workbenchPathFromPathname("/workbench/")).toBeUndefined();
+    expect(workbenchPathFromPathname("/workbench/nb_1")).toEqual(["nb_1"]);
+    expect(workbenchPathFromPathname("/workbench/nb_1/publish")).toEqual(["nb_1", "publish"]);
+    expect(workbenchPathFromPathname("/runs")).toBeUndefined();
+  });
+
 });

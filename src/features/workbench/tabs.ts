@@ -36,3 +36,11 @@ export function workbenchView(path: readonly string[] | undefined): { kind: "sta
   if (action === "publish") return { kind: "publish", id };
   return { kind: "missing" };
 }
+
+/** Path segments after `/workbench` from the live URL (client navigations stay in sync). */
+export function workbenchPathFromPathname(pathname: string): string[] | undefined {
+  if (pathname === "/workbench" || pathname === "/workbench/") return undefined;
+  if (!pathname.startsWith("/workbench/")) return undefined;
+  const segments = pathname.slice("/workbench/".length).split("/").filter(Boolean);
+  return segments.length ? segments : undefined;
+}
