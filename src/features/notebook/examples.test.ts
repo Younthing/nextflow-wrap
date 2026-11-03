@@ -71,5 +71,6 @@ describe("example project", () => {
     const html = readFileSync(join(report, "report.html"), "utf8");
     expect(html).toContain("表达分析报告");
     expect(html.match(/data:image\/png;base64/g)).toHaveLength(3);
-  });
+    // Four Python processes that each import pandas, SciPy and matplotlib: seconds apiece on a busy CI runner.
+  }, 60_000);
 });
