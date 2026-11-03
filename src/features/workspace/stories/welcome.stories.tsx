@@ -11,7 +11,7 @@ const projects: Project[] = [
   { id: "p1", name: "PBMC 单细胞图谱", path: "/home/demo/Projects/pbmc-atlas", createdAt: at(90 * 24 * hour), openedAt: at(0.2 * hour) },
   { id: "p2", name: "EGFR 抑制剂对接筛选", path: "/home/demo/Projects/egfr-docking", createdAt: at(60 * 24 * hour), openedAt: at(26 * hour) },
   { id: "p3", name: "空间转录组试点", path: "/data/lab/visium-pilot", createdAt: at(30 * 24 * hour), openedAt: at(12 * 24 * hour) },
-  { id: "example", name: "示例项目", path: "/home/demo/.local/share/nextflow-studio/projects/example", createdAt: at(90 * 24 * hour), openedAt: "1970-01-01T00:00:00.000Z", example: true },
+  { id: "example", name: "示例项目", path: "/home/demo/.local/share/nextflow-studio/projects/example", createdAt: at(90 * 24 * hour), openedAt: at(90 * 24 * hour) },
 ];
 
 const meta = {

@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { BookOpen, FolderOpen, Loader2, MoreHorizontal, Plus, Trash2 } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { PanelLoading } from "@/components/ui/panel-notice";
@@ -13,7 +12,7 @@ import { SearchField } from "@/components/ui/search-field";
 import { PathBrowserDialog } from "@/features/files/components/path-input";
 import { useFsListing } from "@/features/files/queries";
 import { useHealthStatus } from "@/features/runs/queries";
-import { displayPath, filterProjects, openedLabel } from "@/features/workspace/projects";
+import { displayPath, EXAMPLE_PROJECT_ID, filterProjects, openedLabel } from "@/features/workspace/projects";
 import { useCreateProject, useForgetProject, useOpenProject, useProjects, useReopenProject } from "@/features/workspace/queries";
 import type { CreateProjectRequest, Project } from "@/features/workspace/types";
 import { toast } from "@/lib/toast";
@@ -36,7 +35,8 @@ export interface WelcomeViewProps {
 export function WelcomeView({ projects, home, environment, busyId, onNew, onOpenDirectory, onOpen, onForget }: WelcomeViewProps) {
   const [query, setQuery] = React.useState("");
   const visible = filterProjects(projects, query);
-  const example = projects.find((project) => project.example);
+  // A shortcut to the preset example project while it is on the list. It is otherwise an ordinary project.
+  const example = projects.find((project) => project.id === EXAMPLE_PROJECT_ID);
   const actionClass = "flex w-full items-center gap-3 rounded-xl border border-glass-border bg-glass px-3.5 py-3 text-left text-sm transition-colors hover:bg-glass-strong focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-none disabled:opacity-60 [&_svg]:size-[18px] [&_svg]:shrink-0";
 
   return (
@@ -96,18 +96,14 @@ export function WelcomeView({ projects, home, environment, busyId, onNew, onOpen
                 >
                   <ProjectBadge name={project.name} className="size-10 rounded-xl text-[15px]" />
                   <span className="grid min-w-0 gap-0.5">
-                    <span className="flex items-center gap-2 truncate font-medium">
-                      {project.name}
-                      {project.example ? <Badge variant="secondary">示例</Badge> : null}
-                    </span>
+                    <span className="truncate font-medium">{project.name}</span>
                     <span className="truncate font-mono text-[11.5px] text-muted-foreground" title={project.path}>{displayPath(project.path, home)}</span>
                   </span>
                   <span className="text-xs text-muted-foreground">
-                    {busyId === project.id ? <Loader2 className="size-4 animate-spin" aria-label="正在打开" /> : project.example && project.openedAt.startsWith("1970") ? "未打开过" : openedLabel(project.openedAt)}
+                    {busyId === project.id ? <Loader2 className="size-4 animate-spin" aria-label="正在打开" /> : openedLabel(project.openedAt)}
                   </span>
                 </button>
-                {/* The example project is always on the list. */}
-                {project.example ? null : <DropdownMenu>
+                <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button
                       type="button"
@@ -125,7 +121,7 @@ export function WelcomeView({ projects, home, environment, busyId, onNew, onOpen
                       从列表移除
                     </DropdownMenuItem>
                   </DropdownMenuContent>
-                </DropdownMenu>}
+                </DropdownMenu>
               </li>
             ))}
             {visible.length === 0 ? <li className="px-3 py-6 text-sm text-muted-foreground">没有匹配「{query}」的项目</li> : null}

@@ -16,6 +16,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import {
   ENGINE_LABELS,
+  isHostShell,
   EXECUTORS,
   executorDef,
   EXTRA_PROFILES,
@@ -229,10 +230,8 @@ export function EnvironmentForm({
             label="容器 / 环境（-profile）"
             htmlFor={`${formId}-engine`}
             hint={
-              config.engine === "shell"
-                ? host
-                  ? "不使用 -profile，进程在集群节点的 shell 里直接执行"
-                  : "不使用 -profile，进程在本机 shell 里直接执行"
+              isHostShell(config.engine)
+                ? `不使用 -profile，进程在${host ? "集群节点" : "本机"}的 ${config.engine === "shell" ? "shell（/bin/bash）" : config.engine} 里直接执行`
                 : undefined
             }
           >

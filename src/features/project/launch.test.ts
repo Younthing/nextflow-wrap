@@ -28,6 +28,20 @@ describe("shell launch", () => {
     expect(runConfig).not.toContain("-profile");
   });
 
+  it("runs tasks in bash or zsh from PATH without a -profile", () => {
+    for (const engine of ["bash", "zsh"] as const) {
+      const config = { ...defaultLaunchConfig(), engine };
+      expect(profileList(config)).toBe("");
+      expect(launchCommand(config)).not.toContain("-profile");
+      const runConfig = renderRunConfig(config);
+      expect(runConfig).toContain("docker.enabled = false");
+      expect(runConfig).toContain(`process.shell = ['${engine}', '-ue']`);
+      expect(launchTools(config)).toEqual([[engine]]);
+    }
+    expect(renderRunConfig(defaultLaunchConfig())).not.toContain("process.shell");
+    expect(runtimeProfiles()).not.toMatch(/\b(bash|zsh|shell) \{/);
+  });
+
   it("keeps an extra profile without naming shell", () => {
     const config = { ...defaultLaunchConfig(), engine: "shell" as const, extraProfiles: ["gpu", "debug"] };
     expect(profileList(config)).toBe("gpu,debug");

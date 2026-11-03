@@ -15,7 +15,7 @@ import { isDesktop } from "@/lib/desktop";
 import { ENGINES, type ContainerEngine } from "@/features/project/launch";
 import { ASSISTANT_SECRET_KEYS, type SecretKey, type SettingsUpdate, type SettingsView, type StudioSettings } from "../types";
 
-const ENGINE_LABEL: Partial<Record<ContainerEngine, string>> = { shell: "本机 shell（不加 profile）" };
+const ENGINE_LABEL: Partial<Record<ContainerEngine, string>> = { shell: "本机 shell（不加 profile）", bash: "本机 bash（不加 profile）", zsh: "本机 zsh（不加 profile）" };
 /** A browser shows run notifications only after the user allows them; the desktop shell needs no permission. */
 function askNotificationPermission() {
   if (isDesktop() || typeof Notification === "undefined" || Notification.permission !== "default") return;

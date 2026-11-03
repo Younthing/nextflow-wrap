@@ -19,7 +19,9 @@ export type ResultPreview =
   | "molecule"
   | null;
 
-const TEXT_EXT = /\.(txt|log|json|ya?ml|out|summary|flagstat|stats|metrics|gtf)$/i;
+const TEXT_EXT = /\.(txt|log|json|ya?ml|out|summary|flagstat|stats|metrics|gtf|gff3?|bed|vcf|sam|fa|fasta|fna|faa|fq|fastq|py|r|rmd|sh|bash|zsh|nf|config|toml|ini|cfg|xml|ipynb|tex|sql|js|ts)$/i;
+/** Plain-text files usually named without an extension. */
+const TEXT_NAMES = /(^|\/)(README|LICENSE|NOTICE|CHANGELOG|Dockerfile|Makefile|Snakefile|\.gitignore|\.dockerignore)$/;
 
 /** Preview kind from a result path. Directories and unknown binaries stay closed. */
 export function previewKind(path: string): ResultPreview {
@@ -36,7 +38,7 @@ export function previewKind(path: string): ResultPreview {
   if (/\.pdf$/i.test(path)) return "pdf";
   if (/\.h5ad$/i.test(path)) return "anndata";
   if (MOLECULE_EXT.test(path)) return "molecule";
-  if (TEXT_EXT.test(path)) return "text";
+  if (TEXT_EXT.test(path) || TEXT_NAMES.test(path)) return "text";
   return null;
 }
 

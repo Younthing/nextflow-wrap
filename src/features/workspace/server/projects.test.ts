@@ -78,8 +78,9 @@ describe("projects", () => {
 });
 
 describe("example project", () => {
-  it("cannot be removed from the list", () => {
-    db.saveProject({ id: "example", name: "示例项目", path: root, createdAt: "2026-01-01T00:00:00.000Z", openedAt: "1970-01-01T00:00:00.000Z", example: true });
-    expect(() => forgetProject(context, "example")).toThrow(/示例项目不能移除/);
+  it("is removed from the list like any other project", () => {
+    db.saveProject({ id: "example", name: "示例项目", path: root, createdAt: "2026-01-01T00:00:00.000Z", openedAt: "2026-01-01T00:00:00.000Z" });
+    forgetProject(context, "example");
+    expect(db.project("example")).toBeUndefined();
   });
 });

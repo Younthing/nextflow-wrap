@@ -3,7 +3,7 @@ import { isAbsolute, resolve } from "node:path";
 
 import { HttpError } from "@/features/runs/server/service";
 import type { StudioStore } from "@/lib/server/database";
-import { EXAMPLE_PROJECT_ID, folderName, joinProjectPath, normalizeProjectPath, PROJECT_SCAFFOLD, projectIdForPath, projectNameError, touchProject } from "../projects";
+import { folderName, joinProjectPath, normalizeProjectPath, PROJECT_SCAFFOLD, projectIdForPath, projectNameError, touchProject } from "../projects";
 import type { CreateProjectRequest, Project, ProjectList } from "../types";
 
 const CURRENT_KEY = "currentProject";
@@ -77,10 +77,7 @@ export async function openProject(context: ProjectContext, requested: string): P
 export async function reopenProject(context: ProjectContext, id: string): Promise<Project> {
   const project = context.db.project(id);
   if (!project) throw new HttpError(404, "项目不在最近列表里");
-  if (!(await directoryExists(project.path))) {
-    if (project.example) await mkdir(/* turbopackIgnore: true */ project.path, { recursive: true });
-    else throw new HttpError(404, `找不到 ${project.path}，可能已移动或删除。可以从列表移除后重新打开目录`);
-  }
+  if (!(await directoryExists(project.path))) throw new HttpError(404, `找不到 ${project.path}，可能已移动或删除。可以从列表移除后重新打开目录`);
   return remember(context, project);
 }
 
@@ -98,7 +95,6 @@ export function closeProject(context: ProjectContext) {
 export function forgetProject(context: ProjectContext, id: string) {
   const { db } = context;
   if (!db.project(id)) throw new HttpError(404, "项目不在最近列表里");
-  if (id === EXAMPLE_PROJECT_ID) throw new HttpError(400, "示例项目不能移除");
   db.transaction(() => {
     db.deleteProject(id);
     if (db.meta(CURRENT_KEY) === id) db.setMeta(CURRENT_KEY, "");

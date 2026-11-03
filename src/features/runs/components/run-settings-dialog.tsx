@@ -145,7 +145,7 @@ export function RunSettingsDialog({
                 {executorDef(launchConfig.executor).name}
                 {profileList(launchConfig)
                   ? ` · -profile ${profileList(launchConfig)}`
-                  : " · Shell"}
+                  : ` · ${launchConfig.engine === "zsh" ? "Zsh" : launchConfig.engine === "bash" ? "Bash" : "Shell"}`}
               </span>
             )}
           </div>

@@ -16,6 +16,8 @@ export type GridExecutorId =
 export type ExecutorId = "local" | GridExecutorId | "google-batch" | "aws-batch" | "azure-batch" | "k8s";
 export type ContainerEngine =
   | "shell"
+  | "bash"
+  | "zsh"
   | "conda"
   | "mamba"
   | "micromamba"
@@ -51,9 +53,14 @@ export interface ExecutorDef {
   tools: string[][];
 }
 
-/** Every software runtime Nextflow can switch on through `-profile`. Shell means none. */
+/**
+ * Every software runtime Nextflow can switch on through `-profile`. Shell, Bash and Zsh mean none: tasks run with the
+ * host's own software, Shell in Nextflow's default `/bin/bash`, Bash and Zsh in that shell as found on `PATH`.
+ */
 export const ENGINES: ContainerEngine[] = [
   "shell",
+  "bash",
+  "zsh",
   "conda",
   "mamba",
   "micromamba",
@@ -69,6 +76,14 @@ export const ENGINES: ContainerEngine[] = [
 ];
 
 const CONTAINER_ONLY: ContainerEngine[] = ["docker", "wave"];
+
+/** Runtimes without a `-profile`: tasks run straight in a shell on the host. */
+export const HOST_SHELLS = ["shell", "bash", "zsh"] as const satisfies readonly ContainerEngine[];
+export type HostShell = (typeof HOST_SHELLS)[number];
+export const isHostShell = (engine: ContainerEngine): engine is HostShell => (HOST_SHELLS as readonly string[]).includes(engine);
+
+/** `process.shell` for Bash and Zsh. Shell keeps Nextflow's default (`/bin/bash -ue`). */
+const PROCESS_SHELL: Partial<Record<HostShell, string>> = { bash: "['bash', '-ue']", zsh: "['zsh', '-ue']" };
 
 interface GridSpec {
   id: GridExecutorId;
@@ -190,6 +205,8 @@ export const EXECUTORS: ExecutorDef[] = [
 
 export const ENGINE_LABELS: Record<ContainerEngine, string> = {
   shell: "Shell（不用 -profile）",
+  bash: "Bash（不用 -profile）",
+  zsh: "Zsh（不用 -profile）",
   conda: "Conda",
   mamba: "Mamba",
   micromamba: "Micromamba",
@@ -207,6 +224,8 @@ export const ENGINE_LABELS: Record<ContainerEngine, string> = {
 /** The command each runtime needs where its tasks run. Wave works through another engine. */
 const ENGINE_TOOLS: Record<ContainerEngine, string[]> = {
   shell: [],
+  bash: ["bash"],
+  zsh: ["zsh"],
   conda: ["conda"],
   mamba: ["mamba"],
   micromamba: ["micromamba"],
@@ -231,7 +250,7 @@ export function launchTools(config: LaunchConfig): string[][] {
   return [...def.tools, ...engine];
 }
 
-/** The runtime switches Nextflow reads. `shell` turns all of them off. */
+/** The runtime switches Nextflow reads. A host shell turns all of them off. */
 const RUNTIME_SWITCHES = ["conda", "docker", "podman", "singularity", "apptainer", "charliecloud", "shifter", "sarus", "spack"] as const;
 
 /**
@@ -255,7 +274,7 @@ export type ExtraProfile = (typeof EXTRA_PROFILES)[number];
 
 /** One `-profile` per runtime: it switches that runtime on and every other one off. */
 export function runtimeProfiles(indent = "    "): string {
-  return ENGINES.filter((engine) => engine !== "shell" && engine !== "wave")
+  return ENGINES.filter((engine) => !isHostShell(engine) && engine !== "wave")
     .map((engine) => {
       const on = engine === "mamba" || engine === "micromamba" ? "conda" : engine;
       const lines = [
@@ -392,12 +411,16 @@ export function renderRunConfig(config: LaunchConfig): string {
       lines.push("}");
       break;
   }
-  if (config.engine === "shell") lines.push(...RUNTIME_SWITCHES.map((name) => `${name}.enabled = false`));
+  if (isHostShell(config.engine)) {
+    lines.push(...RUNTIME_SWITCHES.map((name) => `${name}.enabled = false`));
+    const shell = PROCESS_SHELL[config.engine];
+    if (shell) lines.push(`process.shell = ${shell}`);
+  }
   return `${lines.join("\n")}\n`;
 }
 
 export function profileList(config: LaunchConfig): string {
-  return [config.engine === "shell" ? "" : config.engine, ...config.extraProfiles]
+  return [isHostShell(config.engine) ? "" : config.engine, ...config.extraProfiles]
     .map((name) => name.trim())
     .filter(Boolean)
     .join(",");

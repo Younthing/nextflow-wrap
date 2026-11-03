@@ -2,7 +2,7 @@ import { access, realpath } from "node:fs/promises";
 import { constants } from "node:fs";
 import { arch, cpus, totalmem } from "node:os";
 import { delimiter, dirname, join } from "node:path";
-import { executorDef, launchTools, type LaunchConfig } from "../launch";
+import { ENGINE_LABELS, executorDef, isHostShell, launchTools, type LaunchConfig } from "../launch";
 import { nextflowCacheEnv } from "@/lib/server/paths";
 import { managedPaths, managedToolEnv, nextflowPluginsDirectory, pluginInstalled, TOOLCHAIN, WEBLOG_PLUGIN } from "@/lib/server/toolchain";
 import { runCommand } from "./command";
@@ -107,7 +107,7 @@ export async function requireLaunchTools(config: LaunchConfig, env: NodeJS.Proce
     if (!found) missing.push(alternatives.join(" 或 "));
   }
   if (missing.length) {
-    const what = config.executor === "local" ? `-profile ${config.engine}` : `${executorDef(config.executor).name} 执行器`;
+    const what = config.executor === "local" ? (isHostShell(config.engine) ? ENGINE_LABELS[config.engine] : `-profile ${config.engine}`) : `${executorDef(config.executor).name} 执行器`;
     throw new Error(`${what} 需要 ${missing.join("、")}，但 runner 的 PATH 里找不到。请先安装，或换一个 profile / 执行器。`);
   }
 }

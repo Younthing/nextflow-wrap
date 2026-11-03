@@ -60,3 +60,32 @@ export function useFileIntake() {
     })();
   }, [qc]);
 }
+
+/** URL of a project file by its workspace path, to preview (`download` to save it). */
+export function workspaceFileUrl(projectId: string, path: string, kind: "content" | "summary" = "content", download = false): string {
+  return `/api/fs/${kind}?project=${encodeURIComponent(projectId)}&path=${encodeURIComponent(path)}${download ? "&download=1" : ""}`;
+}
+
+/** Rename, delete, paste and new-folder actions of the file area. Paths are relative to the project folder. */
+export function useWorkspaceEntries(projectId: string) {
+  const qc = useQueryClient();
+  const refresh = React.useCallback(() => {
+    void qc.invalidateQueries({ queryKey: ["fs"] });
+    // A notebook's `.ipynb` may have been renamed, moved or deleted with the files.
+    void qc.invalidateQueries({ queryKey: ["notebooks"] });
+  }, [qc]);
+  const post = React.useCallback(async <T,>(action: string, body: object): Promise<T> => {
+    try {
+      return await api<T>(`/fs/${action}`, { method: "POST", body: JSON.stringify({ project: projectId, ...body }) });
+    } finally {
+      refresh();
+    }
+  }, [projectId, refresh]);
+  return React.useMemo(() => ({
+    rename: (path: string, name: string) => post<{ path: string }>("rename", { path, name }),
+    remove: (paths: string[]) => post<void>("delete", { paths }),
+    paste: (sources: string[], target: string, mode: "copy" | "move") => post<{ paths: string[] }>("paste", { sources, target, mode }),
+    createFolder: (parent: string, name: string) => post<{ path: string }>("folder", { parent, name }),
+    refresh,
+  }), [post, refresh]);
+}

@@ -81,6 +81,52 @@ export function useSaveNotebook() {
   });
 }
 
+/** Delete a notebook and its `.ipynb` file. Published modules keep the revisions they came from. */
+export function useDeleteNotebook() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api<void>(`/notebooks/${id}`, { method: "DELETE" }),
+    onSuccess: (_, id) => {
+      qc.removeQueries({ queryKey: notebookKeys.detail(id), exact: true });
+      refreshNotebooks(qc);
+      void qc.invalidateQueries({ queryKey: ["fs"] });
+    },
+  });
+}
+
+/** Rename a notebook: the latest saved version gets the new name, and its file follows. */
+export function useRenameNotebook() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, name }: { id: string; name: string }) => {
+      const doc = await qc.fetchQuery({ queryKey: notebookKeys.detail(id), queryFn: () => api<NotebookDoc>(`/notebooks/${id}`), staleTime: 0 });
+      return api<NotebookDoc>(`/notebooks/${id}`, { method: "PUT", body: JSON.stringify({ ...doc, name }) });
+    },
+    onSuccess: (doc) => {
+      refreshNotebooks(qc, doc);
+      void qc.invalidateQueries({ queryKey: ["fs"] });
+    },
+  });
+}
+
+/** A copy of a notebook in a project (its saved cells, outputs included), named "… 副本". */
+export function useDuplicateNotebook() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, projectId }: { id: string; projectId: string }) => {
+      const doc = await qc.fetchQuery({ queryKey: notebookKeys.detail(id), queryFn: () => api<NotebookDoc>(`/notebooks/${id}`), staleTime: 0 });
+      return api<NotebookDoc>("/notebooks", {
+        method: "POST",
+        body: JSON.stringify({ name: `${doc.name} 副本`.slice(0, 80), description: doc.description, kernel: doc.kernel, cells: doc.cells, projectId }),
+      });
+    },
+    onSuccess: (doc) => {
+      refreshNotebooks(qc, doc);
+      void qc.invalidateQueries({ queryKey: ["fs"] });
+    },
+  });
+}
+
 export function useRunNotebook() {
   const qc = useQueryClient();
   return useMutation({

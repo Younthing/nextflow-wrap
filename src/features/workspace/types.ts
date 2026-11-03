@@ -11,8 +11,6 @@ export interface Project {
   createdAt: string;
   /** Last time it was opened; the welcome page sorts by this. */
   openedAt: string;
-  /** The built-in example project that holds notebooks from before projects existed. */
-  example?: boolean;
 }
 
 export interface ProjectList {
