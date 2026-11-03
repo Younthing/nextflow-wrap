@@ -5,12 +5,21 @@ import type { NotebookDoc, TryRunRecord } from "./types";
 import type { ModuleDef } from "@/features/workflow/types";
 import { versionNumber } from "@/features/workflow/origin";
 
-export function nextModuleVersion(existing: readonly ModuleDef[], notebookId: string): string {
-  const numbers = existing
-    .filter((mod) => mod.sourceNotebookId === notebookId)
-    .map((mod) => versionNumber(mod.version));
-  const next = numbers.length ? Math.max(...numbers) + 1 : 1;
-  return `v${next}`;
+/**
+ * Where an export goes: a new module (`script/<slug>`, from the name), or an existing one it overwrites in place.
+ * Overwriting keeps the id, so workflows that use the module run the new version; the version label goes up.
+ */
+export function exportTarget(name: string, existing: readonly ModuleDef[], overwrite?: string): { id: string; slug: string; version: string } {
+  if (overwrite) {
+    const current = existing.find((mod) => mod.id === overwrite && mod.id.startsWith("script/"));
+    if (!current) throw new Error("要覆盖的模块不存在");
+    return { id: current.id, slug: current.id.slice("script/".length), version: `v${versionNumber(current.version) + 1}` };
+  }
+  const slug = moduleSlug(name);
+  const id = `script/${slug}`;
+  const taken = existing.find((mod) => mod.id === id);
+  if (taken) throw new Error(`已有模块「${taken.name}」，选择覆盖它或换个名字`);
+  return { id, slug, version: "v1" };
 }
 
 export function processName(name: string): string {
@@ -27,6 +36,8 @@ export function buildScriptModule(input: {
   condaYaml?: string;
   containerImage?: string;
   existing: readonly ModuleDef[];
+  /** Module id to overwrite; a new module when unset. */
+  overwrite?: string;
   receipt: TryRunRecord | undefined;
 }): ModuleDef {
   const name = input.name.trim();
@@ -41,12 +52,11 @@ export function buildScriptModule(input: {
   if (!sameModuleEnv(input.receipt, { condaYaml, containerImage })) {
     throw new Error("试跑用的 conda／容器与将保存的不一致，请按当前环境重新试跑");
   }
-  const version = nextModuleVersion(input.existing, input.notebook.id);
-  const slug = moduleSlug(name);
+  const { id, slug, version } = exportTarget(name, input.existing, input.overwrite);
   const folder = `${slug}_${version}`;
   const ext = converted.language === "r" ? "R" : "py";
   return {
-    id: `script/${input.notebook.id}/${version}`,
+    id,
     path: folder,
     name,
     process: processName(name),
@@ -57,8 +67,6 @@ export function buildScriptModule(input: {
     origin: "script",
     inputs: inputPorts(converted.inputs),
     outputs: outputPorts(converted.outputs),
-    sourceNotebookId: input.notebook.id,
-    sourceNotebookRev: input.notebook.rev,
     version,
     tryRun: "passed",
     command: `bin/${folder}.${ext}`,
@@ -80,6 +88,7 @@ export function publishScriptModule(input: {
   condaYaml?: string;
   containerImage?: string;
   existing: readonly ModuleDef[];
+  overwrite?: string;
   receipt: TryRunRecord | undefined;
   savedAt?: string;
 }): { module: ModuleDef; library: ModuleLibraryCopy } {

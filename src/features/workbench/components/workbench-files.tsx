@@ -21,11 +21,12 @@ export function relativeToProject(project: Pick<Project, "path">, path: string):
   return path.startsWith(`${project.path}/`) ? path.slice(project.path.length + 1) : path;
 }
 
-/** Copy the absolute path: notebook kernels run in their own scratch folder, so a relative path would not resolve. */
+/** Copy the workspace path: notebook cells run in the project folder, and workflows store the same form. */
 function copyPath(project: Project, entry: FsEntry) {
-  void navigator.clipboard?.writeText(entry.path).then(
-    () => toast.success(`已复制 ${relativeToProject(project, entry.path)} 的完整路径`),
-    () => toast.warning(`无法写入剪贴板：${entry.path}`),
+  const path = relativeToProject(project, entry.path);
+  void navigator.clipboard?.writeText(path).then(
+    () => toast.success(`已复制 ${path}`),
+    () => toast.warning(`无法写入剪贴板：${path}`),
   );
 }
 
@@ -61,7 +62,7 @@ function Listing({ project, path, depth }: { project: Project; path: string; dep
               type="button"
               className={rowClass}
               style={{ paddingLeft: `${26 + depth * 14}px` }}
-              title={`${relativeToProject(project, entry.path)} · ${formatBytes(entry.size)}\n单击复制完整路径`}
+              title={`${relativeToProject(project, entry.path)} · ${formatBytes(entry.size)}\n单击复制路径`}
               onClick={() => copyPath(project, entry)}
             >
               <File className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
@@ -114,9 +115,6 @@ export function WorkbenchFiles({
             >
               <NotebookText className="size-3.5 shrink-0 opacity-70" aria-hidden />
               <span className="truncate">{nb.name}</span>
-              {nb.publishState === "published" ? (
-                <span className="ml-auto shrink-0 rounded-full bg-success/15 px-1.5 text-[10px] font-medium text-success" title={`已导出为模块 ${nb.publishedVersion ?? ""}`}>{nb.publishedVersion ?? "模块"}</span>
-              ) : null}
             </Link>
           </li>
         ))}

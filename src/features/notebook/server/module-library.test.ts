@@ -18,7 +18,7 @@ afterEach(() => {
   for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true });
 });
 
-const hello = () => structuredClone(demoScriptModules().find((def) => def.id === "script/hello_py/v2")!);
+const hello = () => structuredClone(demoScriptModules().find((def) => def.id === "script/hello_py")!);
 
 describe("module library", () => {
   it("files a version under namespace, name and version", async () => {

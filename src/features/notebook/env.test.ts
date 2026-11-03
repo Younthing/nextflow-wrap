@@ -5,7 +5,7 @@ import { languageForKernel, normalizeKernelName } from "./types";
 import { cleanEnvField, missingEnvLabels, patchModuleEnv, sameModuleEnv, stageModuleEnv, tryRunEnvSummary } from "./env";
 
 const base = {
-  id: "script/qc_summary/v1",
+  id: "script/qc_summary",
   path: "qc_summary_v1",
   name: "qc_summary",
   process: "QC_SUMMARY",

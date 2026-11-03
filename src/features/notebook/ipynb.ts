@@ -32,7 +32,7 @@ export interface Ipynb {
 
 /** Notebook-level fields the file carries. `rev`, timestamps and kernel state stay in the database. */
 export type IpynbNotebook = Pick<NotebookDoc, "name" | "description" | "kernel" | "language" | "cells">
-  & Partial<Pick<NotebookDoc, "id" | "libraryModuleId" | "librarySourceNotebookId" | "librarySourceNotebookRev">>;
+  & Partial<Pick<NotebookDoc, "id">>;
 
 /** Split source the way Jupyter writes it: one string per line, each keeping its newline. */
 function sourceLines(source: string): string[] {
@@ -48,9 +48,6 @@ function writeCell(cell: NotebookCell): IpynbCell {
 export function notebookToIpynb(doc: IpynbNotebook): Ipynb {
   const language = doc.language === "r" ? "R" : "python";
   const studio: Record<string, unknown> = { id: doc.id, description: doc.description };
-  if (doc.libraryModuleId) studio.libraryModuleId = doc.libraryModuleId;
-  if (doc.librarySourceNotebookId) studio.librarySourceNotebookId = doc.librarySourceNotebookId;
-  if (doc.librarySourceNotebookRev !== undefined) studio.librarySourceNotebookRev = doc.librarySourceNotebookRev;
   return {
     nbformat: 4,
     nbformat_minor: 5,
@@ -128,10 +125,5 @@ export function notebookFromIpynb(raw: string, fallbackName: string): IpynbNoteb
     cells: cells.length ? cells : [{ id: "c1", role: "code", source: "" }],
   };
   if (typeof studio.id === "string" && ID.test(studio.id)) doc.id = studio.id;
-  if (typeof studio.libraryModuleId === "string") doc.libraryModuleId = studio.libraryModuleId;
-  if (typeof studio.librarySourceNotebookId === "string") doc.librarySourceNotebookId = studio.librarySourceNotebookId;
-  if (typeof studio.librarySourceNotebookRev === "number" && Number.isInteger(studio.librarySourceNotebookRev)) {
-    doc.librarySourceNotebookRev = studio.librarySourceNotebookRev;
-  }
   return doc;
 }

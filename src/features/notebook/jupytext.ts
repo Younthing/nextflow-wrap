@@ -23,13 +23,6 @@ export interface PercentNotebook {
   kernel: string;
   language: NotebookLanguage;
   cells: NotebookCell[];
-  sourceNotebookId?: string;
-  sourceNotebookRev?: number;
-}
-
-export interface PercentProvenance {
-  sourceNotebookId: string;
-  sourceNotebookRev: number;
 }
 
 function mapLines(source: string, fn: (line: string) => string): string {
@@ -83,7 +76,6 @@ function usableKernel(kernel: string): boolean {
 
 export function writePercent(
   notebook: Pick<NotebookDoc, "name" | "description" | "kernel" | "language" | "cells">,
-  provenance?: PercentProvenance,
 ): string {
   if (!usableKernel(notebook.kernel)) throw new PercentError("内核无效");
   const language: NotebookLanguage = notebook.language === "r" ? "r" : "python";
@@ -94,9 +86,6 @@ export function writePercent(
     description: notebook.description,
     kernel: notebook.kernel,
     language,
-    ...(provenance
-      ? { sourceNotebookId: provenance.sourceNotebookId, sourceNotebookRev: provenance.sourceNotebookRev }
-      : {}),
   });
   const header = [
     "# ---",
@@ -130,19 +119,7 @@ function parseMeta(raw: string): Omit<PercentNotebook, "cells"> {
   if (typeof meta.description !== "string") throw new PercentError("缺少笔记本说明");
   if (typeof meta.kernel !== "string" || !usableKernel(meta.kernel)) throw new PercentError("内核无效");
   if (meta.language !== "python" && meta.language !== "r") throw new PercentError("语言无效");
-  if (meta.sourceNotebookId !== undefined && typeof meta.sourceNotebookId !== "string") throw new PercentError("源笔记本无效");
-  const sourceNotebookRev = typeof meta.sourceNotebookRev === "number" && Number.isInteger(meta.sourceNotebookRev) && meta.sourceNotebookRev >= 1
-    ? meta.sourceNotebookRev
-    : undefined;
-  if (meta.sourceNotebookRev !== undefined && sourceNotebookRev === undefined) throw new PercentError("源修订无效");
-  return {
-    name: meta.name,
-    description: meta.description,
-    kernel: meta.kernel,
-    language: meta.language,
-    sourceNotebookId: typeof meta.sourceNotebookId === "string" ? meta.sourceNotebookId : undefined,
-    sourceNotebookRev,
-  };
+  return { name: meta.name, description: meta.description, kernel: meta.kernel, language: meta.language };
 }
 
 function cellRole(markdown: boolean, value: unknown): NotebookCellRole {

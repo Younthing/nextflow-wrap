@@ -118,10 +118,6 @@ export function scriptMetaYaml(def: ModuleDef): string {
     "output:",
     ...(def.outputs.length ? def.outputs.flatMap(portYaml) : ["  []"]),
   ];
-  if (def.sourceNotebookId) {
-    lines.push("source:", `  notebook: ${yamlString(def.sourceNotebookId)}`);
-    if (def.sourceNotebookRev !== undefined) lines.push(`  revision: ${def.sourceNotebookRev}`);
-  }
   if (def.changelog) lines.push(`changelog: ${yamlString(def.changelog)}`);
   return `${lines.join("\n")}\n`;
 }

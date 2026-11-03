@@ -1,20 +1,8 @@
 import { notebookProjectId } from "@/features/workspace/projects";
-import { countCellChanges } from "./changes";
-import type { NotebookDoc, NotebookRevision, NotebookSummary } from "./types";
+import type { NotebookDoc, NotebookSummary } from "./types";
 import type { ModuleDef } from "@/features/workflow/types";
-import { versionNumber } from "@/features/workflow/origin";
 
-export function latestModuleForNotebook(modules: readonly ModuleDef[], notebookId: string): ModuleDef | undefined {
-  let best: ModuleDef | undefined;
-  for (const mod of modules) {
-    if (mod.sourceNotebookId !== notebookId) continue;
-    if (!best || versionNumber(mod.version) >= versionNumber(best.version)) best = mod;
-  }
-  return best;
-}
-
-export function summarizeNotebook(doc: NotebookDoc, modules: readonly ModuleDef[]): NotebookSummary {
-  const published = latestModuleForNotebook(modules, doc.id);
+export function summarizeNotebook(doc: NotebookDoc): NotebookSummary {
   return {
     id: doc.id,
     name: doc.name,
@@ -23,26 +11,8 @@ export function summarizeNotebook(doc: NotebookDoc, modules: readonly ModuleDef[
     language: doc.language,
     rev: doc.rev,
     updatedAt: doc.updatedAt,
-    publishState: published ? "published" : "analysis",
-    publishedVersion: published?.version,
-    tryRun: published?.tryRun,
-    moduleName: published?.name,
-    moduleId: published?.id,
-    fromLibrary: Boolean(doc.libraryModuleId),
     projectId: notebookProjectId(doc),
   };
-}
-
-export type NotebookFilter = "all" | "analysis" | "published";
-
-export function filterNotebooks(rows: readonly NotebookSummary[], filter: NotebookFilter, query: string): NotebookSummary[] {
-  const needle = query.trim().toLowerCase();
-  return rows.filter((row) => {
-    if (filter === "analysis" && row.publishState !== "analysis") return false;
-    if (filter === "published" && row.publishState !== "published") return false;
-    if (!needle) return true;
-    return row.name.toLowerCase().includes(needle) || row.description.toLowerCase().includes(needle) || (row.moduleName?.toLowerCase().includes(needle) ?? false);
-  });
 }
 
 export function formatRelative(iso: string, now = Date.now()): string {
@@ -60,10 +30,7 @@ export function formatRelative(iso: string, now = Date.now()): string {
 }
 
 export interface ScriptModuleView extends ModuleDef {
-  sourceNotebookName: string;
-  sourceNotebookRevCurrent?: number;
-  sourceChanged: boolean;
-  cellChanges: number;
+  /** Workflows that use the module. */
   referenceCount: number;
 }
 
@@ -82,26 +49,10 @@ export function referenceCounts(workflows: readonly { nodes: readonly { data: { 
 
 export function scriptModuleViews(
   modules: readonly ModuleDef[],
-  notebooks: readonly NotebookDoc[],
-  revisions: readonly NotebookRevision[],
   workflows: readonly { nodes: readonly { data: { moduleId: string } }[] }[],
 ): ScriptModuleView[] {
-  const notes = new Map(notebooks.map((doc) => [doc.id, doc]));
   const counts = referenceCounts(workflows);
   return modules
     .filter((mod) => mod.origin === "script" || mod.id.startsWith("script/"))
-    .map((mod) => {
-      const notebook = mod.sourceNotebookId ? notes.get(mod.sourceNotebookId) : undefined;
-      const pinned = revisions.find((rev) => rev.notebookId === mod.sourceNotebookId && rev.rev === mod.sourceNotebookRev);
-      const cellChanges = notebook && pinned ? countCellChanges(pinned.cells, notebook.cells) : 0;
-      const sourceChanged = !!notebook && mod.sourceNotebookRev !== undefined && notebook.rev !== mod.sourceNotebookRev;
-      return {
-        ...mod,
-        sourceNotebookName: notebook?.name ?? (mod.sourceNotebookId ? "源笔记本已删除" : "示例模块"),
-        sourceNotebookRevCurrent: notebook?.rev,
-        sourceChanged,
-        cellChanges,
-        referenceCount: counts[mod.id] ?? 0,
-      };
-    });
+    .map((mod) => ({ ...mod, referenceCount: counts[mod.id] ?? 0 }));
 }

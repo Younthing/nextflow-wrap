@@ -152,14 +152,24 @@ export function useTryRunNotebook() {
   });
 }
 
-export function useReopenLibraryNotebook() {
+/** Opens a module for editing: a temporary notebook from the copy saved with it. */
+export function useEditModule() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (moduleId: string) =>
-      api<NotebookDoc>("/script-modules/reopen", {
+      api<NotebookDoc>("/script-modules/edit", {
         method: "POST",
         body: JSON.stringify({ moduleId }),
       }),
+    onSuccess: (doc) => qc.setQueryData(notebookKeys.detail(doc.id), doc),
+  });
+}
+
+/** Saves a temporary notebook to the project: it joins the notebook list and gets its `.ipynb` file. */
+export function useKeepNotebook() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api<NotebookDoc>(`/notebooks/${id}/keep`, { method: "POST" }),
     onSuccess: (doc) => refreshNotebooks(qc, doc),
   });
 }
@@ -170,6 +180,7 @@ export function usePublishNotebook() {
     mutationFn: ({
       id,
       name,
+      overwrite,
       description,
       changelog,
       condaYaml,
@@ -177,6 +188,8 @@ export function usePublishNotebook() {
     }: {
       id: string;
       name: string;
+      /** Module id to overwrite; a new module when unset. */
+      overwrite?: string;
       description: string;
       changelog?: string;
       condaYaml?: string;
@@ -184,7 +197,7 @@ export function usePublishNotebook() {
     }) =>
       api<ModuleDef>(`/notebooks/${id}/publish`, {
         method: "POST",
-        body: JSON.stringify({ name, description, changelog, condaYaml, containerImage }),
+        body: JSON.stringify({ name, overwrite, description, changelog, condaYaml, containerImage }),
       }),
     onSuccess: () => refreshNotebooks(qc),
   });

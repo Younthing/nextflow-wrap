@@ -10,7 +10,7 @@ import { ProjectPreview } from "../components/project-preview";
 import { generateProject } from "../generate";
 import { defaultLaunchConfig, renderRunConfig } from "../launch";
 
-const hello = demoScriptModules().find((def) => def.id === "script/hello_py/v2")!;
+const hello = demoScriptModules().find((def) => def.id === "script/hello_py")!;
 const workflow: WorkflowDoc = {
   ...emptyWorkflow("wf_story", "Hello"),
   params: { outdir: "results" },

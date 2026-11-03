@@ -14,7 +14,7 @@ const FROM_KEY = "from";
 const VALUE_PREFIX = "set.";
 
 /** `/workbench/<notebook>?from=ALIAS&set.<input>=<value>…` */
-export function sourceNotebookHref(notebookId: string, canvas?: CanvasValues): string {
+export function notebookHref(notebookId: string, canvas?: CanvasValues): string {
   const base = `/workbench/${encodeURIComponent(notebookId)}`;
   if (!canvas || !Object.keys(canvas.values).length) return base;
   const query = new URLSearchParams();

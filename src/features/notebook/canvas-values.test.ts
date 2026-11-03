@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { applyCanvasValues, inputLiteral, readCanvasValues, sourceNotebookHref } from "./canvas-values";
+import { applyCanvasValues, inputLiteral, readCanvasValues, notebookHref } from "./canvas-values";
 import type { MarkerInput, NotebookCell } from "./types";
 
 const inputs: MarkerInput[] = [
@@ -12,14 +12,14 @@ const inputs: MarkerInput[] = [
 
 describe("canvas values in the URL", () => {
   it("round-trips through the workbench link", () => {
-    const href = sourceNotebookHref("nb_1", { from: "SCANPY_QC", values: { adata: "/data/pbmc 3k.h5ad", min_genes: "300" } });
+    const href = notebookHref("nb_1", { from: "SCANPY_QC", values: { adata: "/data/pbmc 3k.h5ad", min_genes: "300" } });
     expect(href.startsWith("/workbench/nb_1?")).toBe(true);
     const query = new URLSearchParams(href.split("?")[1]);
     expect(readCanvasValues(query)).toEqual({ from: "SCANPY_QC", values: { adata: "/data/pbmc 3k.h5ad", min_genes: "300" } });
   });
 
   it("links to the plain notebook when there is nothing to hand over", () => {
-    expect(sourceNotebookHref("nb_1", { from: "X", values: {} })).toBe("/workbench/nb_1");
+    expect(notebookHref("nb_1", { from: "X", values: {} })).toBe("/workbench/nb_1");
     expect(readCanvasValues(new URLSearchParams("rev=3"))).toBeNull();
   });
 });

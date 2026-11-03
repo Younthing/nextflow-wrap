@@ -333,9 +333,11 @@ def _run(cell, ns):
             pass
         return {"id": cell["id"], "outputs": bucket, "error": traceback.format_exc()}
 
-cells = json.load(_open("cells.json", encoding="utf-8"))
+# The driver's files sit next to it; cells run in the project folder (the working directory).
+_here = os.path.dirname(os.path.abspath(__file__))
+cells = json.load(_open(os.path.join(_here, "cells.json"), encoding="utf-8"))
 ns = {"__name__": "__main__", "display": _display}
 results = [_run(cell, ns) for cell in cells]
-with _open("results.json", "w", encoding="utf-8") as handle:
+with _open(os.path.join(_here, "results.json"), "w", encoding="utf-8") as handle:
     _dump(results, handle, ensure_ascii=False)
 `;

@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import { CATALOG_BUILTINS } from "@/features/workflow/catalog-builtins";
-import { modulesForCatalog, modulesForDrawer, newerScriptModule } from "@/features/workflow/origin";
+import { modulesForCatalog, modulesForDrawer } from "@/features/workflow/origin";
 import { demoNotebooks, demoScriptModules } from "./seed";
-import { buildScriptModule, nextModuleVersion } from "./publish";
+import { buildScriptModule } from "./publish";
 import type { TryRunRecord } from "./types";
 
 const passed = (notebookId: string, rev: number): TryRunRecord => ({
@@ -29,7 +29,7 @@ describe("publish", () => {
     })).toThrow(/试跑通过/);
   });
 
-  it("pins the current notebook revision and bumps the version", () => {
+  it("overwrites a chosen module in place: same id, next version, no link to the notebook", () => {
     const notebook = demoNotebooks().find((doc) => doc.id === "hello_py")!;
     const existing = demoScriptModules();
     const mod = buildScriptModule({
@@ -37,13 +37,13 @@ describe("publish", () => {
       name: "hello.py",
       description: notebook.description,
       existing,
+      overwrite: "script/hello_py",
       receipt: passed(notebook.id, notebook.rev),
     });
     expect(mod.origin).toBe("script");
-    expect(mod.version).toBe(nextModuleVersion(existing, notebook.id));
+    expect(mod.id).toBe("script/hello_py");
     expect(mod.version).toBe("v3");
-    expect(mod.sourceNotebookId).toBe(notebook.id);
-    expect(mod.sourceNotebookRev).toBe(notebook.rev);
+    expect(JSON.stringify(mod)).not.toContain("sourceNotebook");
     expect(mod.tryRun).toBe("passed");
     expect(mod.inputs.some((port) => port.name === "samplesheet" && !port.widget)).toBe(true);
     expect(mod.outputs[0]?.name).toBe("hello");
@@ -96,6 +96,20 @@ describe("publish", () => {
   });
 });
 
+describe("export target", () => {
+  const notebook = demoNotebooks().find((doc) => doc.id === "hello_py")!;
+  const build = (name: string, overwrite?: string) => buildScriptModule({ notebook, name, description: "", existing: demoScriptModules(), overwrite, receipt: passed(notebook.id, notebook.rev) });
+
+  it("makes a new module from an unused name", () => {
+    const mod = build("hello_again");
+    expect([mod.id, mod.version]).toEqual(["script/hello_again", "v1"]);
+  });
+  it("refuses a name another module has, and an unknown module to overwrite", () => {
+    expect(() => build("hello_py")).toThrow(/选择覆盖它或换个名字/);
+    expect(() => build("x", "script/missing")).toThrow(/不存在/);
+  });
+});
+
 describe("module lists", () => {
   const builtins = CATALOG_BUILTINS;
   const scripts = demoScriptModules();
@@ -103,22 +117,15 @@ describe("module lists", () => {
 
   it("hides failed scripts from the drawer", () => {
     const drawer = modulesForDrawer(all).map((mod) => mod.id);
-    expect(drawer).toContain("script/qc_summary/v1");
-    expect(drawer).toContain("script/hello_py/v2");
-    expect(drawer).not.toContain("script/deseq2_plot/v1");
+    expect(drawer).toContain("script/qc_summary");
+    expect(drawer).toContain("script/hello_py");
+    expect(drawer).not.toContain("script/deseq2_plot");
     expect(drawer).toContain("builtin/merge-samplesheet");
   });
 
   it("keeps failed scripts on the catalog", () => {
     const catalog = modulesForCatalog(all).map((mod) => mod.id);
-    expect(catalog).toContain("script/deseq2_plot/v1");
+    expect(catalog).toContain("script/deseq2_plot");
     expect(catalog).toContain("builtin/merge-samplesheet");
-  });
-
-  it("points a node at a newer passed publish", () => {
-    const current = scripts.find((mod) => mod.id === "script/qc_summary/v1")!;
-    const newer = { ...current, id: "script/qc_summary/v2", version: "v2", tryRun: "passed" as const };
-    expect(newerScriptModule(current, [...scripts, newer])?.id).toBe("script/qc_summary/v2");
-    expect(newerScriptModule(current, scripts)).toBeUndefined();
   });
 });

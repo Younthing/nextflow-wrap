@@ -298,12 +298,12 @@ const ONESHOT_HINT = "单元格每次从头运行；安装 ipykernel 后保留�
  * so variables and files from earlier runs stay. No cell id restarts the kernel and runs every cell,
  * stopping at the first error. Without Jupyter it falls back to a fresh process from the top.
  */
-export async function runNotebookCells(notebook: NotebookDoc, cellId?: string): Promise<NotebookRunResult> {
+export async function runNotebookCells(notebook: NotebookDoc, cellId?: string, workspace?: string): Promise<NotebookRunResult> {
   const cells = cellsForKernelRun(notebook, cellId);
   if (cells.length === 0) return { cells: [] };
   const r = notebook.language !== "python";
   const oneshot = async (note: string): Promise<NotebookRunResult> => r ? { cells: cells.map((cell) => finalizeCellResult(cell.id, { error: `${note}${R_EDIT_ONLY}` })) } : ({
-    cells: await executeCells(notebook, cellId),
+    cells: await executeCells(notebook, cellId, workspace),
     kernel: { mode: "oneshot", note },
   });
   if (process.env.NEXTFLOW_STUDIO_KERNEL === "oneshot") return oneshot(r ? "" : ONESHOT_HINT);
@@ -311,7 +311,7 @@ export async function runNotebookCells(notebook: NotebookDoc, cellId?: string): 
   if (!cellId) shutdownKernel(notebook.id);
   let session: Awaited<ReturnType<typeof kernelFor>>;
   try {
-    session = await kernelFor(notebook.id, notebook.kernel, r ? "r" : "python");
+    session = await kernelFor(notebook.id, notebook.kernel, r ? "r" : "python", workspace);
     await session.whenReady();
   } catch (error) {
     if (error instanceof KernelUnavailableError) return oneshot(r ? `${error.message}。${R_KERNEL_HINT}` : `${error.message}。${ONESHOT_HINT}`);
@@ -335,7 +335,8 @@ export async function runNotebookCells(notebook: NotebookDoc, cellId?: string): 
 }
 
 /** Runs notebook cells in one Python process. A cell id runs from the top through that cell. Markdown is skipped. */
-export async function executeCells(notebook: NotebookDoc, cellId?: string): Promise<CellRunResult[]> {
+/** `workspace` is the working directory of the cells (the project folder); the driver's own files stay in a temporary one. */
+export async function executeCells(notebook: NotebookDoc, cellId?: string, workspace?: string): Promise<CellRunResult[]> {
   const cells = cellsForRun(notebook, cellId);
   if (cells.length === 0) return [];
   if (notebook.language !== "python") {
@@ -347,7 +348,7 @@ export async function executeCells(notebook: NotebookDoc, cellId?: string): Prom
     await writeFile(inDir(dir, "driver.py"), CELL_DRIVER);
     let failure = "";
     try {
-      await runCommand("python3", ["driver.py"], { cwd: dir, timeoutMs: HOST_TIMEOUT_MS, quiet: true });
+      await runCommand("python3", [inDir(dir, "driver.py")], { cwd: workspace ?? dir, timeoutMs: HOST_TIMEOUT_MS, quiet: true });
     } catch (error) {
       failure = failureText(error);
     }

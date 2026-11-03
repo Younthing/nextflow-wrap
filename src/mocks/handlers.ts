@@ -5,7 +5,7 @@ import { patchModuleEnv, readModuleEnv } from "@/features/notebook/env";
 import type { PortBindingRequest } from "@/features/notebook/input-bindings";
 import { PercentError } from "@/features/notebook/jupytext";
 import { referenceCounts, scriptModuleViews, summarizeNotebook } from "@/features/notebook/library";
-import { notebookFromLibrary, storedLibraryCopy } from "@/features/notebook/library-copy";
+import { notebookFromLibrary } from "@/features/notebook/library-copy";
 import { publishScriptModule } from "@/features/notebook/publish";
 import { simulateCells, simulateTryRun } from "@/features/notebook/simulate";
 import { languageForKernel, type NotebookDoc } from "@/features/notebook/types";
@@ -54,42 +54,43 @@ export const handlers = [
     });
   }),
 
-  http.post("/api/script-modules/reopen", async ({ request }) => {
+  // Edit a module in a temporary notebook built from the copy saved with it.
+  http.post("/api/script-modules/edit", async ({ request }) => {
     const body = (await request.json()) as { moduleId?: string };
-    const moduleId = body.moduleId ?? "";
-    const db = readDb();
-    const moduleDef = db.scriptModules[moduleId];
-    const notebook = moduleDef?.sourceNotebookId ? db.notebooks[moduleDef.sourceNotebookId] : undefined;
-    const revision = notebook && moduleDef?.sourceNotebookRev !== undefined
-      ? db.revisions[`${notebook.id}:${moduleDef.sourceNotebookRev}`]
-      : undefined;
-    const copy = storedLibraryCopy(moduleId, db.libraryCopies[moduleId], moduleDef, notebook, revision);
-    if (!copy) return HttpResponse.json({ message: "这个模块没有可重建的库副本" }, { status: 404 });
+    const copy = readDb().libraryCopies[body.moduleId ?? ""];
+    if (!copy) return HttpResponse.json({ message: "这个模块没有可编辑的笔记本副本" }, { status: 404 });
     try {
       const built = notebookFromLibrary(copy, newId("nb"));
       const current = readDb().currentProject;
       const doc = current ? { ...built, projectId: current } : built;
       writeDb((next) => {
-        next.libraryCopies[copy.moduleId] = copy;
         next.notebooks[doc.id] = doc;
         next.revisions[`${doc.id}:1`] = { notebookId: doc.id, rev: 1, cells: doc.cells, savedAt: doc.updatedAt };
       });
       return HttpResponse.json(doc, { status: 201 });
     } catch (error) {
-      const message = error instanceof PercentError || error instanceof Error ? error.message : "无法重建";
+      const message = error instanceof PercentError || error instanceof Error ? error.message : "无法打开";
       return HttpResponse.json({ message }, { status: 400 });
     }
+  }),
+
+  http.post("/api/notebooks/:id/keep", ({ params }) => {
+    const id = params.id as string;
+    const current = readDb().notebooks[id];
+    if (!current) return HttpResponse.json({ message: "笔记本不存在" }, { status: 404 });
+    const kept: NotebookDoc = { ...current };
+    delete kept.temporary;
+    writeDb((db) => { db.notebooks[id] = kept; });
+    return HttpResponse.json(kept);
   }),
 
   http.get("/api/script-modules", async () => {
     await delay(80);
     const db = readDb();
-    const notebooks = Object.values(db.notebooks);
-    const revisions = Object.values(db.revisions);
     const modules = Object.values(db.scriptModules);
     const workflows = Object.values(db.workflows);
     return HttpResponse.json({
-      modules: scriptModuleViews(modules, notebooks, revisions, workflows),
+      modules: scriptModuleViews(modules, workflows),
       references: referenceCounts(workflows),
     });
   }),
@@ -97,11 +98,10 @@ export const handlers = [
   http.get("/api/notebooks", async ({ request }) => {
     await delay(80);
     const db = readDb();
-    const modules = Object.values(db.scriptModules);
     const project = new URL(request.url).searchParams.get("project");
     const list = Object.values(db.notebooks)
-      .filter((doc) => !project || notebookProjectId(doc) === project)
-      .map((doc) => summarizeNotebook(doc, modules))
+      .filter((doc) => !doc.temporary && (!project || notebookProjectId(doc) === project))
+      .map(summarizeNotebook)
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
     return HttpResponse.json(list);
   }),
@@ -198,8 +198,8 @@ export const handlers = [
     return HttpResponse.json(record);
   }),
 
-  http.put("/api/script-modules/:scope/:notebookId/:version", async ({ params, request }) => {
-    const id = `${params.scope}/${params.notebookId}/${params.version}`;
+  http.put("/api/script-modules/:scope/:slug", async ({ params, request }) => {
+    const id = `${params.scope}/${params.slug}`;
     const current = readDb().scriptModules[id];
     if (!current) return HttpResponse.json({ message: "模块不存在" }, { status: 404 });
     const body = (await request.json()) as { condaYaml?: string; containerImage?: string };
@@ -209,7 +209,7 @@ export const handlers = [
         db.scriptModules[id] = next;
       });
       const saved = readDb();
-      const view = scriptModuleViews([next], Object.values(saved.notebooks), Object.values(saved.revisions), Object.values(saved.workflows))[0];
+      const view = scriptModuleViews([next], Object.values(saved.workflows))[0];
       return HttpResponse.json(view);
     } catch (error) {
       return HttpResponse.json({ message: error instanceof Error ? error.message : "无法保存环境" }, { status: 400 });
@@ -220,7 +220,7 @@ export const handlers = [
     const id = params.id as string;
     const doc = readDb().notebooks[id];
     if (!doc) return HttpResponse.json({ message: "笔记本不存在" }, { status: 404 });
-    const body = (await request.json()) as { name?: string; description?: string; changelog?: string; condaYaml?: string; containerImage?: string };
+    const body = (await request.json()) as { name?: string; overwrite?: string; description?: string; changelog?: string; condaYaml?: string; containerImage?: string };
     try {
       const published = publishScriptModule({
         notebook: doc,
@@ -230,6 +230,7 @@ export const handlers = [
         condaYaml: body.condaYaml,
         containerImage: body.containerImage,
         existing: Object.values(readDb().scriptModules),
+        overwrite: body.overwrite,
         receipt: readDb().tryRuns[`${id}:${doc.rev}`],
       });
       writeDb((db) => {
@@ -237,7 +238,7 @@ export const handlers = [
         db.libraryCopies[published.library.moduleId] = published.library;
       });
       const db = readDb();
-      const view = scriptModuleViews([published.module], Object.values(db.notebooks), Object.values(db.revisions), Object.values(db.workflows))[0];
+      const view = scriptModuleViews([published.module], Object.values(db.workflows))[0];
       return HttpResponse.json(view, { status: 201 });
     } catch (error) {
       return HttpResponse.json({ message: error instanceof Error ? error.message : "无法发布" }, { status: 400 });

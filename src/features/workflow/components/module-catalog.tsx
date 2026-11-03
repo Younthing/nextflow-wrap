@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Loader2, NotebookText } from "lucide-react";
+import { Loader2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,8 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { AsyncPlaceholder } from "@/components/ui/async-placeholder";
 import { EnvConfigAssistant } from "@/features/assistant/modules/surfaces";
 import { ModuleEnvEditor } from "@/features/notebook/components/module-env-form";
-import { SourceDriftBanner } from "@/features/notebook/components/source-drift-banner";
-import { useReopenLibraryNotebook, useScriptModules } from "@/features/notebook/queries";
+import { useEditModule, useScriptModules } from "@/features/notebook/queries";
 import type { ScriptModuleView } from "@/features/notebook/library";
 import { BUILTIN_MODULES } from "@/features/workflow/builtins";
 import { isCatalogBuiltin, moduleOrigin } from "@/features/workflow/origin";
@@ -55,8 +54,8 @@ function matches(def: ModuleDef, query: string): boolean {
 export function ModuleCatalog() {
   const router = useRouter();
   const scripts = useScriptModules();
-  const reopen = useReopenLibraryNotebook();
-  const [reopenError, setReopenError] = React.useState<string | null>(null);
+  const editModule = useEditModule();
+  const [editError, setEditError] = React.useState<string | null>(null);
   const [filter, setFilter] = React.useState<CatalogFilter>("both");
   const [query, setQuery] = React.useState("");
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
@@ -76,7 +75,7 @@ export function ModuleCatalog() {
     script: scriptRows.length,
     builtin: builtins.length,
   };
-  const selected = scriptRows.find((row) => row.id === (selectedId ?? scriptRows.find((row) => row.sourceChanged)?.id));
+  const selected = scriptRows.find((row) => row.id === selectedId);
   const envModule = selected && primary.some((row) => row.id === selected.id) ? selected : undefined;
 
   return (
@@ -91,7 +90,7 @@ export function ModuleCatalog() {
           <h1 className="mt-1 font-serif text-xl font-semibold">模块库</h1>
         </div>
         <Button asChild>
-          <Link href="/workbench">去笔记本发布</Link>
+          <Link href="/workbench">从笔记本导出</Link>
         </Button>
       </header>
 
@@ -125,7 +124,6 @@ export function ModuleCatalog() {
                 <TableHead>模块</TableHead>
                 <TableHead>来源</TableHead>
                 <TableHead>输入 → 输出</TableHead>
-                <TableHead>源笔记本</TableHead>
                 <TableHead>试跑</TableHead>
                 <TableHead>被引用</TableHead>
                 <TableHead className="text-right"><span className="sr-only">操作</span></TableHead>
@@ -156,15 +154,6 @@ export function ModuleCatalog() {
                       )}
                     </TableCell>
                     <TableCell className="font-mono text-xs">{ioLine(def)}</TableCell>
-                    <TableCell>
-                      {script?.sourceNotebookId ? (
-                        <span className="inline-flex items-center gap-1 text-xs">
-                          <NotebookText className="size-3.5" />
-                          {script.sourceNotebookName}
-                          {script.sourceChanged && <Badge variant="warning">源已改动</Badge>}
-                        </span>
-                      ) : "—"}
-                    </TableCell>
                     <TableCell className="text-xs">
                       {script ? (
                         <span className={failed ? "text-destructive" : "text-success"}>{failed ? "试跑失败" : "试跑通过"}</span>
@@ -177,30 +166,25 @@ export function ModuleCatalog() {
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap justify-end gap-1">
-                        {script?.sourceNotebookId ? (
-                          <>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              aria-label={`从库重建 ${script.name} ${script.version ?? ""}`.trim()}
-                              disabled={reopen.isPending}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                setReopenError(null);
-                                reopen.mutate(script.id, {
-                                  onSuccess: (doc) => router.push(`/workbench/${doc.id}`),
-                                  onError: (error) => setReopenError(error instanceof Error ? error.message : "无法从库重建"),
-                                });
-                              }}
-                            >
-                              {reopen.isPending && reopen.variables === script.id ? <Loader2 className="animate-spin" /> : null}
-                              从库重建
-                            </Button>
-                            <Button asChild variant="outline" size="sm" onClick={(event) => event.stopPropagation()}>
-                              <Link href={`/workbench/${script.sourceNotebookId}`}>在笔记本中打开源</Link>
-                            </Button>
-                          </>
+                        {script ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            aria-label={`在笔记本中编辑 ${script.name}`}
+                            disabled={editModule.isPending}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setEditError(null);
+                              editModule.mutate(script.id, {
+                                onSuccess: (doc) => router.push(`/workbench/${doc.id}`),
+                                onError: (error) => setEditError(error instanceof Error ? error.message : "无法打开"),
+                              });
+                            }}
+                          >
+                            {editModule.isPending && editModule.variables === script.id ? <Loader2 className="animate-spin" /> : null}
+                            在笔记本中编辑
+                          </Button>
                         ) : (
                           <Button type="button" variant="outline" size="sm" onClick={() => setContract(def)}>查看契约</Button>
                         )}
@@ -214,27 +198,7 @@ export function ModuleCatalog() {
         )}
       </div>
 
-      {selectedId && selected && (
-        <div className="rounded-lg border border-border px-3 py-2 text-sm">
-          <span className="font-medium">{selected.name} · {selected.version}</span>
-          <span className="text-muted-foreground">
-            {" "}· 源笔记本「{selected.sourceNotebookName}」
-          </span>
-        </div>
-      )}
-
-      {reopenError && <p role="alert" className="text-sm text-destructive">{reopenError}</p>}
-
-      {selected?.sourceChanged && selected.sourceNotebookId && selected.sourceNotebookRev !== undefined && selected.sourceNotebookRevCurrent !== undefined && (
-        <SourceDriftBanner
-          notebookId={selected.sourceNotebookId}
-          notebookName={selected.sourceNotebookName}
-          pinnedRev={selected.sourceNotebookRev}
-          currentRev={selected.sourceNotebookRevCurrent}
-          cellChanges={selected.cellChanges}
-          version={selected.version}
-        />
-      )}
+      {editError && <p role="alert" className="text-sm text-destructive">{editError}</p>}
 
       <Dialog open={!!contract} onOpenChange={(open) => !open && setContract(null)}>
         <DialogContent>

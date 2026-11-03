@@ -74,6 +74,12 @@ export const storyHandlers = [
   ...diagnosticsHandlers,
   ...remoteHandlers,
   http.get("/api/script-modules", () => HttpResponse.json({ modules: EXAMPLE_MODULES, references: {} })),
+  // Editing a module opens a temporary notebook built from its saved copy.
+  http.post("/api/script-modules/edit", async ({ request }) => {
+    const { moduleId } = await request.json() as { moduleId: string };
+    const now = "2026-01-01T12:00:00.000Z";
+    return HttpResponse.json({ id: "nb_edit", name: moduleId, description: "", kernel: "python3", language: "python", cells: [{ id: "c1", role: "code", source: "" }], rev: 1, createdAt: now, updatedAt: now, temporary: true, fromModuleId: moduleId }, { status: 201 });
+  }),
   http.get("/api/health", () =>
     HttpResponse.json({
       status: "ok",

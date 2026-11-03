@@ -4,7 +4,6 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { readPercent } from "@/features/notebook/jupytext";
-import { buildScriptModule } from "@/features/notebook/publish";
 import { handleNotebookApi } from "@/features/notebook/server/http";
 import type { NotebookDoc, TryRunRecord } from "@/features/notebook/types";
 import { StudioStore } from "@/lib/server/database";
@@ -51,7 +50,7 @@ function receipt(doc: NotebookDoc): TryRunRecord {
 }
 
 describe("module library persistence", () => {
-  it("stores a library artifact on publish and rebuilds a new notebook without touching the source row", async () => {
+  it("stores a notebook copy on export and edits the module in a temporary notebook, leaving the original alone", async () => {
     const directory = mkdtempSync(join(tmpdir(), "studio-library-"));
     const path = join(directory, "studio.sqlite");
     try {
@@ -64,9 +63,9 @@ describe("module library persistence", () => {
         description: saved.description,
       }), db);
       expect(published.status).toBe(201);
-      const view = await published.json() as { id: string; version: string; sourceNotebookId: string };
-      expect(view.id).toBe("script/nb_round/v1");
-      expect(view.sourceNotebookId).toBe("nb_round");
+      const view = await published.json() as { id: string; version: string };
+      expect(view.id).toBe("script/round_trip");
+      expect(JSON.stringify(view)).not.toContain("nb_round");
       expect(db.notebookJson(saved.id)).toBe(sourceBeforePublish);
 
       const library = db.libraryCopy(view.id);
@@ -87,7 +86,7 @@ describe("module library persistence", () => {
       expect(edited.rev).toBe(saved.rev + 1);
       const sourceAfterEdit = db.notebookJson(saved.id);
 
-      const reopened = await handleNotebookApi("POST", ["script-modules", "reopen"], post("/api/script-modules/reopen", {
+      const reopened = await handleNotebookApi("POST", ["script-modules", "edit"], post("/api/script-modules/edit", {
         moduleId: view.id,
       }), db);
       expect(reopened.status).toBe(201);
@@ -96,9 +95,12 @@ describe("module library persistence", () => {
       expect(copy.id.startsWith("nb_")).toBe(true);
       expect(copy.cells).toEqual(saved.cells);
       expect(copy.cells.map((cell) => cell.id)).not.toContain("later");
-      expect(copy.libraryModuleId).toBe(view.id);
-      expect(copy.librarySourceNotebookId).toBe(saved.id);
+      expect(copy.temporary).toBe(true);
+      expect(copy.fromModuleId).toBe(view.id);
       expect(copy.rev).toBe(1);
+      // Temporary: not in the notebook list until kept.
+      const listed = async () => (await (await handleNotebookApi("GET", ["notebooks"], new Request("http://studio.local/api/notebooks"), db)).json() as { id: string }[]).map((row) => row.id);
+      expect(await listed()).not.toContain(copy.id);
       expect(db.notebookJson(saved.id)).toBe(sourceAfterEdit);
       expect(db.notebook(saved.id)?.cells.map((cell) => cell.id)).toContain("later");
 
@@ -113,8 +115,9 @@ describe("module library persistence", () => {
       }), db);
       expect(put.status).toBe(200);
       expect(db.notebook(copy.id)?.cells.find((cell) => cell.id === "note")?.source).toBe("改了重建本\n");
-      expect(db.notebook(copy.id)?.libraryModuleId).toBe(view.id);
-      expect(db.notebook(copy.id)?.librarySourceNotebookId).toBe(saved.id);
+      const kept = await handleNotebookApi("POST", ["notebooks", copy.id, "keep"], post(`/api/notebooks/${copy.id}/keep`, {}), db);
+      expect((await kept.json() as NotebookDoc).temporary).toBeUndefined();
+      expect(await listed()).toContain(copy.id);
       expect(db.notebookJson(saved.id)).toBe(sourceAfterEdit);
       expect(readPercent(db.libraryCopy(view.id)?.percent ?? "").cells).toEqual(saved.cells);
 
@@ -124,44 +127,6 @@ describe("module library persistence", () => {
       expect(again.notebook("nb_round")?.id).toBe("nb_round");
       expect(again.notebookJson("nb_round")).toBe(sourceAfterEdit);
       again.close();
-    } finally {
-      rmSync(directory, { recursive: true, force: true });
-    }
-  });
-
-  it("backfills a library copy from the pinned revision when an older module has none", async () => {
-    const directory = mkdtempSync(join(tmpdir(), "studio-library-"));
-    const path = join(directory, "studio.sqlite");
-    try {
-      const db = new StudioStore(path);
-      const saved = db.saveNotebook(notebook());
-      const moduleDef = buildScriptModule({
-        notebook: saved,
-        name: "round_trip",
-        description: saved.description,
-        existing: [],
-        receipt: receipt(saved),
-      });
-      db.saveScriptModule(moduleDef);
-      expect(db.libraryCopy(moduleDef.id)).toBeUndefined();
-      const edited = db.saveNotebook({
-        ...saved,
-        cells: [...saved.cells, { id: "drift", role: "code", source: "print('drift')\n" }],
-      });
-      const sourceJson = db.notebookJson(saved.id);
-
-      const reopened = await handleNotebookApi("POST", ["script-modules", "reopen"], post("/api/script-modules/reopen", {
-        moduleId: moduleDef.id,
-      }), db);
-      expect(reopened.status).toBe(201);
-      const copy = await reopened.json() as NotebookDoc;
-      expect(copy.id).not.toBe(saved.id);
-      expect(copy.cells).toEqual(saved.cells);
-      expect(db.libraryCopy(moduleDef.id)?.sourceNotebookRev).toBe(saved.rev);
-      expect(readPercent(db.libraryCopy(moduleDef.id)?.percent ?? "").cells).toEqual(saved.cells);
-      expect(db.notebook(saved.id)?.rev).toBe(edited.rev);
-      expect(db.notebookJson(saved.id)).toBe(sourceJson);
-      db.close();
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

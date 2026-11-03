@@ -17,15 +17,12 @@ export function ExportMenu({
   doc,
   outputs,
   ports,
-  published,
   disabled,
   onExportModule,
 }: {
   doc: Pick<NotebookDoc, "name" | "description" | "kernel" | "language" | "cells">;
   outputs: Record<string, CellRunResult>;
   ports: { inputs: number; outputs: number };
-  /** Latest published version, when there is one. */
-  published?: string;
   disabled?: boolean;
   onExportModule: () => void;
 }) {
@@ -66,7 +63,7 @@ export function ExportMenu({
             <span className="grid">
               导出为模块…
               <span className="text-[11px] text-muted-foreground">
-                {published ? `已发布 ${published} · ` : ""}{portSummary(ports.inputs, ports.outputs)}
+                {portSummary(ports.inputs, ports.outputs)}
               </span>
             </span>
           </DropdownMenuItem>

@@ -1,9 +1,9 @@
 import type { ModuleDef } from "@/features/workflow/types";
 
-import { PercentError, readPercent, writePercent, type PercentProvenance } from "./jupytext";
-import type { NotebookDoc, NotebookRevision } from "./types";
+import { PercentError, readPercent, writePercent } from "./jupytext";
+import type { NotebookDoc } from "./types";
 
-/** Versioned jupytext pair stored for one published script module. */
+/** The jupytext pair stored with a module exported from a notebook: what "edit" opens again. */
 export interface ModuleLibraryCopy {
   moduleId: string;
   version: string;
@@ -14,8 +14,6 @@ export interface ModuleLibraryCopy {
   /** Generated CLI paired with `percent`. Nextflow calls this, not the percent text. */
   script: string;
   command: string;
-  sourceNotebookId: string;
-  sourceNotebookRev: number;
   savedAt: string;
 }
 
@@ -25,66 +23,23 @@ const CELL_MAX = 80;
 const SOURCE_MAX = 50_000;
 
 export function buildLibraryCopy(input: {
-  notebook: NotebookDoc;
+  notebook: Pick<NotebookDoc, "name" | "description" | "kernel" | "language" | "cells">;
   module: ModuleDef;
   savedAt?: string;
 }): ModuleLibraryCopy {
-  if (!input.module.sourceNotebookId || input.module.sourceNotebookRev === undefined) {
-    throw new Error("脚本模块缺少源笔记本");
-  }
-  const provenance: PercentProvenance = {
-    sourceNotebookId: input.module.sourceNotebookId,
-    sourceNotebookRev: input.module.sourceNotebookRev,
-  };
   return {
     moduleId: input.module.id,
     version: input.module.version ?? "v1",
     format: "jupytext-percent",
     formatVersion: "1.3",
-    percent: writePercent(input.notebook, provenance),
+    percent: writePercent(input.notebook),
     script: input.module.script ?? "",
     command: input.module.command ?? "",
-    sourceNotebookId: input.module.sourceNotebookId,
-    sourceNotebookRev: input.module.sourceNotebookRev,
     savedAt: input.savedAt ?? new Date().toISOString(),
   };
 }
 
-/** Rebuild a stored copy from the pinned revision. Drifted notebooks are not used as a stand-in. */
-export function libraryCopyFromRevision(
-  module: ModuleDef,
-  notebook: NotebookDoc | undefined,
-  revision: NotebookRevision | undefined,
-  savedAt = new Date().toISOString(),
-): ModuleLibraryCopy | undefined {
-  if (!module.sourceNotebookId || module.sourceNotebookRev === undefined || !notebook) return undefined;
-  if (notebook.id !== module.sourceNotebookId) return undefined;
-  const pinned = revision && revision.notebookId === notebook.id && revision.rev === module.sourceNotebookRev
-    ? revision.cells
-    : notebook.rev === module.sourceNotebookRev
-      ? notebook.cells
-      : undefined;
-  if (!pinned) return undefined;
-  return buildLibraryCopy({
-    notebook: { ...notebook, cells: pinned, rev: module.sourceNotebookRev },
-    module,
-    savedAt: revision?.savedAt ?? savedAt,
-  });
-}
-
-export function storedLibraryCopy(
-  moduleId: string,
-  stored: ModuleLibraryCopy | undefined,
-  module: ModuleDef | undefined,
-  notebook: NotebookDoc | undefined,
-  revision: NotebookRevision | undefined,
-): ModuleLibraryCopy | undefined {
-  if (stored && stored.moduleId === moduleId && stored.format === "jupytext-percent") return stored;
-  if (!module || module.id !== moduleId) return undefined;
-  return libraryCopyFromRevision(module, notebook, revision);
-}
-
-/** New editable notebook. The id is the caller's; the source notebook is not part of this value. */
+/** A temporary notebook to edit the module in. Saving it to the project and exporting it again are both up to the user. */
 export function notebookFromLibrary(copy: ModuleLibraryCopy, id: string, now = new Date().toISOString()): NotebookDoc {
   if (copy.format !== "jupytext-percent") throw new PercentError("不认识的库副本格式");
   const parsed = readPercent(copy.percent);
@@ -100,8 +55,7 @@ export function notebookFromLibrary(copy: ModuleLibraryCopy, id: string, now = n
     rev: 1,
     createdAt: now,
     updatedAt: now,
-    libraryModuleId: copy.moduleId,
-    librarySourceNotebookId: copy.sourceNotebookId,
-    librarySourceNotebookRev: copy.sourceNotebookRev,
+    temporary: true,
+    fromModuleId: copy.moduleId,
   };
 }

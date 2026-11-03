@@ -4,8 +4,9 @@ import * as React from "react";
 import Link from "next/link";
 import { Trash2 } from "lucide-react";
 
-import { SourceDriftBanner } from "@/features/notebook/components/source-drift-banner";
-import { useScriptModules } from "@/features/notebook/queries";
+import { useRouter } from "next/navigation";
+
+import { useEditModule } from "@/features/notebook/queries";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { FormField } from "@/components/ui/form-field";
@@ -29,7 +30,7 @@ import {
 import { PathInput } from "@/features/files/components/path-input";
 import { resolveNodeDef } from "@/features/workflow/catalog";
 import { inputParamName } from "@/features/workflow/inputs";
-import { moduleOrigin, newerScriptModule, scriptModuleVersions, versionDiff } from "@/features/workflow/origin";
+import { moduleOrigin } from "@/features/workflow/origin";
 import { portSignature, socketInputs } from "@/features/workflow/ports";
 import { projectMeta } from "@/features/project/generate";
 import { scriptEnvDirectives } from "@/features/project/script-process";
@@ -42,6 +43,7 @@ import {
 import { operatorFields } from "@/features/workflow/operators";
 import samplesheetSchema from "@/data/samplesheet-schema.json";
 import type { ModuleDef, PortDef } from "@/features/workflow/types";
+import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import { EDITOR_CHROME_CLASS } from "../marquee-text";
 import { categoryColor, portColor } from "../port-style";
@@ -211,53 +213,12 @@ function BuiltinSettings({ node, def }: { node: FlowNode; def: ModuleDef }) {
   );
 }
 
-/** All published versions of this notebook's module, with what switching would change on the canvas. */
-function VersionPicker({ current, modules, onPick }: { current: ModuleDef; modules: readonly ModuleDef[]; onPick: (def: ModuleDef) => void }) {
-  const versions = scriptModuleVersions(current, modules);
-  const [target, setTarget] = React.useState<string>();
-  if (versions.length < 2) return null;
-  const chosen = versions.find((def) => def.id === target);
-  const diff = chosen ? versionDiff(current, chosen) : undefined;
-  const lost = diff ? [...diff.removedInputs, ...diff.removedOutputs] : [];
-  return (
-    <div className="grid gap-2 rounded-lg border border-border/60 p-2">
-      <FormField label="版本" htmlFor="module-version">
-        <Select value={target ?? current.id} onValueChange={setTarget}>
-          <SelectTrigger id="module-version" className="h-8 font-mono text-xs"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            {versions.map((def) => (
-              <SelectItem key={def.id} value={def.id} className="text-xs">
-                <span className="font-mono">{def.version}</span>
-                {def.id === current.id ? "（当前）" : ""}
-                {def.tryRun && def.tryRun !== "passed" ? " · 未通过试跑" : ""}
-                {def.changelog ? ` · ${def.changelog.slice(0, 40)}` : ""}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </FormField>
-      {chosen && chosen.id !== current.id && diff && (
-        <div className="grid gap-1.5 text-xs">
-          {lost.length > 0 && <p className="text-warning">{chosen.version} 没有端口 {lost.join("、")}，连到它们的线会被删除。</p>}
-          {diff.addedInputs.length > 0 && <p className="text-muted-foreground">新增输入：{diff.addedInputs.join("、")}</p>}
-          {diff.changedPorts.length > 0 && <p className="text-muted-foreground">结构变化的端口：{diff.changedPorts.join("、")}，切换后会重新检查连线。</p>}
-          {!lost.length && !diff.addedInputs.length && !diff.changedPorts.length && <p className="text-muted-foreground">端口相同，连线保持不变。</p>}
-          <div className="flex gap-2">
-            <Button type="button" size="sm" onClick={() => { onPick(chosen); setTarget(undefined); }}>切换到 {chosen.version}</Button>
-            <Button type="button" size="sm" variant="ghost" onClick={() => setTarget(undefined)}>取消</Button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 function NodeInspector({ node }: { node: FlowNode }) {
   const index = useEditorStore((s) => s.index);
   const update = useEditorStore((s) => s.updateNodeData);
   const removeNodes = useEditorStore((s) => s.removeNodes);
-  const switchVersion = useEditorStore((s) => s.switchModuleVersion);
-  const scripts = useScriptModules();
+  const router = useRouter();
+  const editModule = useEditModule();
   const def = resolveNodeDef(index, node.data);
   if (!def)
     return (
@@ -268,8 +229,6 @@ function NodeInspector({ node }: { node: FlowNode }) {
 
   const { config } = node.data;
   const origin = moduleOrigin(def);
-  const view = scripts.data?.modules.find((mod) => mod.id === def.id);
-  const newer = newerScriptModule(def, scripts.data?.modules ?? []);
   const setConfig = (patch: Partial<typeof config>, key: string) =>
     update(
       node.id,
@@ -286,13 +245,15 @@ function NodeInspector({ node }: { node: FlowNode }) {
             style={{ background: categoryColor(def.category) }}
           />
           <span className="text-xs text-muted-foreground">{def.category}</span>
-          {origin === "script" && def.sourceNotebookId && (
-            <Link
-              href={`/workbench/${def.sourceNotebookId}`}
-              className="ml-auto flex items-center gap-1 text-xs text-primary hover:underline"
+          {origin === "script" && (
+            <button
+              type="button"
+              disabled={editModule.isPending}
+              onClick={() => editModule.mutate(def.id, { onSuccess: (doc) => router.push(`/workbench/${doc.id}`), onError: (error) => toast.error(error.message) })}
+              className="ml-auto text-xs text-primary hover:underline disabled:opacity-60"
             >
-              在笔记本中打开源
-            </Link>
+              在笔记本中编辑
+            </button>
           )}
         </div>
         <div className="font-serif text-lg font-semibold">
@@ -300,22 +261,6 @@ function NodeInspector({ node }: { node: FlowNode }) {
           {def.version ? <span className="ml-2 font-mono text-xs text-muted-foreground">{def.version}</span> : null}
         </div>
         <p className="text-sm text-muted-foreground">{def.description}</p>
-        {view?.sourceChanged && view.sourceNotebookId && view.sourceNotebookRev !== undefined && view.sourceNotebookRevCurrent !== undefined && (
-          <SourceDriftBanner
-            notebookId={view.sourceNotebookId}
-            notebookName={view.sourceNotebookName}
-            pinnedRev={view.sourceNotebookRev}
-            currentRev={view.sourceNotebookRevCurrent}
-            cellChanges={view.cellChanges}
-            version={view.version}
-          />
-        )}
-        {newer && (
-          <Button type="button" size="sm" variant="outline" onClick={() => switchVersion(node.id, newer)}>
-            有新版本 {newer.version} · 更新
-          </Button>
-        )}
-        {origin === "script" && <VersionPicker current={def} modules={scripts.data?.modules ?? []} onPick={(target) => switchVersion(node.id, target)} />}
         {def.tools.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             {def.tools.map((t) =>

@@ -54,7 +54,7 @@ describe("convertNotebook", () => {
     const inputs = inputPorts(convertNotebook(qc()).inputs);
     expect(inputs.find((port) => port.name === "min_q")).toMatchObject({ widget: "integer", default: 30 });
     expect(inputs.find((port) => port.name === "title")).toMatchObject({ widget: "string", default: "QC 汇总" });
-    const def = { id: "script/qc_summary/v1", process: "QC_SUMMARY", inputs, outputs: [] } as unknown as ModuleDef;
+    const def = { id: "script/qc_summary", process: "QC_SUMMARY", inputs, outputs: [] } as unknown as ModuleDef;
     expect(createNode(def, { x: 0, y: 0 }, []).data.widgets).toEqual({ min_q: 30, title: "QC 汇总" });
   });
 

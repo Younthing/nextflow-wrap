@@ -234,10 +234,11 @@ export function demoRevisions(notebooks = demoNotebooks()): NotebookRevision[] {
   return revisions;
 }
 
+/** A demo module exported from `notebook` (its `cells` at export time). Modules keep no link back to it. */
 function published(notebook: NotebookDoc, version: string, tryRun: "passed" | "failed", rev: number, cells: NotebookCell[] = notebook.cells): ModuleDef {
   const converted = convertNotebook({ ...notebook, cells, rev }, `bin/${notebook.id}_${version}.${notebook.language === "r" ? "R" : "py"}`);
   return {
-    id: `script/${notebook.id}/${version}`,
+    id: `script/${notebook.id}`,
     path: `${notebook.id}_${version}`,
     name: notebook.name,
     process: processName(notebook.name),
@@ -248,8 +249,6 @@ function published(notebook: NotebookDoc, version: string, tryRun: "passed" | "f
     origin: "script",
     inputs: inputPorts(converted.inputs),
     outputs: outputPorts(converted.outputs),
-    sourceNotebookId: notebook.id,
-    sourceNotebookRev: rev,
     version,
     tryRun,
     command: converted.entry,
@@ -276,22 +275,18 @@ export function demoScriptModules(notebooks = demoNotebooks(), revisions = demoR
   ];
 }
 
-/** Library pairs for the seeded modules, taken from the revision each module pins. */
+/** The notebook copy saved with each seeded module: the cells it was exported from. */
 export function demoLibraryCopies(
   notebooks = demoNotebooks(),
   revisions = demoRevisions(notebooks),
   modules = demoScriptModules(notebooks, revisions),
 ): ModuleLibraryCopy[] {
-  const notes = new Map(notebooks.map((doc) => [doc.id, doc]));
+  const exported: Record<string, { id: string; rev: number }> = { "script/qc_summary": { id: "qc_summary", rev: 12 } };
   return modules.flatMap((mod) => {
-    if (!mod.sourceNotebookId || mod.sourceNotebookRev === undefined) return [];
-    const notebook = notes.get(mod.sourceNotebookId);
+    const source = exported[mod.id] ?? { id: mod.id.slice("script/".length), rev: undefined };
+    const notebook = notebooks.find((doc) => doc.id === source.id);
     if (!notebook) return [];
-    const revision = revisions.find((item) => item.notebookId === mod.sourceNotebookId && item.rev === mod.sourceNotebookRev);
-    return [buildLibraryCopy({
-      notebook: { ...notebook, cells: revision?.cells ?? notebook.cells, rev: mod.sourceNotebookRev },
-      module: mod,
-      savedAt: revision?.savedAt ?? notebook.updatedAt,
-    })];
+    const revision = revisions.find((item) => item.notebookId === notebook.id && item.rev === (source.rev ?? notebook.rev));
+    return [buildLibraryCopy({ notebook: { ...notebook, cells: revision?.cells ?? notebook.cells }, module: mod, savedAt: revision?.savedAt ?? notebook.updatedAt })];
   });
 }

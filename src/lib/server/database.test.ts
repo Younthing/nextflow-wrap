@@ -76,7 +76,7 @@ describe("StudioStore", () => {
     try {
       const db = new StudioStore(join(directory, "studio.sqlite"));
       const mod = {
-        ...demoScriptModules().find((item) => item.id === "script/hello_py/v2")!,
+        ...demoScriptModules().find((item) => item.id === "script/hello_py")!,
         condaYaml: "/envs/py311-pandas.yml",
         containerImage: "ghcr.io/org/py311-pandas:1.2",
       };
@@ -112,8 +112,6 @@ describe("StudioStore", () => {
         percent: "# %%\nprint(1)\n",
         script: "print(1)\n",
         command: "bin/sample_clean_v1.py",
-        sourceNotebookId: doc.id,
-        sourceNotebookRev: doc.rev,
         savedAt: doc.updatedAt,
       });
       expect(db.notebookJson(doc.id)).toBe(JSON.stringify(doc));

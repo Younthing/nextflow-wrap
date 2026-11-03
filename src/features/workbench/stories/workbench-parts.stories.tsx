@@ -10,9 +10,9 @@ import { WorkbenchStart } from "../components/workbench-start";
 import { WorkbenchTabs } from "../components/workbench-tabs";
 
 const notebooks: NotebookSummary[] = [
-  { id: "nb_qc", name: "01 质控与过滤", description: "过滤低质量细胞", kernel: "py311-pandas", language: "python", rev: 4, updatedAt: "2026-01-02T11:50:00.000Z", publishState: "published", publishedVersion: "v2", projectId: storyProject.id },
-  { id: "nb_umap", name: "02 降维与聚类", description: "PCA、Leiden、UMAP", kernel: "py311-pandas", language: "python", rev: 9, updatedAt: "2026-01-02T10:00:00.000Z", publishState: "analysis", projectId: storyProject.id },
-  { id: "nb_de", name: "03 差异表达", description: "DESeq2", kernel: "r-deseq2", language: "r", rev: 2, updatedAt: "2026-01-01T09:00:00.000Z", publishState: "analysis", projectId: storyProject.id },
+  { id: "nb_qc", name: "01 质控与过滤", description: "过滤低质量细胞", kernel: "py311-pandas", language: "python", rev: 4, updatedAt: "2026-01-02T11:50:00.000Z", projectId: storyProject.id },
+  { id: "nb_umap", name: "02 降维与聚类", description: "PCA、Leiden、UMAP", kernel: "py311-pandas", language: "python", rev: 9, updatedAt: "2026-01-02T10:00:00.000Z", projectId: storyProject.id },
+  { id: "nb_de", name: "03 差异表达", description: "DESeq2", kernel: "r-deseq2", language: "r", rev: 2, updatedAt: "2026-01-01T09:00:00.000Z", projectId: storyProject.id },
 ];
 
 const meta = {
@@ -78,7 +78,6 @@ export const Export: StoryObj<typeof ExportMenu> = {
     doc: { name: "02 降维与聚类", description: "", kernel: "py311-pandas", language: "python", cells: [{ id: "c1", role: "code", source: "print(1)" }] },
     outputs: {},
     ports: { inputs: 1, outputs: 2 },
-    published: "v1",
     onExportModule: fn(),
   },
   play: async ({ canvasElement, args }) => {

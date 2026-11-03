@@ -4,7 +4,7 @@ import { z } from "zod";
 import { ConvertError } from "@/features/notebook/convert";
 import { EnvFieldError, patchModuleEnv } from "@/features/notebook/env";
 import { PercentError } from "@/features/notebook/jupytext";
-import { notebookFromLibrary, storedLibraryCopy, type ModuleLibraryCopy } from "@/features/notebook/library-copy";
+import { notebookFromLibrary, type ModuleLibraryCopy } from "@/features/notebook/library-copy";
 import { publishScriptModule } from "@/features/notebook/publish";
 import { demoLibraryCopies, demoNotebooks, demoRevisions, demoScriptModules } from "@/features/notebook/seed";
 import { executeTryRun, runNotebookCells } from "@/features/notebook/execute";
@@ -17,7 +17,7 @@ import { HttpError } from "@/features/runs/server/service";
 import type { ModuleDef } from "@/features/workflow/types";
 import type { StudioStore } from "@/lib/server/database";
 import { store } from "@/lib/server/database";
-import { notebookProjectId } from "@/features/workspace/projects";
+import { EXAMPLE_PROJECT_ID, notebookProjectId } from "@/features/workspace/projects";
 import { currentProjectId } from "@/features/workspace/server/projects";
 
 const json = (value: unknown, status = 200) => Response.json(value, { status, headers: { "cache-control": "no-store" } });
@@ -66,6 +66,8 @@ const trySchema = z.object({
 
 const publishSchema = z.object({
   name: z.string().trim().min(1).max(80),
+  /** Module id to overwrite; a new module when unset. */
+  overwrite: z.string().trim().max(200).regex(/^script\/[\w.-]+$/).optional(),
   description: z.string().max(2000).optional(),
   changelog: z.string().max(2000).optional(),
   condaYaml: envField.optional(),
@@ -77,7 +79,7 @@ const envSchema = z.object({
   containerImage: envField.optional(),
 });
 
-const reopenSchema = z.object({
+const editSchema = z.object({
   moduleId: z.string().trim().min(1).max(200).regex(/^[\w./-]+$/),
 });
 
@@ -102,8 +104,10 @@ function requireNotebook(db: StudioStore, id: string): NotebookDoc {
   return doc;
 }
 
-function allRevisions(db: StudioStore) {
-  return db.notebooks().flatMap((doc) => db.revisions(doc.id));
+/** The project folder a notebook's cells run in, so they read workspace paths such as `data/reads.fq`. */
+function workspaceOf(db: StudioStore, doc: NotebookDoc): string | undefined {
+  const projectId = notebookProjectId(doc);
+  return db.project(projectId)?.path ?? (projectId === EXAMPLE_PROJECT_ID ? db.workspace : undefined);
 }
 
 function newNotebookId(db: StudioStore): string {
@@ -112,15 +116,6 @@ function newNotebookId(db: StudioStore): string {
     if (!db.notebook(id)) return id;
   }
   throw new HttpError(500, "无法分配笔记本 id");
-}
-
-function libraryForModule(db: StudioStore, moduleId: string) {
-  const moduleDef = db.scriptModule(moduleId);
-  const notebook = moduleDef?.sourceNotebookId ? db.notebook(moduleDef.sourceNotebookId) : undefined;
-  const revision = notebook && moduleDef?.sourceNotebookRev !== undefined
-    ? db.revision(notebook.id, moduleDef.sourceNotebookRev)
-    : undefined;
-  return storedLibraryCopy(moduleId, db.libraryCopy(moduleId), moduleDef, notebook, revision);
 }
 
 /** The library folder is written first, so a module the database lists always has one. */
@@ -149,9 +144,9 @@ export async function handleNotebookApi(method: string, path: string[], request:
     const ids = project ? [project] : [...new Set(db.notebooks().map(notebookProjectId))];
     for (const projectId of ids) await (await notebookFiles(db, projectId))?.refresh(db);
   }
-  /** Save a notebook to the database and to the file in its project folder. */
+  /** Save a notebook to the database and, unless it is temporary, to the file in its project folder. */
   const saveNotebook = async (doc: NotebookDoc) => {
-    const files = await filesOf(doc);
+    const files = doc.temporary ? undefined : await filesOf(doc);
     if (files) {
       try {
         await files.write(doc);
@@ -167,16 +162,15 @@ export async function handleNotebookApi(method: string, path: string[], request:
   if (resource === "kernels" && !id && method === "GET") return json(await listKernelSpecs());
 
   if (resource === "script-modules" && !id && method === "GET") {
-    const revisions = allRevisions(db);
     return json({
-      modules: scriptModuleViews(db.scriptModules(), db.notebooks(), revisions, db.workflows()),
+      modules: scriptModuleViews(db.scriptModules(), db.workflows()),
       references: referenceCounts(db.workflows()),
     });
   }
 
   if (resource === "script-modules" && method === "PUT") {
     const moduleId = path.slice(1).join("/");
-    if (!/^script\/[\w-]+\/v\d+$/.test(moduleId)) throw new HttpError(400, "无效的模块 id");
+    if (!/^script\/[\w.-]+$/.test(moduleId)) throw new HttpError(400, "无效的模块 id");
     const current = db.scriptModule(moduleId);
     if (!current) throw new HttpError(404, "模块不存在");
     const body = envSchema.parse(await request.json());
@@ -189,15 +183,14 @@ export async function handleNotebookApi(method: string, path: string[], request:
     next = { ...next, environmentYml: await readEnvironmentYml(next.condaYaml) };
     await saveToLibrary(db, next, db.libraryCopy(next.id));
     db.saveScriptModule(next);
-    const revisions = allRevisions(db);
-    return json(scriptModuleViews([next], db.notebooks(), revisions, db.workflows())[0]);
+    return json(scriptModuleViews([next], db.workflows())[0]);
   }
 
-  if (resource === "script-modules" && id === "reopen" && method === "POST") {
-    const body = reopenSchema.parse(await request.json());
-    const copy = libraryForModule(db, body.moduleId);
-    if (!copy) throw new HttpError(404, "这个模块没有可重建的库副本");
-    if (!db.libraryCopy(copy.moduleId)) db.saveLibraryCopy(copy);
+  // Edit a module: a temporary notebook from the copy saved with it, in the open project.
+  if (resource === "script-modules" && id === "edit" && method === "POST") {
+    const body = editSchema.parse(await request.json());
+    const copy = db.libraryCopy(body.moduleId);
+    if (!copy) throw new HttpError(404, "这个模块没有可编辑的笔记本副本");
     let doc: NotebookDoc;
     try {
       doc = notebookFromLibrary(copy, newNotebookId(db));
@@ -213,9 +206,8 @@ export async function handleNotebookApi(method: string, path: string[], request:
   if (resource !== "notebooks") throw new HttpError(404, "接口不存在");
 
   if (!id && method === "GET") {
-    const modules = db.scriptModules();
     const project = new URL(request.url).searchParams.get("project");
-    return json(db.notebooks().filter((doc) => !project || notebookProjectId(doc) === project).map((doc) => summarizeNotebook(doc, modules)));
+    return json(db.notebooks().filter((doc) => !doc.temporary && (!project || notebookProjectId(doc) === project)).map(summarizeNotebook));
   }
 
   if (!id && method === "POST") {
@@ -240,6 +232,15 @@ export async function handleNotebookApi(method: string, path: string[], request:
   if (!/^[\w-]{1,80}$/.test(id)) throw new HttpError(400, "无效的笔记本 id");
 
   if (!action && method === "GET") return json(requireNotebook(db, id));
+
+  // Keep a temporary notebook: it joins the project's notebooks and gets its file.
+  if (action === "keep" && method === "POST") {
+    const current = requireNotebook(db, id);
+    if (!current.temporary) return json(current);
+    const kept: NotebookDoc = { ...current };
+    delete kept.temporary;
+    return json(await saveNotebook(kept));
+  }
 
   if (!action && method === "PUT") {
     const current = requireNotebook(db, id);
@@ -266,7 +267,8 @@ export async function handleNotebookApi(method: string, path: string[], request:
   if (action === "run" && method === "POST") {
     const body = runSchema.parse(await request.json().catch(() => ({})));
     try {
-      return json(await runNotebookCells(requireNotebook(db, id), body.cellId));
+      const notebook = requireNotebook(db, id);
+      return json(await runNotebookCells(notebook, body.cellId, workspaceOf(db, notebook)));
     } catch (error) {
       if (error instanceof ConvertError) throw new HttpError(400, error.message);
       throw error;
@@ -287,7 +289,7 @@ export async function handleNotebookApi(method: string, path: string[], request:
       shutdownKernel(id);
       const r = notebook.language !== "python";
       try {
-        await (await kernelFor(id, notebook.kernel, r ? "r" : "python")).whenReady();
+        await (await kernelFor(id, notebook.kernel, r ? "r" : "python", workspaceOf(db, notebook))).whenReady();
       } catch (error) {
         if (error instanceof KernelUnavailableError) throw new HttpError(400, `${error.message}。${r ? "安装 IRkernel" : "安装 ipykernel"} 后再启动内核`);
         throw new HttpError(500, error instanceof Error ? error.message : "内核启动失败");
@@ -325,6 +327,7 @@ export async function handleNotebookApi(method: string, path: string[], request:
         condaYaml: body.condaYaml,
         containerImage: body.containerImage,
         existing: db.scriptModules(),
+        overwrite: body.overwrite,
         receipt: db.tryRun(notebook.id, notebook.rev),
       });
     } catch (error) {
@@ -336,9 +339,7 @@ export async function handleNotebookApi(method: string, path: string[], request:
       db.saveScriptModule(published.module);
       db.saveLibraryCopy(published.library);
     });
-    const revisions = allRevisions(db);
-    const view = scriptModuleViews([published.module], db.notebooks(), revisions, db.workflows())[0];
-    return json(view, 201);
+    return json(scriptModuleViews([published.module], db.workflows())[0], 201);
   }
 
   throw new HttpError(404, "接口不存在");

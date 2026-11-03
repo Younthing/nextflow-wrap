@@ -253,12 +253,15 @@ export class KernelSession {
 const registry = globalThis as typeof globalThis & { __nfStudioKernels?: Map<string, KernelSession> };
 const sessions = (registry.__nfStudioKernels ??= new Map<string, KernelSession>());
 
-/** The notebook's running kernel, started when missing or when the notebook switched kernels. */
-export async function kernelFor(notebookId: string, requested: string, language: "python" | "r" = "python"): Promise<KernelSession> {
+/**
+ * The notebook's running kernel, started when missing or when the notebook switched kernels. It runs in `cwd`, the
+ * project folder, so cells read workspace paths such as `data/reads.fq`; a notebook without one gets a scratch folder.
+ */
+export async function kernelFor(notebookId: string, requested: string, language: "python" | "r" = "python", workspace?: string): Promise<KernelSession> {
   const current = sessions.get(notebookId);
   if (current && current.state !== "dead" && current.requested === requested && current.language === language) return current;
   current?.shutdown();
-  const cwd = notebookWorkDir(notebookId);
+  const cwd = workspace ?? notebookWorkDir(notebookId);
   await mkdir(cwd, { recursive: true });
   const session: KernelSession = new KernelSession(notebookId, requested, cwd, () => {
     if (sessions.get(notebookId) === session) sessions.delete(notebookId);

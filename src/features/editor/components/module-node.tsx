@@ -13,7 +13,9 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { PathInput } from "@/features/files/components/path-input";
-import { sourceNotebookHref } from "@/features/notebook/canvas-values";
+import { notebookHref } from "@/features/notebook/canvas-values";
+import { useEditModule } from "@/features/notebook/queries";
+import { toast } from "@/lib/toast";
 import { FOLDER_ID, isInputNode, pathName } from "@/features/workflow/builtins";
 import { resolveNodeDef } from "@/features/workflow/catalog";
 import { inputParamName } from "@/features/workflow/inputs";
@@ -262,26 +264,29 @@ function InputNodeBody({ id, def, data }: { id: string; def: ModuleDef; data: Fl
   );
 }
 
-/** `</>`: open the notebook this module was published from, with this node's values filled in. */
+/** `</>`: edit the module in a temporary notebook, with this node's values filled in. */
 function SourceButton({ nodeId, def }: { nodeId: string; def: ModuleDef }) {
   const router = useRouter();
   const store = useEditorStoreApi();
-  const notebookId = def.sourceNotebookId;
-  if (!notebookId) return null;
+  const editModule = useEditModule();
+  if (def.origin !== "script") return null;
   const open = (event: React.MouseEvent) => {
     event.stopPropagation();
     const state = store.getState();
     const node = state.nodes.find((item) => item.id === nodeId);
     if (!node) return;
     const values = sourceValues(node, def, state.nodes, state.edges);
-    router.push(sourceNotebookHref(notebookId, values));
+    editModule.mutate(def.id, {
+      onSuccess: (doc) => router.push(notebookHref(doc.id, values)),
+      onError: (error) => toast.error(error.message),
+    });
   };
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <button
           type="button"
-          aria-label="在笔记本中打开源码"
+          aria-label="在笔记本中编辑"
           onClick={open}
           onDoubleClick={(event) => event.stopPropagation()}
           className="nodrag grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
@@ -289,7 +294,7 @@ function SourceButton({ nodeId, def }: { nodeId: string; def: ModuleDef }) {
           <CodeXml className="size-3.5" />
         </button>
       </TooltipTrigger>
-      <TooltipContent side="top">在源笔记本中打开</TooltipContent>
+      <TooltipContent side="top">在笔记本中编辑</TooltipContent>
     </Tooltip>
   );
 }

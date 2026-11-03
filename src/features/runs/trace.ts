@@ -2,14 +2,13 @@ import type { ModuleIndex } from "@/features/workflow/catalog";
 import type { WorkflowDoc } from "@/features/workflow/types";
 import type { ResultFile, TaskRecord } from "./types";
 
-/** Where a result came from: the canvas node, its module version, the notebook revision, and the tasks. */
+/** Where a result came from: the canvas node, its module version, and the tasks. */
 export interface ResultSource {
   nodeId: string;
   alias: string;
   moduleId: string;
   moduleName?: string;
   version?: string;
-  notebook?: { id: string; rev?: number };
   tasks: TaskRecord[];
 }
 
@@ -31,7 +30,6 @@ export function traceResult(file: Pick<ResultFile, "path" | "nodeId">, workflow:
     moduleId: node.data.moduleId,
     moduleName: def?.name,
     version: def?.version,
-    notebook: def?.sourceNotebookId ? { id: def.sourceNotebookId, rev: def.sourceNotebookRev } : undefined,
     tasks: tagged.length ? tagged : own,
   };
 }

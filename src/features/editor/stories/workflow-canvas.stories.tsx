@@ -182,14 +182,16 @@ export const SourceButton: Story = {
       if (!el) throw new Error("missing qc node");
       return el;
     });
-    const open = await within(node).findByRole("button", { name: "在笔记本中打开源码" });
+    const open = await within(node).findByRole("button", { name: "在笔记本中编辑" });
     await waitFor(() => expect(open).toBeVisible());
-    // File and folder inputs have no source notebook.
+    // File and folder inputs are not exported from notebooks.
     const counts = canvasElement.querySelector<HTMLElement>('[data-id="counts"]')!;
-    expect(within(counts).queryByRole("button", { name: "在笔记本中打开源码" })).toBeNull();
+    expect(within(counts).queryByRole("button", { name: "在笔记本中编辑" })).toBeNull();
     await userEvent.click(open);
+    // A temporary notebook from the module's copy, opened with this node's values.
+    await waitFor(() => expect(getRouter().push).toHaveBeenCalled());
     const href = String(getRouter().push.mock.lastCall?.[0] ?? "");
-    expect(href.startsWith("/workbench/nb_scanpy_qc?")).toBe(true);
+    expect(href.startsWith("/workbench/nb_edit?")).toBe(true);
     const query = new URLSearchParams(href.split("?")[1]);
     expect(query.get("from")).toBe("SCANPY_QC");
     expect(query.get("set.adata")).toBe("/home/demo/data/pbmc3k.h5ad");

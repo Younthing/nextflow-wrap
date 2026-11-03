@@ -40,7 +40,7 @@ export type ModuleOrigin = "builtin" | "script";
 export type TryRunStatus = "passed" | "failed";
 
 export interface ModuleDef {
-  /** `builtin/<name>` or `script/<notebook>/<version>`. */
+  /** `builtin/<name>` or `script/<slug>` for a module exported from a notebook. */
   id: string;
   /** Folder under modules/local for published notebooks. Empty for built-ins. */
   path: string;
@@ -62,11 +62,7 @@ export interface ModuleDef {
   temporary?: boolean;
   /** Builtin functional node or a notebook-published CLI. */
   origin?: ModuleOrigin;
-  /** Notebook that published this script module. */
-  sourceNotebookId?: string;
-  /** Notebook revision pinned at publish time. */
-  sourceNotebookRev?: number;
-  /** Published label, for example `v1`. */
+  /** Bumped each time a notebook export overwrites the module: `v1`, `v2`, … The id stays the same. */
   version?: string;
   tryRun?: TryRunStatus;
   /** CLI entry inside a generated project, for example `bin/qc_summary.py`. */
@@ -83,7 +79,7 @@ export interface ModuleDef {
   namespace?: string;
   /** Container image for the process `container` directive. Hand-filled, not taken from the kernel. */
   containerImage?: string;
-  /** Free-text note saved with this published version. */
+  /** Free-text note saved with the latest export. */
   changelog?: string;
 }
 

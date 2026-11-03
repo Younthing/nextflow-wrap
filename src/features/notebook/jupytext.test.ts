@@ -34,7 +34,7 @@ describe("jupytext percent", () => {
       { id: "out", role: "output", source: "# @output name=report type=path pattern=\"report.txt\"\nopen('report.txt','w').write(title)\n" },
       { id: "empty", role: "code", source: "" },
     ];
-    const text = writePercent(notebook(cells), { sourceNotebookId: "qc_summary", sourceNotebookRev: 12 });
+    const text = writePercent(notebook(cells));
     expect(text).toContain("format_name: percent");
     expect(text).toContain("formats: ipynb,py:percent");
     const parsed = readPercent(text);
@@ -42,8 +42,6 @@ describe("jupytext percent", () => {
     expect(parsed.description).toBe("汇总 \"FastQC\"\n第二行");
     expect(parsed.kernel).toBe("py311-pandas");
     expect(parsed.language).toBe("python");
-    expect(parsed.sourceNotebookId).toBe("qc_summary");
-    expect(parsed.sourceNotebookRev).toBe(12);
   });
 
   it("round-trips a custom kernel such as python:3.12", () => {

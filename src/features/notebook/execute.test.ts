@@ -1,4 +1,4 @@
-import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -460,5 +460,19 @@ describe("executeCells", () => {
     });
     expect(cell?.error).toMatch(/Rscript/);
     expect(cell?.outputs?.[0]).toMatchObject({ outputType: "error" });
+  });
+});
+describe("notebook cells and the workspace", () => {
+  it("run in the project folder, so workspace paths such as data/x.csv resolve", async () => {
+    const workspace = await mkdtemp(join(tmpdir(), "nb-workspace-"));
+    try {
+      await writeFile(join(workspace, "reads.txt"), "ACGT\n");
+      const results = await executeCells(pythonDoc([{ id: "read", role: "code", source: "print(open('reads.txt').read().strip())\n" }]), undefined, workspace);
+      expect(results[0]?.stdout).toBe("ACGT\n");
+      // The driver keeps its own files out of the workspace.
+      expect((await readdir(workspace)).sort()).toEqual(["reads.txt"]);
+    } finally {
+      await rm(workspace, { recursive: true, force: true });
+    }
   });
 });

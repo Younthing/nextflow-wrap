@@ -1,13 +1,11 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import { CodeXml, Eraser, FastForward, Loader2, Plus, X } from "lucide-react";
 
 import { AsyncPlaceholder } from "@/components/ui/async-placeholder";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -16,10 +14,10 @@ import { applyCanvasValues, readCanvasValues, type AppliedValue } from "@/featur
 import { convertNotebook, ConvertError } from "@/features/notebook/convert";
 import { dispatchNotebookKey, dragOffsets, gapAtPointer, moveCellToGap, notebookDraftKey } from "@/features/notebook/edit";
 import { COMMAND_HINT, EDIT_HINT, interpretNotebookKey, toNotebookKeyEvent, type NotebookMode } from "@/features/notebook/keyboard";
-import { latestModuleForNotebook } from "@/features/notebook/library";
-import { useNotebook, useNotebookRevision, useRunNotebook, useSaveNotebook, useScriptModules } from "@/features/notebook/queries";
+import { useKeepNotebook, useNotebook, useRunNotebook, useSaveNotebook } from "@/features/notebook/queries";
 import { languageForKernel, type CellRunResult, type NotebookCell, type NotebookCellRole, type NotebookDoc, type NotebookRunKernel } from "@/features/notebook/types";
 import { ExportMenu } from "@/features/workbench/components/export-menu";
+import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import { KernelControls } from "./kernel-controls";
 import { KernelPicker } from "./kernel-picker";
@@ -131,14 +129,10 @@ export function NotebookEditor({ notebookId }: { notebookId: string }) {
 function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
   const router = useRouter();
   const search = useSearchParams();
-  const revParam = search.get("rev");
   const notebook = useNotebook(notebookId);
-  const revision = useNotebookRevision(notebookId, revParam);
   const save = useSaveNotebook();
   const run = useRunNotebook();
-  const scripts = useScriptModules();
-  const published = latestModuleForNotebook(scripts.data?.modules ?? [], notebookId);
-  const readOnly = !!revParam;
+  const keep = useKeepNotebook();
   const [override, setOverride] = React.useState<NotebookDoc | null>(null);
   const [dirty, setDirty] = React.useState(false);
   const [selected, setSelected] = React.useState<string | null>(null);
@@ -181,8 +175,8 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
     dirty: boolean;
   }>({ doc: null, mode: "command", deleteArmed: false, dirty: false });
   const saveNotebook = save.mutate;
-  const selectionKey = `${notebookId}:${revParam ?? "latest"}`;
-  const selectionCells = revParam ? revision.data?.cells : notebook.data?.cells;
+  const selectionKey = notebookId;
+  const selectionCells = notebook.data?.cells;
   if (selectionCells && selectionFor !== selectionKey) {
     setSelectionFor(selectionKey);
     setSelected(selectionCells[0]?.id ?? null);
@@ -200,7 +194,7 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
   }, [draft, notebook.data]);
 
   React.useEffect(() => {
-    if (!draft || !dirty || readOnly) return;
+    if (!draft || !dirty) return;
     const snapshot = notebookDraftKey(draft);
     const handle = window.setTimeout(() => {
       saveNotebook(draft, {
@@ -219,14 +213,9 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
       });
     }, 700);
     return () => window.clearTimeout(handle);
-  }, [draft, dirty, readOnly, saveNotebook]);
+  }, [draft, dirty, saveNotebook]);
 
-  const live = React.useMemo(() => {
-    if (readOnly && notebook.data && revision.data) {
-      return { ...notebook.data, cells: revision.data.cells, rev: revision.data.rev };
-    }
-    return draft;
-  }, [readOnly, notebook.data, revision.data, draft]);
+  const live = draft;
 
   React.useEffect(() => {
     if (!live) return;
@@ -255,7 +244,7 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
 
   // Values handed over by a canvas node's </> button land in the input cells once, then the URL is cleaned.
   const canvas = readCanvasValues(search);
-  const canvasKey = canvas && notebook.data && !readOnly ? search.toString() : null;
+  const canvasKey = canvas && notebook.data ? search.toString() : null;
   if (canvasKey !== canvasFor) {
     setCanvasFor(canvasKey);
     if (canvas && canvasKey && notebook.data) {
@@ -329,20 +318,17 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
     return () => cancelAnimationFrame(frame);
   }, [dragging]);
 
-  if (notebook.isPending || (readOnly && revision.isPending)) return <AsyncPlaceholder status="pending" className="h-full" />;
+  if (notebook.isPending) return <AsyncPlaceholder status="pending" className="h-full" />;
   if (notebook.error || !notebook.data) {
     return <AsyncPlaceholder status="error" className="h-auto" message={notebook.error?.message ?? "笔记本不存在"} />;
-  }
-  if (readOnly && (revision.error || !revision.data)) {
-    return <AsyncPlaceholder status="error" className="h-auto" message="这个修订不存在" />;
   }
   if (!live) return <AsyncPlaceholder status="pending" className="h-full" />;
 
   const savedAt = notebook.data.updatedAt;
-  const runDisabled = readOnly || dirty || save.isPending || run.isPending || runningTarget !== null;
+  const runDisabled = dirty || save.isPending || run.isPending || runningTarget !== null;
 
   const beginRun = (cellId?: string) => {
-    if (readOnly || runningRef.current) return;
+    if (runningRef.current) return;
     runningRef.current = cellId ?? "all";
     setRunningTarget(runningRef.current);
     const started = clock();
@@ -367,7 +353,7 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
   };
 
   const persistThenRun = async (doc: NotebookDoc, needsSave: boolean, cellId: string | null) => {
-    if (readOnly || runningRef.current) return;
+    if (runningRef.current) return;
     runningRef.current = cellId ?? "save";
     if (cellId) setRunningTarget(cellId);
     try {
@@ -418,7 +404,7 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
       origin,
       keyEvent,
       () => newCell("code"),
-      readOnly,
+      false,
     );
     const nextDoc = { ...doc, cells: result.surface.cells };
     const nextDirty = snap.dirty || result.changed;
@@ -534,19 +520,17 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
     }
     router.push(href);
   };
-  const savedLabel = readOnly
-    ? `只读 · 原版 r${live.rev}`
-    : save.isPending || dirty
+  const savedLabel = save.isPending || dirty
       ? "保存中…"
       : `已自动保存 ${new Date(savedAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false })}`;
 
   return (
     <div className="flex size-full min-h-0 flex-col">
       <div role="toolbar" aria-label="笔记本工具栏" className="flex flex-wrap items-center gap-0.5 border-b border-border bg-glass-strong px-2 py-1">
-        <Button type="button" size="sm" variant="ghost" className="h-7 gap-1 px-2 font-normal" aria-label="+ 代码" disabled={readOnly} onClick={() => insertCell("code")}>
+        <Button type="button" size="sm" variant="ghost" className="h-7 gap-1 px-2 font-normal" aria-label="+ 代码" onClick={() => insertCell("code")}>
           <Plus /> 代码
         </Button>
-        <Button type="button" size="sm" variant="ghost" className="h-7 gap-1 px-2 font-normal" aria-label="+ 说明" disabled={readOnly} onClick={() => insertCell("markdown")}>
+        <Button type="button" size="sm" variant="ghost" className="h-7 gap-1 px-2 font-normal" aria-label="+ 说明" onClick={() => insertCell("markdown")}>
           <Plus /> 说明
         </Button>
         <span aria-hidden className="mx-1 h-4 w-px bg-border" />
@@ -564,13 +548,13 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
         {live.language === "python" ? (
           <>
             <span aria-hidden className="mx-1 h-4 w-px bg-border" />
-            <KernelControls compact notebookId={notebookId} running={runningTarget !== null} disabled={readOnly} />
+            <KernelControls compact notebookId={notebookId} running={runningTarget !== null} />
           </>
         ) : null}
         <div className="ml-auto flex items-center gap-1.5">
           <Select
             value={selectedCell?.role ?? ""}
-            disabled={readOnly || !selectedCell}
+            disabled={!selectedCell}
             onValueChange={(role) => selected && updateCell(selected, { role: role as NotebookCellRole })}
           >
             <SelectTrigger size="sm" className="h-7 w-24 border-transparent bg-transparent text-xs shadow-none hover:bg-accent" aria-label="当前单元格类型">
@@ -582,37 +566,31 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
               ))}
             </SelectContent>
           </Select>
-          {published ? (
-            <Badge variant={published.tryRun === "failed" ? "outline" : "success"}>模块 {published.version}</Badge>
-          ) : null}
-          {live.libraryModuleId ? <Badge variant="outline">库重建</Badge> : null}
           <KernelPicker
             subtle
             value={live.kernel}
-            disabled={readOnly}
             onChange={(kernel) => update({ kernel, language: languageForKernel(kernel) })}
           />
           <ExportMenu
             doc={live}
             outputs={outputs}
             ports={ports}
-            published={published?.version}
-            disabled={readOnly}
             onExportModule={openPublish}
           />
         </div>
       </div>
 
-      {readOnly && (
-        <div className="flex flex-wrap items-center gap-2 border-b border-warning/40 bg-warning/10 px-4 py-2 text-sm">
-          只读 · 原版 r{live.rev}
-          <Button asChild size="sm" variant="outline" className="ml-auto">
-            <Link href={`/workbench/${notebookId}`}>打开最新 r{notebook.data.rev}</Link>
+      {live.temporary && (
+        <div role="status" className="flex flex-wrap items-center gap-2 border-b border-primary/30 bg-primary/10 px-4 py-2 text-sm">
+          <span className="min-w-0 flex-1">临时笔记本{live.fromModuleId ? <> · 编辑模块 <span className="font-mono">{live.fromModuleId}</span></> : null}</span>
+          <Button type="button" size="sm" variant="outline" disabled={keep.isPending} onClick={() => keep.mutate(live.id, { onError: (error) => toast.error(error.message) })}>
+            保存到项目
           </Button>
+          <Button type="button" size="sm" onClick={openPublish}>导出为模块</Button>
         </div>
       )}
 
-      {fromCanvas && !readOnly && (
+      {fromCanvas && (
         <div role="status" className="flex flex-wrap items-center gap-2 border-b border-primary/30 bg-primary/10 px-4 py-2 text-sm">
           <CodeXml className="size-4 shrink-0 text-primary" aria-hidden />
           <span className="min-w-0 flex-1">
@@ -652,23 +630,6 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
         </div>
       )}
 
-      {live.libraryModuleId && (
-        <div className="border-b border-border px-4 py-2 text-sm">
-          <span className="font-medium">从模块库重建的可编辑副本</span>
-          <span className="text-muted-foreground">
-            {" "}· {live.libraryModuleId}
-            {live.librarySourceNotebookId ? (
-              <>
-                {" "}· 源笔记本{" "}
-                <Link href={`/workbench/${live.librarySourceNotebookId}`} className="text-primary hover:underline">
-                  {live.librarySourceNotebookId}
-                </Link>
-                {live.librarySourceNotebookRev !== undefined ? ` r${live.librarySourceNotebookRev}` : ""}
-              </>
-            ) : null}
-          </span>
-        </div>
-      )}
 
       {marked && converted ? (
         <div aria-label="模块端口" role="group" className="flex flex-wrap items-center gap-1.5 border-b border-border px-4 py-1.5 font-mono text-[11px] text-muted-foreground">
@@ -704,21 +665,19 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
           <div className="grid gap-0.5 pb-3 pl-12">
             <input
               value={live.name}
-              disabled={readOnly}
               aria-label="笔记本名称"
               onChange={(event) => update({ name: event.target.value })}
               className="w-full rounded-md bg-transparent px-2 py-1 text-xl font-semibold outline-none placeholder:text-muted-foreground hover:bg-accent/60 focus-visible:bg-accent/60 disabled:opacity-100"
             />
             <input
               value={live.description}
-              disabled={readOnly}
               aria-label="笔记本说明"
               placeholder="这本笔记本在做什么"
               onChange={(event) => update({ description: event.target.value })}
               className="w-full rounded-md bg-transparent px-2 py-0.5 text-sm text-muted-foreground outline-none placeholder:text-muted-foreground/70 hover:bg-accent/60 focus-visible:bg-accent/60"
             />
           </div>
-          {!readOnly ? <InsertBar after={-1} onInsert={insertCell} /> : <div className="h-4" />}
+          <InsertBar after={-1} onInsert={insertCell} />
           {live.cells.map((cell, index) => (
             <div
               key={cell.id}
@@ -737,7 +696,7 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
                   .join("\n")}
                 selected={selected === cell.id}
                 running={runningTarget === "all" || runningTarget === cell.id}
-                readOnly={readOnly}
+                readOnly={false}
                 runDisabled={runDisabled}
                 canDelete={live.cells.length > 1}
                 output={outputs[cell.id]}
@@ -776,7 +735,7 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
                 onChange={(source) => updateCell(cell.id, { source })}
                 onRole={(role) => updateCell(cell.id, { role })}
                 dragging={drag?.id === cell.id}
-                onDragStart={readOnly ? undefined : (clientY) => startDrag(cell.id, clientY)}
+                onDragStart={(clientY) => startDrag(cell.id, clientY)}
                 onDragMove={dragMove}
                 onDragEnd={(commit) => (commit ? dropCell() : setDrag(null))}
                 onDelete={() => {
@@ -786,11 +745,7 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
                   if (selected === cell.id) setSelected(remaining[Math.min(index, remaining.length - 1)]?.id ?? null);
                 }}
               />
-              {!readOnly ? (
-                <InsertBar after={index} last={index === live.cells.length - 1} onInsert={insertCell} />
-              ) : (
-                <div className="h-4" />
-              )}
+              <InsertBar after={index} last={index === live.cells.length - 1} onInsert={insertCell} />
             </div>
           ))}
         </div>

@@ -51,8 +51,9 @@ export class NotebookFiles {
     this.folder = join(root, FOLDER);
   }
 
+  /** Temporary notebooks (opened to edit a module) get a file only once they are saved to the project. */
   private owns(doc: NotebookDoc): boolean {
-    return notebookProjectId(doc) === this.projectId;
+    return !doc.temporary && notebookProjectId(doc) === this.projectId;
   }
 
   /** Path of a notebook's file relative to the workspace, for display. */

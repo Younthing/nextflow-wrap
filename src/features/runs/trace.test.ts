@@ -4,14 +4,15 @@ import type { ModuleDef, WorkflowDoc } from "@/features/workflow/types";
 import type { TaskRecord } from "./types";
 import { notebookSnippet, traceResult } from "./trace";
 
-const workflow = { nodes: [{ id: "n1", position: { x: 0, y: 0 }, data: { moduleId: "script/cluster/v2", alias: "CLUSTER", widgets: {}, config: {} } }] } as unknown as WorkflowDoc;
-const mod = { id: "script/cluster/v2", name: "cluster", version: "v2", sourceNotebookId: "nb_cluster", sourceNotebookRev: 7 } as unknown as ModuleDef;
+const workflow = { nodes: [{ id: "n1", position: { x: 0, y: 0 }, data: { moduleId: "script/cluster", alias: "CLUSTER", widgets: {}, config: {} } }] } as unknown as WorkflowDoc;
+const mod = { id: "script/cluster", name: "cluster", version: "v2" } as unknown as ModuleDef;
 const task = (tag: string): TaskRecord => ({ hash: `aa/${tag}`, nodeId: "n1", process: "MAIN:CLUSTER", name: `CLUSTER (${tag})`, tag, status: "completed", cpus: 1, workdir: "/w" });
 
 describe("traceResult", () => {
-  it("follows a result to its node, module version, notebook revision and task", () => {
+  it("follows a result to its node, module version and task", () => {
     const source = traceResult({ path: "cluster/PBMC_2.h5ad", nodeId: "n1" }, workflow, indexModules([mod]), [task("PBMC_1"), task("PBMC_2")]);
-    expect(source).toMatchObject({ alias: "CLUSTER", version: "v2", notebook: { id: "nb_cluster", rev: 7 } });
+    expect(source).toMatchObject({ alias: "CLUSTER", version: "v2" });
+    expect(source).not.toHaveProperty("notebook");
     expect(source?.tasks.map((t) => t.tag)).toEqual(["PBMC_2"]);
   });
 

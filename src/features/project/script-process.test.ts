@@ -155,6 +155,6 @@ describe("script module project files", () => {
     expect(meta).toContain('version: "v1"');
     expect(meta).toContain("  - name: title\n    type: val");
     expect(meta).toContain('    pattern: "report.html"');
-    expect(meta).toContain('  notebook: "nb_hello"');
+    expect(meta).not.toContain("notebook:");
   });
 });

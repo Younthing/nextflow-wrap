@@ -90,7 +90,7 @@ describe("generateProject", () => {
   });
 
   it("writes published notebook modules and their scripts", () => {
-    const hello = demoScriptModules().find((def) => def.id === "script/hello_py/v2")!;
+    const hello = demoScriptModules().find((def) => def.id === "script/hello_py")!;
     const doc: WorkflowDoc = {
       ...demo,
       params: { outdir: "results" },

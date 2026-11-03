@@ -13,14 +13,15 @@ import { EnvConfigAssistant, PublishAssistant } from "@/features/assistant/modul
 import { convertNotebook, ConvertError, inputPorts, outputPorts } from "@/features/notebook/convert";
 import { missingEnvLabels, sameModuleEnv, stageModuleEnv, tryRunEnvSummary } from "@/features/notebook/env";
 import { defaultInputDraft, SOURCE_LABEL, type InputDraft } from "@/features/notebook/input-bindings";
-import { latestModuleForNotebook } from "@/features/notebook/library";
-import { nextModuleVersion } from "@/features/notebook/publish";
 import { useNotebook, usePublishNotebook, useScriptModules, useTryRunNotebook } from "@/features/notebook/queries";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { versionNumber } from "@/features/workflow/origin";
 import { cn } from "@/lib/utils";
 import { ModuleEnvFields, ModuleEnvPreview } from "./module-env-form";
 import { bindingsFromDrafts, TryRunBindingTable, TryRunInputs } from "./try-run-inputs";
 
-const STEPS = ["转化预览", "试跑 CLI", "保存为模块"];
+const STEPS = ["转化预览", "试跑 CLI", "导出为模块"];
+const NEW_MODULE = "__new__";
 
 function StepPill({ index, current }: { index: number; current: number }) {
   const done = current > index;
@@ -56,6 +57,8 @@ function PublishWizardScreen({ notebookId }: { notebookId: string }) {
   const [drafts, setDrafts] = React.useState<Record<string, InputDraft>>({});
   const [seededFor, setSeededFor] = React.useState<string | null>(null);
   const [name, setName] = React.useState("");
+  /** Module to overwrite, or NEW_MODULE. */
+  const [target, setTarget] = React.useState(NEW_MODULE);
   const [description, setDescription] = React.useState("");
   const [changelog, setChangelog] = React.useState("");
   const [condaYaml, setCondaYaml] = React.useState("");
@@ -87,15 +90,21 @@ function PublishWizardScreen({ notebookId }: { notebookId: string }) {
     setDescription(doc.description);
   }
 
+  // A notebook opened to edit a module overwrites that module by default, with its environment.
   if (doc && scripts.isSuccess && envFor !== doc.id) {
-    const previous = latestModuleForNotebook(scripts.data.modules, doc.id);
+    const from = scripts.data.modules.find((mod) => mod.id === doc.fromModuleId);
     setEnvFor(doc.id);
-    if (!condaYaml && previous?.condaYaml) setCondaYaml(previous.condaYaml);
-    if (!containerImage && previous?.containerImage) setContainerImage(previous.containerImage);
+    if (from) {
+      setTarget(from.id);
+      setName(from.name);
+      if (!condaYaml && from.condaYaml) setCondaYaml(from.condaYaml);
+      if (!containerImage && from.containerImage) setContainerImage(from.containerImage);
+    }
   }
 
   const go = (next: number) => router.replace(`/workbench/${notebookId}/publish?step=${next}`);
-  const version = doc ? nextModuleVersion(scripts.data?.modules ?? [], doc.id) : "v1";
+  const overwriting = scripts.data?.modules.find((mod) => mod.id === target);
+  const version = overwriting ? `v${versionNumber(overwriting.version) + 1}` : "v1";
   const receipt = tryRun.data;
   const staged = stageModuleEnv({ condaYaml, containerImage });
   const envAligned = staged.ok && !!receipt && sameModuleEnv(receipt, staged);
@@ -112,7 +121,7 @@ function PublishWizardScreen({ notebookId }: { notebookId: string }) {
         <div>
           <div className="text-xs text-muted-foreground">
             <Link href={`/workbench/${notebookId}`} className="hover:underline">笔记本 / {doc.name}</Link>
-            <span> / 发布为模块</span>
+            <span> / 导出为模块</span>
           </div>
           <div className="mt-2 flex flex-wrap gap-2">
             {STEPS.map((label, index) => (
@@ -232,6 +241,26 @@ function PublishWizardScreen({ notebookId }: { notebookId: string }) {
         <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-2">
           <section className="glass space-y-3 rounded-xl p-4">
             <h2 className="text-sm font-semibold">模块信息</h2>
+            <FormField label="导出到" htmlFor="module-target">
+              <Select
+                value={target}
+                onValueChange={(next) => {
+                  setTarget(next);
+                  const mod = scripts.data?.modules.find((item) => item.id === next);
+                  if (mod) setName(mod.name);
+                }}
+              >
+                <SelectTrigger id="module-target" className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NEW_MODULE} className="text-xs">新模块</SelectItem>
+                  {(scripts.data?.modules ?? []).map((mod) => (
+                    <SelectItem key={mod.id} value={mod.id} className="text-xs">
+                      覆盖 <span className="font-mono">{mod.name}</span> {mod.version}{mod.referenceCount ? ` · ${mod.referenceCount} 个流程在用` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormField>
             <FormField label="模块名" htmlFor="module-name">
               <Input id="module-name" value={name} onChange={(event) => setName(event.target.value)} className="h-8 font-mono text-xs" />
             </FormField>
@@ -239,7 +268,7 @@ function PublishWizardScreen({ notebookId }: { notebookId: string }) {
               <Input id="module-description" value={description} onChange={(event) => setDescription(event.target.value)} className="h-8 text-xs" />
             </FormField>
             <FormField label="版本" htmlFor="module-version">
-              <Input id="module-version" value={`${version}（${version === "v1" ? "首次发布" : "新版本"}）`} readOnly className="h-8 font-mono text-xs" />
+              <Input id="module-version" value={overwriting ? `${overwriting.version ?? "v1"} → ${version}` : version} readOnly className="h-8 font-mono text-xs" />
             </FormField>
             <FormField label="更新说明" htmlFor="module-changelog">
               <Input id="module-changelog" value={changelog} onChange={(event) => setChangelog(event.target.value)} className="h-8 text-xs" />
@@ -255,7 +284,6 @@ function PublishWizardScreen({ notebookId }: { notebookId: string }) {
           </section>
           <section className="glass space-y-3 rounded-xl p-4 text-sm">
             <h2 className="font-semibold">将写入模块库</h2>
-            <p>源笔记本 <span className="font-mono">{doc.name}</span> · 钉住 rev r{doc.rev}</p>
             <p>命令行 <span className="font-mono">{converted?.ok ? converted.value.entry : "—"}</span></p>
             <p>端口 {converted?.ok ? `${converted.value.inputs.length} 输入 · ${converted.value.outputs.length} 输出` : "—"}</p>
             <ModuleEnvPreview condaYaml={condaYaml} containerImage={containerImage} />
@@ -297,13 +325,13 @@ function PublishWizardScreen({ notebookId }: { notebookId: string }) {
             disabled={!passed || publish.isPending || !name.trim()}
             onClick={() => {
               publish.mutate(
-                { id: doc.id, name: name.trim(), description, changelog, condaYaml, containerImage },
+                { id: doc.id, name: name.trim(), overwrite: overwriting?.id, description, changelog, condaYaml, containerImage },
                 { onSuccess: () => router.push("/modules") },
               );
             }}
           >
             {publish.isPending ? <Loader2 className="animate-spin" /> : null}
-            保存为模块 {version}
+            {overwriting ? `覆盖 ${overwriting.name} → ${version}` : "新建模块"}
           </Button>
         )}
       </footer>

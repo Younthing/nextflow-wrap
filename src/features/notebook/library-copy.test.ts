@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { demoNotebooks, demoRevisions, demoScriptModules, demoLibraryCopies } from "./seed";
 import { readPercent } from "./jupytext";
-import { libraryCopyFromRevision, notebookFromLibrary } from "./library-copy";
+import { notebookFromLibrary } from "./library-copy";
 import { publishScriptModule } from "./publish";
 import type { NotebookDoc, TryRunRecord } from "./types";
 
@@ -61,8 +61,6 @@ describe("library copies", () => {
       savedAt: now,
     });
     expect(notebook).toEqual(before);
-    expect(moduleDef.sourceNotebookId).toBe(notebook.id);
-    expect(moduleDef.sourceNotebookRev).toBe(notebook.rev);
     expect(Object.keys(moduleDef)).not.toContain("percent");
     expect(library.moduleId).toBe(moduleDef.id);
     expect(library.version).toBe(moduleDef.version);
@@ -95,7 +93,7 @@ describe("library copies", () => {
     expect(readPercent(library.percent).cells).toEqual(notebook.cells);
   });
 
-  it("rebuilds an editable notebook with a new id", () => {
+  it("opens a temporary notebook to edit the module, with a new id", () => {
     const notebook = sample();
     const { library } = publishScriptModule({
       notebook,
@@ -109,15 +107,14 @@ describe("library copies", () => {
     expect(rebuilt.id).not.toBe(notebook.id);
     expect(rebuilt.rev).toBe(1);
     expect(rebuilt.cells).toEqual(notebook.cells);
-    expect(rebuilt.libraryModuleId).toBe(library.moduleId);
-    expect(rebuilt.librarySourceNotebookId).toBe(notebook.id);
-    expect(rebuilt.librarySourceNotebookRev).toBe(notebook.rev);
+    expect(rebuilt.temporary).toBe(true);
+    expect(rebuilt.fromModuleId).toBe(library.moduleId);
     rebuilt.cells = [...rebuilt.cells, { id: "extra", role: "code", source: "print(1)\n" }];
     expect(readPercent(library.percent).cells).toEqual(notebook.cells);
     expect(notebook.cells).toHaveLength(4);
   });
 
-  it("versions library copies independently of a later notebook edit", () => {
+  it("replaces the copy when an export overwrites the module", () => {
     const first = sample();
     const v1 = publishScriptModule({
       notebook: first,
@@ -137,25 +134,23 @@ describe("library copies", () => {
       name: "round_trip",
       description: second.description,
       existing: [v1.module],
+      overwrite: v1.module.id,
       receipt: passed(second),
       savedAt: now,
     });
-    expect(v1.library.moduleId).not.toBe(v2.library.moduleId);
+    expect(v2.library.moduleId).toBe(v1.library.moduleId);
+    expect(v2.library.version).toBe("v2");
     expect(notebookFromLibrary(v1.library, "nb_a", now).cells.map((cell) => cell.id)).not.toContain("later");
     expect(notebookFromLibrary(v2.library, "nb_b", now).cells.map((cell) => cell.id)).toContain("later");
   });
 
-  it("backfills from the pinned revision instead of a drifted notebook", () => {
+  it("seeds each demo module with the cells it was exported from", () => {
     const notebooks = demoNotebooks();
     const revisions = demoRevisions(notebooks);
     const qc = notebooks.find((doc) => doc.id === "qc_summary")!;
-    const pinned = revisions.find((rev) => rev.notebookId === "qc_summary" && rev.rev === 12)!;
-    const moduleDef = demoScriptModules(notebooks, revisions).find((mod) => mod.id === "script/qc_summary/v1")!;
-    const copy = libraryCopyFromRevision(moduleDef, qc, pinned, now);
-    expect(copy?.sourceNotebookRev).toBe(12);
-    expect(readPercent(copy!.percent).cells).toEqual(pinned.cells);
-    expect(readPercent(copy!.percent).cells).not.toEqual(qc.cells);
-    expect(demoLibraryCopies(notebooks, revisions).find((item) => item.moduleId === moduleDef.id)?.percent).toBe(copy?.percent);
-    expect(libraryCopyFromRevision(moduleDef, qc, undefined)).toBeUndefined();
+    const exported = revisions.find((rev) => rev.notebookId === "qc_summary" && rev.rev === 12)!;
+    const copy = demoLibraryCopies(notebooks, revisions, demoScriptModules(notebooks, revisions)).find((item) => item.moduleId === "script/qc_summary")!;
+    expect(readPercent(copy.percent).cells).toEqual(exported.cells);
+    expect(readPercent(copy.percent).cells).not.toEqual(qc.cells);
   });
 });

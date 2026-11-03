@@ -23,10 +23,13 @@ export interface NotebookDoc {
   updatedAt: string;
   /** Project (workspace folder) the notebook belongs to. Unset on notebooks from before projects: see `notebookProjectId`. */
   projectId?: string;
-  /** Set when this notebook was rebuilt from a module library copy. */
-  libraryModuleId?: string;
-  librarySourceNotebookId?: string;
-  librarySourceNotebookRev?: number;
+  /**
+   * Opened to edit a module (from the module library or a canvas node): kept out of the project's notebooks and
+   * files until it is saved there.
+   */
+  temporary?: boolean;
+  /** Module this notebook was opened from: only the default target of its next export. Nothing syncs. */
+  fromModuleId?: string;
 }
 
 export interface NotebookRevision {
@@ -44,13 +47,6 @@ export interface NotebookSummary {
   language: NotebookLanguage;
   rev: number;
   updatedAt: string;
-  publishState: "analysis" | "published";
-  publishedVersion?: string;
-  tryRun?: "passed" | "failed";
-  moduleName?: string;
-  moduleId?: string;
-  /** Rebuilt from a module library copy, not the original analysis notebook. */
-  fromLibrary?: boolean;
   projectId: string;
 }
 
