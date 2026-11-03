@@ -31,7 +31,7 @@ main() {
   echo "== 安装依赖并构建服务端（linux-$arch）"
   if command -v corepack >/dev/null 2>&1; then pnpm() { corepack pnpm "$@"; }; fi
   pnpm install --frozen-lockfile
-  rm -rf dist-server
+  rm -rf dist-server .next
   node scripts/build-server.mjs --arch "$arch"
   pkg=$(cd dist-server && ls nextflow-studio-server-*-linux-"$arch".tar.gz | head -n 1)
   [ -n "$pkg" ] || fail "没有生成服务端包"

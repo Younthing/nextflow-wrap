@@ -152,7 +152,8 @@ function supervise(name: string, modulePath: string, args: string[], env: NodeJS
 /**
  * There are no migrations: a database written by another schema version is refused by the server, which leaves
  * the app with pages that cannot load. Before the local server starts, such data (database, example project, run
- * records, launch and work directories) is deleted so the server starts fresh. Settings, the toolchain, logs,
+ * records, launch and work directories) is deleted so the server starts fresh; `--fresh` (pnpm dev --fresh) always
+ * deletes it. Settings, the toolchain, logs,
  * the unpacked server and connections are kept; projects in their own folders are not touched.
  */
 function clearStaleLocalData() {
@@ -173,7 +174,7 @@ function clearStaleLocalData() {
     console.warn("Could not read the local database version", error);
     return;
   }
-  if (version === SCHEMA_VERSION) return;
+  if (version === SCHEMA_VERSION && !process.argv.includes("--fresh")) return;
   console.warn(`Local data has schema version ${version}, this app uses ${SCHEMA_VERSION}: clearing it`);
   for (const name of ["studio.sqlite", "studio.sqlite-wal", "studio.sqlite-shm", "workspaces", "executions", "pipelines", "work"]) {
     rmSync(join(data, name), { recursive: true, force: true });

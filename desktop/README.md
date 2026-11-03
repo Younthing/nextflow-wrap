@@ -38,7 +38,8 @@ pnpm install                         # 仓库根目录：web 应用依赖
 pnpm --dir desktop install           # 桌面外壳依赖（Electron 只装在这里）
 pnpm --dir desktop bundle            # standalone 服务、runner、Linux 服务端包、main/preload、连接页，预取 nf-weblog
 pnpm --dir desktop start             # mac / Linux：用当前代码重建本机服务端，再用本地 Electron 打开
-pnpm --dir desktop dev               # 用本地 Electron 打开（不重建，沿用 resources/ 里上次 bundle 的服务端）
+pnpm --dir desktop dev               # 删掉 .next 和 resources/ 里上次的构建，用当前代码全部重建，再用本地 Electron 打开
+pnpm --dir desktop dev --fresh       # 另外清空本机数据目录里的数据库、示例项目和运行记录
 pnpm --dir desktop dist:mac          # 未签名的 .dmg / .zip（arm64 + x64）
 pnpm --dir desktop dist:linux        # AppImage
 pnpm --dir desktop exec electron-builder --win   # Windows NSIS 安装包（只含连接 WSL / SSH / 地址所需的部分）
