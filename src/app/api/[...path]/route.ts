@@ -30,7 +30,7 @@ async function handle(request: Request, context: Context): Promise<Response> {
     const url = new URL(request.url);
     const path = (await context.params).path;
     // Streams past the 2 MB body cap below; it checks the session itself because the proxy skips it.
-    if (path.length === 2 && path[0] === "fs" && path[1] === "upload") return handleUpload(request);
+    if (path.length === 2 && path[0] === "fs" && path[1] === "upload") return await handleUpload(request);
     if (request.method !== "GET") {
       // Next.js may normalize request.url to localhost; Host retains the browser's public origin.
       assertSameOrigin(request);
@@ -43,14 +43,14 @@ async function handle(request: Request, context: Context): Promise<Response> {
       const ready = runnerReady();
       return json({ status: ready ? "ok" : "degraded", appVersion: process.env.NEXTFLOW_STUDIO_APP_VERSION, build: process.env.NEXTFLOW_STUDIO_BUILD || undefined, apiVersion: API_VERSION, nextflowVersion: state?.versions?.nextflow ?? "未就绪", mocked: false, runnerReady: !!ready, diagnostics: state?.error ?? (ready ? undefined : "请启动 pnpm runner"), resources: state?.resources } satisfies HealthStatus);
     }
-    if (resource === "setup") return handleSetupApi(method, path, request);
-    if (resource === "fs") return handleFsApi(method, path, request);
-    if (resource === "settings" && !id) return handleSettingsApi(method, request);
-    if (resource === "storage") return handleStorageApi(method, path, request);
-    if (resource === "diagnostics" && !id) return handleDiagnosticsApi(method, request);
-    if (resource === "remotes") return handleRemoteApi(method, path, request);
-    if (resource === "projects") return handleProjectsApi(method, path, request);
-    if (resource === "notebooks" || resource === "script-modules" || resource === "kernels") return handleNotebookApi(method, path, request);
+    if (resource === "setup") return await handleSetupApi(method, path, request);
+    if (resource === "fs") return await handleFsApi(method, path, request);
+    if (resource === "settings" && !id) return await handleSettingsApi(method, request);
+    if (resource === "storage") return await handleStorageApi(method, path, request);
+    if (resource === "diagnostics" && !id) return await handleDiagnosticsApi(method, request);
+    if (resource === "remotes") return await handleRemoteApi(method, path, request);
+    if (resource === "projects") return await handleProjectsApi(method, path, request);
+    if (resource === "notebooks" || resource === "script-modules" || resource === "kernels") return await handleNotebookApi(method, path, request);
     if (resource === "schemas" && id === "samplesheet" && method === "GET") return json(samplesheetSchema);
     if (resource === "workflows") {
       // Workflows belong to a project, as notebooks do: the list is the open project's.

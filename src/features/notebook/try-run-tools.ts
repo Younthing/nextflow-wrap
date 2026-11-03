@@ -1,14 +1,8 @@
-import { createHash } from "node:crypto";
 import { constants } from "node:fs";
-import { access, readFile, stat } from "node:fs/promises";
+import { access, stat } from "node:fs/promises";
 import { delimiter, join } from "node:path";
 
-import { condaCacheDirectory } from "@/lib/server/paths";
-
 import type { CondaKind, CondaTool, ContainerKind, ContainerTool, TryRunTools } from "./try-run-env";
-
-/** Shares the conda cache that Nextflow runs use, so the cache panel and cleanup see one place. */
-export const condaCacheDir = () => condaCacheDirectory();
 
 function basename(bin: string): string {
   return bin.split(/[/\\]/).pop()?.toLowerCase() ?? "";
@@ -76,11 +70,4 @@ export async function condaFileProblem(yamlPath: string): Promise<string | undef
     return `找不到 conda 文件：${yamlPath}`;
   }
   return undefined;
-}
-
-/** Stable prefix for one yaml body. A changed file gets a new directory. */
-export async function condaCachePrefix(yamlPath: string, cacheDir = condaCacheDir()): Promise<string> {
-  const body = await readFile(yamlPath);
-  const hash = createHash("sha256").update(body).digest("hex").slice(0, 24);
-  return join(cacheDir, hash);
 }

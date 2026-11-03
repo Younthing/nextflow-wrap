@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { createNode } from "@/features/workflow/nodes";
 import type { ModuleDef } from "@/features/workflow/types";
-import { convertNotebook, inputPorts, scriptFileName, tryRunArgv, tryRunCommand } from "./convert";
+import { convertNotebook, inputPorts, scriptFileName, tryRunArgv } from "./convert";
 import { countCellChanges } from "./changes";
 import { fixtureNotebooks, fixtureRevisions } from "./test-fixtures";
 import type { NotebookDoc } from "./types";
@@ -34,8 +34,6 @@ describe("convertNotebook", () => {
   it("names the script after the notebook, not main.py", () => {
     expect(scriptFileName(convertNotebook(fixtureNotebooks().find((doc) => doc.id === "hello_py")!).entry)).toBe("hello.py");
     expect(scriptFileName(convertNotebook(fixtureNotebooks().find((doc) => doc.id === "deseq2_plot")!).entry)).toBe("deseq2_plot.R");
-    expect(tryRunCommand("r", "bin/deseq2_plot.R", ["--counts", "counts.tsv"])).toBe("Rscript deseq2_plot.R --counts counts.tsv");
-    expect(tryRunCommand("python", "bin/qc_summary.py")).toBe("python3 qc_summary.py");
     const renamed = convertNotebook(qc(), "bin/custom_entry.py");
     expect(scriptFileName(renamed.entry)).toBe("custom_entry.py");
     expect(renamed.commandPreview.startsWith("custom_entry.py")).toBe(true);

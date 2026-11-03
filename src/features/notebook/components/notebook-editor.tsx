@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { NotebookAssistant } from "@/features/assistant/modules/surfaces";
 import { applyCanvasValues, readCanvasValues, type AppliedValue } from "@/features/notebook/canvas-values";
-import { convertNotebook, ConvertError } from "@/features/notebook/convert";
+import { convertNotebook } from "@/features/notebook/convert";
 import { dispatchNotebookKey, dragOffsets, gapAtPointer, moveCellToGap, notebookDraftKey } from "@/features/notebook/edit";
 import { COMMAND_HINT, EDIT_HINT, interpretNotebookKey, toNotebookKeyEvent, type NotebookMode } from "@/features/notebook/keyboard";
 import { useKeepNotebook, useNotebook, useRunNotebook, useSaveNotebook } from "@/features/notebook/queries";
@@ -273,12 +273,11 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
   }, [canvasKey, notebookId, router]);
 
   let converted: ReturnType<typeof convertNotebook> | undefined;
-  let convertError = "";
   if (live && marked) {
     try {
       converted = convertNotebook(live);
-    } catch (error) {
-      convertError = error instanceof ConvertError ? error.message : "还不能生成命令行";
+    } catch {
+      // Export menu shows 0 ports when markers do not convert yet.
     }
   }
   const ports = { inputs: converted?.inputs.length ?? 0, outputs: converted?.outputs.length ?? 0 };
@@ -513,7 +512,7 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
   const selectedIndex = live.cells.findIndex((cell) => cell.id === selected);
   const selectedCell = live.cells.find((cell) => cell.id === selected);
   const openPublish = () => {
-    const href = `/workbench/${notebookId}/publish?step=1`;
+    const href = `/workbench/${notebookId}/publish`;
     if (dirty && override) {
       save.mutate(override, { onSuccess: () => router.push(href) });
       return;
@@ -526,38 +525,59 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
 
   return (
     <div className="flex size-full min-h-0 flex-col">
-      <div role="toolbar" aria-label="笔记本工具栏" className="flex flex-wrap items-center gap-0.5 border-b border-border bg-glass-strong px-2 py-1">
-        <Button type="button" size="sm" variant="ghost" className="h-7 gap-1 px-2 font-normal" aria-label="+ 代码" onClick={() => insertCell("code")}>
-          <Plus /> 代码
+      {/* Single row: never wrap. Narrow widths hide lower-priority actions via @container. */}
+      <div
+        role="toolbar"
+        aria-label="笔记本工具栏"
+        className="@container flex h-9 min-w-0 flex-nowrap items-center gap-0.5 overflow-hidden border-b border-border bg-glass-strong px-2"
+      >
+        <Button type="button" size="sm" variant="ghost" className="h-7 shrink-0 gap-1 px-2 font-normal" aria-label="+ 代码" onClick={() => insertCell("code")}>
+          <Plus /> <span className="hidden @[22rem]:inline">代码</span>
         </Button>
-        <Button type="button" size="sm" variant="ghost" className="h-7 gap-1 px-2 font-normal" aria-label="+ 说明" onClick={() => insertCell("markdown")}>
+        <Button type="button" size="sm" variant="ghost" className="hidden h-7 shrink-0 gap-1 px-2 font-normal @[28rem]:inline-flex" aria-label="+ 说明" onClick={() => insertCell("markdown")}>
           <Plus /> 说明
         </Button>
-        <span aria-hidden className="mx-1 h-4 w-px bg-border" />
+        <span aria-hidden className="mx-1 hidden h-4 w-px shrink-0 bg-border @[28rem]:block" />
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button type="button" size="sm" variant="ghost" className="h-7 gap-1 px-2 font-normal" aria-label="运行全部" disabled={runDisabled} onClick={() => beginRun()}>
-              {runningTarget === "all" ? <Loader2 className="animate-spin" /> : <FastForward />} 全部运行
+            <Button type="button" size="sm" variant="ghost" className="h-7 shrink-0 gap-1 px-2 font-normal" aria-label="运行全部" disabled={runDisabled} onClick={() => beginRun()}>
+              {runningTarget === "all" ? <Loader2 className="animate-spin" /> : <FastForward />}
+              <span className="hidden @[24rem]:inline">全部运行</span>
             </Button>
           </TooltipTrigger>
           <TooltipContent>重启内核后从第一格依次运行，遇到报错停下</TooltipContent>
         </Tooltip>
-        <Button type="button" size="sm" variant="ghost" className="h-7 gap-1 px-2 font-normal" aria-label="清除全部输出" disabled={!hasOutputs} onClick={() => clearOutput()}>
-          <Eraser /> 清除全部输出
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className="hidden h-7 shrink-0 gap-1 px-2 font-normal @[36rem]:inline-flex"
+          aria-label="清除全部输出"
+          disabled={!hasOutputs}
+          onClick={() => clearOutput()}
+        >
+          <Eraser /> <span className="hidden @[44rem]:inline">清除全部输出</span>
         </Button>
         {live.language === "python" ? (
           <>
-            <span aria-hidden className="mx-1 h-4 w-px bg-border" />
-            <KernelControls compact notebookId={notebookId} running={runningTarget !== null} />
+            <span aria-hidden className="mx-1 hidden h-4 w-px shrink-0 bg-border @[32rem]:block" />
+            <div className="hidden min-w-0 shrink @[32rem]:flex">
+              <KernelControls
+                compact
+                notebookId={notebookId}
+                running={runningTarget !== null}
+                statusClassName="hidden @[48rem]:inline-flex"
+              />
+            </div>
           </>
         ) : null}
-        <div className="ml-auto flex items-center gap-1.5">
+        <div className="ml-auto flex min-w-0 shrink-0 items-center gap-1.5">
           <Select
             value={selectedCell?.role ?? ""}
             disabled={!selectedCell}
             onValueChange={(role) => selected && updateCell(selected, { role: role as NotebookCellRole })}
           >
-            <SelectTrigger size="sm" className="h-7 w-24 border-transparent bg-transparent text-xs shadow-none hover:bg-accent" aria-label="当前单元格类型">
+            <SelectTrigger size="sm" className="hidden h-7 w-24 border-transparent bg-transparent text-xs shadow-none hover:bg-accent @[40rem]:flex" aria-label="当前单元格类型">
               <SelectValue placeholder="单元格类型" />
             </SelectTrigger>
             <SelectContent>
@@ -566,11 +586,13 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
               ))}
             </SelectContent>
           </Select>
-          <KernelPicker
-            subtle
-            value={live.kernel}
-            onChange={(kernel) => update({ kernel, language: languageForKernel(kernel) })}
-          />
+          <div className="hidden min-w-0 max-w-40 shrink @[30rem]:flex">
+            <KernelPicker
+              subtle
+              value={live.kernel}
+              onChange={(kernel) => update({ kernel, language: languageForKernel(kernel) })}
+            />
+          </div>
           <ExportMenu
             doc={live}
             outputs={outputs}
@@ -630,21 +652,6 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
         </div>
       )}
 
-
-      {marked && converted ? (
-        <div aria-label="模块端口" role="group" className="flex flex-wrap items-center gap-1.5 border-b border-border px-4 py-1.5 font-mono text-[11px] text-muted-foreground">
-          <span className="font-sans">模块端口</span>
-          {converted.inputs.map((input) => (
-            <span key={`in:${input.name}`} className="rounded-full bg-port-value/12 px-2 py-0.5 text-foreground">入 · {input.name} · {input.type}{input.required ? " · 必填" : ""}</span>
-          ))}
-          {converted.outputs.map((output) => (
-            <span key={`out:${output.name}`} className="rounded-full bg-port-file/15 px-2 py-0.5 text-foreground">出 · {output.name} · {output.pattern}</span>
-          ))}
-        </div>
-      ) : marked && convertError ? (
-        <p role="status" className="border-b border-border px-4 py-1.5 text-xs text-destructive">{convertError}</p>
-      ) : null}
-
       {lastKernel?.note ? (
         <p role="status" className="border-b border-border bg-warning/10 px-4 py-2 text-xs text-foreground">
           {lastKernel.note}
@@ -662,21 +669,6 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
       ) : null}
       <div ref={scrollerRef} className="min-h-0 flex-1 overflow-auto">
         <div ref={cellListRef} className="mx-auto grid max-w-6xl px-4 pt-5 pb-24">
-          <div className="grid gap-0.5 pb-3 pl-12">
-            <input
-              value={live.name}
-              aria-label="笔记本名称"
-              onChange={(event) => update({ name: event.target.value })}
-              className="w-full rounded-md bg-transparent px-2 py-1 text-xl font-semibold outline-none placeholder:text-muted-foreground hover:bg-accent/60 focus-visible:bg-accent/60 disabled:opacity-100"
-            />
-            <input
-              value={live.description}
-              aria-label="笔记本说明"
-              placeholder="这本笔记本在做什么"
-              onChange={(event) => update({ description: event.target.value })}
-              className="w-full rounded-md bg-transparent px-2 py-0.5 text-sm text-muted-foreground outline-none placeholder:text-muted-foreground/70 hover:bg-accent/60 focus-visible:bg-accent/60"
-            />
-          </div>
           <InsertBar after={-1} onInsert={insertCell} />
           {live.cells.map((cell, index) => (
             <div

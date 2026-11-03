@@ -1,9 +1,10 @@
 import { cellsForRun } from "./cells";
-import { convertNotebook, tryRunArgv, tryRunCommand } from "./convert";
+import { convertNotebook, tryRunArgv } from "./convert";
 import { readModuleEnv, type ModuleEnvPatch } from "./env";
 import { planTryRunInputs, type InputPlan, type PortBindingRequest } from "./input-bindings";
 import { finalizeCellResult } from "./outputs";
-import { buildTryRunHeader, demoTryRunLines } from "./try-run-env";
+import { buildTryRunHeader, demoTryRunLines, formatArgv } from "./try-run-env";
+import { draftModuleDef, moduleRunParams, TRY_RUN_NAMESPACE } from "./try-run-module";
 import type { CellRunResult, NotebookDoc, TryRunRecord } from "./types";
 
 /** Demo-mode try-run. Checks the marker contract and does not execute a kernel. */
@@ -14,22 +15,23 @@ export function simulateTryRun(
 ): TryRunRecord {
   const converted = convertNotebook(notebook);
   const env = readModuleEnv(envInput ?? {});
-  let argv: string[] = [];
+  let params: string[] = [];
   let argError = "";
   let planned: InputPlan | undefined;
   try {
     planned = planTryRunInputs(converted.inputs, bindings);
-    argv = tryRunArgv(converted.inputs, planned.values);
+    tryRunArgv(converted.inputs, planned.values);
+    params = moduleRunParams(converted.inputs, planned.values, "inputs");
   } catch (error) {
     argError = error instanceof Error ? error.message : "参数不完整";
   }
   const passed = notebook.language === "python" && converted.outputs.length > 0 && !argError;
   const header = buildTryRunHeader(
     [...demoTryRunLines(env, notebook.language), ...(planned?.lines ?? [])],
-    [tryRunCommand(converted.language, converted.entry, argv)],
+    [formatArgv(["nextflow", "module", "run", `${TRY_RUN_NAMESPACE}/${draftModuleDef(notebook, converted, env).path}`, ...params])],
   );
   const log = passed
-    ? `${header}\n演示模式：端口契约通过。真正执行 CLI 请用 pnpm dev:real。\n完成`
+    ? `${header}\n演示模式：端口契约通过。真正用 Nextflow 运行模块请用 pnpm dev:real。\n完成`
     : `${header}\n试跑失败${argError ? `：${argError}` : notebook.language === "r" ? "：R 脚本未在演示模式执行" : ""}`;
   return {
     notebookId: notebook.id,

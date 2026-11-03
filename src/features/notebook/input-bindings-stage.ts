@@ -1,5 +1,5 @@
 import { copyFile, stat, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 
 import { ConvertError } from "./convert";
 import { bindingLine, type InputPlan, safeUploadName } from "./input-bindings";
@@ -40,15 +40,29 @@ function allocateName(used: Set<string>, preferred: string): string {
   return name;
 }
 
-async function copyHostFile(dir: string, token: string, used: Set<string>, maxCopyBytes: number): Promise<string | null> {
-  if (!token || token.includes("\0")) return null;
+/**
+ * Copy one typed path into the work directory. A relative path is read from the project workspace,
+ * the folder the notebook cells run in, so `data/sample.csv` means the same file in both.
+ * A folder is passed by its absolute path. A path that does not exist fails here, before anything runs.
+ */
+async function copyHostFile(
+  dir: string,
+  token: string,
+  used: Set<string>,
+  maxCopyBytes: number,
+  workspace: string | undefined,
+): Promise<string> {
+  if (!token || token.includes("\0")) throw new ConvertError(`路径无效：${token}`);
+  const relative = !isAbsolute(token);
+  const source = relative && workspace ? resolve(/* turbopackIgnore: true */ workspace, token) : token;
   let info;
   try {
-    info = await stat(token);
+    info = await stat(source);
   } catch {
-    return null;
+    throw new ConvertError(relative && workspace ? `工作区里没有 ${token}（${source}）` : `找不到文件：${token}`);
   }
-  if (!info.isFile()) return null;
+  if (info.isDirectory()) return resolve(source);
+  if (!info.isFile()) throw new ConvertError(`路径不是文件：${token}`);
   if (info.size > maxCopyBytes) throw new ConvertError(`路径文件超过 ${Math.round(maxCopyBytes / 1_000_000)} MB，试跑无法复制：${token}`);
   let name: string;
   try {
@@ -58,7 +72,7 @@ async function copyHostFile(dir: string, token: string, used: Set<string>, maxCo
     throw error;
   }
   try {
-    await copyFile(token, inDir(dir, name));
+    await copyFile(source, inDir(dir, name));
   } catch (error) {
     const code = error instanceof Error && "code" in error ? String((error as NodeJS.ErrnoException).code) : "";
     throw new ConvertError(`无法读取路径 ${token}${code ? `（${code}）` : ""}`);
@@ -66,12 +80,15 @@ async function copyHostFile(dir: string, token: string, used: Set<string>, maxCo
   return name;
 }
 
-/** Write sample and upload bytes, and copy path bindings that exist on disk into the work directory. */
+/**
+ * Write sample and upload bytes, and copy path bindings into the work directory.
+ * `workspace` is the project folder that relative paths are read from.
+ */
 export async function stageInputPlan(
   dir: string,
   plan: InputPlan,
   reserved: readonly string[] = [],
-  options?: { maxCopyBytes?: number },
+  options?: { maxCopyBytes?: number; workspace?: string },
 ): Promise<StagedInputs> {
   const maxCopyBytes = options?.maxCopyBytes ?? MAX_COPY_BYTES;
   const used = new Set<string>(reserved);
@@ -90,13 +107,9 @@ export async function stageInputPlan(
     const staged: string[] = [];
     let copied = false;
     for (const token of path.tokens) {
-      const name = await copyHostFile(dir, token, used, maxCopyBytes);
-      if (name) {
-        staged.push(name);
-        if (name !== token) copied = true;
-      } else {
-        staged.push(token);
-      }
+      const name = await copyHostFile(dir, token, used, maxCopyBytes, options?.workspace);
+      staged.push(name);
+      if (name !== token) copied = true;
     }
     if (!copied) continue;
     values[path.port] = path.list ? staged.join(",") : staged[0] ?? "";

@@ -104,14 +104,14 @@ export async function notebookModule(page: Page, name: string, cells: { source: 
 
   await waitForNotebookSaved(page);
   await exportModule(page);
-  await page.waitForURL(/\/publish\?step=1/);
-  await page.getByRole("button", { name: "下一步：试跑" }).click();
+  await page.waitForURL(/\/publish$/);
+  await page.getByText("试跑输入", { exact: true }).click();
   for (const binding of [bindings].flat()) {
     const group = page.getByRole("group", { name: binding.port, exact: true });
     await group.getByRole("radio", { name: "路径" }).click();
     await page.getByRole("textbox", { name: `${binding.port} 路径` }).fill(binding.path);
   }
-  await page.getByRole("button", { name: "开始试跑" }).click();
+  await page.getByRole("button", { name: "只试跑" }).click();
   await expect
     .poll(async () => {
       const heading = await page.getByRole("heading", { name: /^日志/ }).innerText();
@@ -119,8 +119,7 @@ export async function notebookModule(page: Page, name: string, cells: { source: 
       return heading;
     }, { timeout: 600_000, intervals: [1_000, 2_000, 5_000] })
     .toContain("通过");
-  await page.getByRole("button", { name: "下一步：保存" }).click();
-  await page.getByRole("button", { name: /^保存为模块 v1/ }).click();
+  await page.getByRole("button", { name: "新建模块", exact: true }).click();
   await page.waitForURL("**/modules");
 }
 
