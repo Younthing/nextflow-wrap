@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { NotebookAssistant } from "@/features/assistant/modules/surfaces";
 import { applyCanvasValues, readCanvasValues, type AppliedValue } from "@/features/notebook/canvas-values";
-import { convertNotebook, ConvertError } from "@/features/notebook/convert";
+import { convertNotebook } from "@/features/notebook/convert";
 import { dispatchNotebookKey, dragOffsets, gapAtPointer, moveCellToGap, notebookDraftKey } from "@/features/notebook/edit";
 import { COMMAND_HINT, EDIT_HINT, interpretNotebookKey, toNotebookKeyEvent, type NotebookMode } from "@/features/notebook/keyboard";
 import { useKeepNotebook, useNotebook, useRunNotebook, useSaveNotebook } from "@/features/notebook/queries";
@@ -273,12 +273,11 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
   }, [canvasKey, notebookId, router]);
 
   let converted: ReturnType<typeof convertNotebook> | undefined;
-  let convertError = "";
   if (live && marked) {
     try {
       converted = convertNotebook(live);
-    } catch (error) {
-      convertError = error instanceof ConvertError ? error.message : "还不能生成命令行";
+    } catch {
+      // Export menu shows 0 ports when markers do not convert yet.
     }
   }
   const ports = { inputs: converted?.inputs.length ?? 0, outputs: converted?.outputs.length ?? 0 };
@@ -629,21 +628,6 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
           </Button>
         </div>
       )}
-
-
-      {marked && converted ? (
-        <div aria-label="模块端口" role="group" className="flex flex-wrap items-center gap-1.5 border-b border-border px-4 py-1.5 font-mono text-[11px] text-muted-foreground">
-          <span className="font-sans">模块端口</span>
-          {converted.inputs.map((input) => (
-            <span key={`in:${input.name}`} className="rounded-full bg-port-value/12 px-2 py-0.5 text-foreground">入 · {input.name} · {input.type}{input.required ? " · 必填" : ""}</span>
-          ))}
-          {converted.outputs.map((output) => (
-            <span key={`out:${output.name}`} className="rounded-full bg-port-file/15 px-2 py-0.5 text-foreground">出 · {output.name} · {output.pattern}</span>
-          ))}
-        </div>
-      ) : marked && convertError ? (
-        <p role="status" className="border-b border-border px-4 py-1.5 text-xs text-destructive">{convertError}</p>
-      ) : null}
 
       {lastKernel?.note ? (
         <p role="status" className="border-b border-border bg-warning/10 px-4 py-2 text-xs text-foreground">

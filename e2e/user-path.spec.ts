@@ -253,9 +253,10 @@ async function runLanguage(page: Page, language: "python" | "r") {
   await page.getByRole("button", { name: "+ 代码" }).click();
   await fillCell(page, outputCell(language));
   await markCell(page, "输出");
-  await expect(page.getByText(/入 · title/)).toBeVisible();
-  await expect(page.getByText("出 · report · report.html")).toBeVisible();
-  await expect(page.getByText("出 · table · table.csv")).toBeVisible();
+  // Ports live on the publish page; the notebook top bar no longer lists them.
+  await page.getByRole("button", { name: /^导出/ }).click();
+  await expect(page.getByText("已标 1 个输入、2 个输出")).toBeVisible();
+  await page.keyboard.press("Escape");
   await shot(page, `e2e-${language}-io.png`);
 
   await publish(page, "v1", condaYaml, image, `e2e-${language}-publish-v1.png`);
