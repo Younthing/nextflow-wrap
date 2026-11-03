@@ -8,10 +8,10 @@ export const metadata: Metadata = { title: "工作台" };
 export const instant = false;
 
 /** `/workbench` (start), `/workbench/<notebook>` and `/workbench/<notebook>/publish`. */
-export default function WorkbenchPage({ params }: PageProps<"/workbench/[[...path]]">) {
+export default function WorkbenchPage() {
   return (
     <Suspense fallback={<PanelLoading />}>
-      <WorkbenchRoute params={params} />
+      <WorkbenchRoute />
     </Suspense>
   );
 }

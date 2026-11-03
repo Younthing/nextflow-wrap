@@ -387,44 +387,49 @@ export function WorkbenchFiles({
             {creating ? <Loader2 className="animate-spin" /> : <Plus />}
           </Button>
         </div>
-        <ContextMenu>
-          <ContextMenuTrigger asChild>
-            <ul aria-label="项目里的笔记本" className="grid gap-px px-1">
-              {loading ? <li className="px-2 py-1 text-xs text-muted-foreground">读取中…</li> : null}
-              {!loading && notebooks.length === 0 ? <li className="px-2 py-1 text-xs text-muted-foreground">暂无笔记本</li> : null}
-              {notebooks.map((nb) => (
-                <li key={nb.id}>
-                  <NotebookMenu
-                    notebook={nb}
-                    onOpen={() => router.push(`/workbench/${nb.id}`)}
-                    onDialog={setDialog}
-                    onPaste={pasteNotebook}
-                    canPaste={canPasteNotebook}
-                    onDownload={() => downloadNotebook(nb)}
-                  >
-                    <Link
-                      href={`/workbench/${nb.id}`}
-                      aria-current={nb.id === activeId ? "page" : undefined}
-                      className={cn(rowClass, "gap-2 px-2", nb.id === activeId && "bg-primary/12 font-medium text-primary hover:bg-primary/15")}
-                      onKeyDown={notebookKeysFor(nb)}
-                    >
-                      <NotebookText className="size-3.5 shrink-0 opacity-70" aria-hidden />
-                      <span className="truncate">{nb.name}</span>
-                    </Link>
-                  </NotebookMenu>
-                </li>
-              ))}
-            </ul>
-          </ContextMenuTrigger>
-          <ContextMenuContent className="min-w-40" aria-label="笔记本区的操作">
-            <ContextMenuItem disabled={creating} onSelect={onCreate}>
-              <Plus /> 新建笔记本
-            </ContextMenuItem>
-            <ContextMenuItem disabled={!canPasteNotebook} onSelect={pasteNotebook}>
-              <ClipboardPaste /> 粘贴{clip?.kind === "notebook" ? `「${clip.name}」` : ""}
-            </ContextMenuItem>
-          </ContextMenuContent>
-        </ContextMenu>
+        <ul aria-label="项目里的笔记本" className="grid gap-px px-1">
+          {loading ? <li className="px-2 py-1 text-xs text-muted-foreground">读取中…</li> : null}
+          {notebooks.map((nb) => (
+            <li key={nb.id}>
+              <NotebookMenu
+                notebook={nb}
+                onOpen={() => router.push(`/workbench/${nb.id}`)}
+                onDialog={setDialog}
+                onPaste={pasteNotebook}
+                canPaste={canPasteNotebook}
+                onDownload={() => downloadNotebook(nb)}
+              >
+                <Link
+                  href={`/workbench/${nb.id}`}
+                  aria-current={nb.id === activeId ? "page" : undefined}
+                  className={cn(rowClass, "gap-2 px-2", nb.id === activeId && "bg-primary/12 font-medium text-primary hover:bg-primary/15")}
+                  onKeyDown={notebookKeysFor(nb)}
+                >
+                  <NotebookText className="size-3.5 shrink-0 opacity-70" aria-hidden />
+                  <span className="truncate">{nb.name}</span>
+                </Link>
+              </NotebookMenu>
+            </li>
+          ))}
+        </ul>
+        {/* Empty-area menu only — never wraps rows (nested ContextMenu breaks left-clicks). */}
+        {!loading && notebooks.length === 0 ? (
+          <ContextMenu>
+            <ContextMenuTrigger asChild>
+              <div className="mx-1 rounded-md px-2 py-2 text-xs text-muted-foreground" aria-label="笔记本区空白处">
+                暂无笔记本，右键新建或粘贴
+              </div>
+            </ContextMenuTrigger>
+            <ContextMenuContent className="min-w-40" aria-label="笔记本区的操作">
+              <ContextMenuItem disabled={creating} onSelect={onCreate}>
+                <Plus /> 新建笔记本
+              </ContextMenuItem>
+              <ContextMenuItem disabled={!canPasteNotebook} onSelect={pasteNotebook}>
+                <ClipboardPaste /> 粘贴{clip?.kind === "notebook" ? `「${clip.name}」` : ""}
+              </ContextMenuItem>
+            </ContextMenuContent>
+          </ContextMenu>
+        ) : null}
 
         <div className="mt-4 flex items-center gap-1 px-2 pb-1">
           <h2 className="text-[11px] font-bold tracking-[0.1em] text-muted-foreground">文件</h2>

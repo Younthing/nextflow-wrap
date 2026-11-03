@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { FolderOpen } from "lucide-react";
 
 import { AsyncPlaceholder } from "@/components/ui/async-placeholder";
@@ -14,7 +14,7 @@ import { NotebookEditor } from "@/features/notebook/components/notebook-editor";
 import { PublishWizard } from "@/features/notebook/components/publish-wizard";
 import { useCreateNotebook, useNotebooks } from "@/features/notebook/queries";
 import type { NotebookSummary } from "@/features/notebook/types";
-import { closeTab, openTab, pruneTabs, tabsPrefKey, workbenchView } from "@/features/workbench/tabs";
+import { closeTab, openTab, pruneTabs, tabsPrefKey, workbenchPathFromPathname, workbenchView } from "@/features/workbench/tabs";
 import { useCurrentProject } from "@/features/workspace/queries";
 import type { Project } from "@/features/workspace/types";
 import { usePref } from "@/lib/local-pref";
@@ -27,8 +27,10 @@ import { mockingActive } from "@/lib/mocking";
 import { WorkbenchStart } from "./workbench-start";
 import { WorkbenchTabs } from "./workbench-tabs";
 
-export function WorkbenchRoute({ params }: { params: Promise<{ path?: string[] }> }) {
-  const { path } = React.use(params);
+export function WorkbenchRoute() {
+  // Follow the live URL so soft navigations inside `/workbench/[[...path]]` update the editor
+  // even when Cache Components reuses an App Shell without fresh RSC params.
+  const path = workbenchPathFromPathname(usePathname());
   return <Workbench path={path} />;
 }
 
