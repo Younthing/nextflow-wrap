@@ -32,6 +32,8 @@ export interface BackendContext {
   appVersion: string;
   /** Folder holding `nextflow-studio-server-<version>-linux-<arch>.tar.gz`. */
   serverPackages: string;
+  /** A development shell: without a bundled package it would silently keep whatever server was installed before. */
+  requireServerPackage?: boolean;
   log: (name: string) => WriteStream;
   status: (message: string) => void;
 }
@@ -142,6 +144,9 @@ async function ensureInstalled(context: BackendContext, probe: () => Promise<Run
   const installed = parseProbe(probed.stdout.toString());
   const packageArch = serverArch(installed.arch ?? "");
   const pkg = packageArch ? serverPackage(context, packageArch) : undefined;
+  if (!pkg && context.requireServerPackage) {
+    throw new ConnectionError(`开发版在 ${context.serverPackages} 里没有服务端包，${where}会继续用以前装的旧服务端。在 Windows 上用 pnpm dev:win 启动，它会先构建并装上当前代码的服务端`);
+  }
   if (!needsInstall(installed, { version: context.appVersion, build: pkg?.build })) return;
   if (!packageArch) throw new ConnectionError(`${where}的架构 ${installed.arch ?? "未知"} 不受支持`);
   if (!pkg) throw new ConnectionError(`安装包里没有 ${serverPackageName(context.appVersion, packageArch)}，请按 docs/server.md 在目标机器上手动安装`);
