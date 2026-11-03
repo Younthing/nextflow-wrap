@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import { cellsForRun, nextCellId } from "./cells";
-import { demoNotebooks } from "./seed";
+import { fixtureNotebooks } from "./test-fixtures";
 
-const qc = () => demoNotebooks().find((doc) => doc.id === "qc_summary")!;
+const qc = () => fixtureNotebooks().find((doc) => doc.id === "qc_summary")!;
 
 describe("cellsForRun", () => {
   it("runs every non-markdown cell when no cell is selected", () => {
@@ -16,7 +16,7 @@ describe("cellsForRun", () => {
   });
 
   it("skips markdown and does not execute a markdown selection", () => {
-    const clean = demoNotebooks().find((doc) => doc.id === "sample_clean")!;
+    const clean = fixtureNotebooks().find((doc) => doc.id === "sample_clean")!;
     expect(cellsForRun(clean).map((cell) => cell.id)).toEqual(["s1"]);
     expect(cellsForRun(clean, "s2")).toEqual([]);
   });

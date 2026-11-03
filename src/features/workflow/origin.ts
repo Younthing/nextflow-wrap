@@ -23,7 +23,7 @@ export function isCatalogBuiltin(def: ModuleDef): boolean {
  * Try-run-failed script modules are omitted entirely.
  */
 export function modulesForDrawer(modules: readonly ModuleDef[]): ModuleDef[] {
-  return modules.filter((def) => !def.temporary && (moduleOrigin(def) !== "script" || def.tryRun === "passed"));
+  return modules.filter((def) => moduleOrigin(def) !== "script" || def.tryRun === "passed");
 }
 
 /**
@@ -32,7 +32,6 @@ export function modulesForDrawer(modules: readonly ModuleDef[]): ModuleDef[] {
  */
 export function modulesForCatalog(modules: readonly ModuleDef[]): ModuleDef[] {
   return modules.filter((def) => {
-    if (def.temporary) return false;
     return moduleOrigin(def) === "script" || isCatalogBuiltin(def);
   });
 }

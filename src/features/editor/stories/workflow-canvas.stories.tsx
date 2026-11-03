@@ -6,7 +6,7 @@ import { getRouter } from "@storybook/nextjs-vite/navigation.mock";
 
 import { FILE_ID, FOLDER_ID, SAMPLESHEET_ID } from "@/features/workflow/builtins";
 import { emptyWorkflow } from "@/features/workflow/document";
-import { EXAMPLE_FASTQ_QC_ID, EXAMPLE_MODULES, EXAMPLE_REPORT_ID, EXAMPLE_SCANPY_QC_ID } from "@/features/workflow/example-modules";
+import { FIXTURE_FASTQ_QC_ID, FIXTURE_MODULES, FIXTURE_REPORT_ID, FIXTURE_SCANPY_QC_ID } from "@/features/workflow/fixture-modules";
 import type { WorkflowDoc } from "@/features/workflow/types";
 import { WorkflowCanvas } from "../components/workflow-canvas";
 import { NodeIssuesProvider } from "../node-issues";
@@ -23,7 +23,7 @@ function textWidgetWorkflow(): WorkflowDoc {
         id: "widget",
         position: { x: 80, y: 80 },
         data: {
-          moduleId: EXAMPLE_REPORT_ID,
+          moduleId: FIXTURE_REPORT_ID,
           alias: "SUMMARY_REPORT",
           widgets: { title: "12" },
           config: {},
@@ -51,7 +51,7 @@ function inputNodesWorkflow(): WorkflowDoc {
       {
         id: "qc",
         position: { x: 380, y: 0 },
-        data: { moduleId: EXAMPLE_SCANPY_QC_ID, alias: "SCANPY_QC", widgets: { min_genes: 200, max_pct_mt: 5 }, config: { publish: true } },
+        data: { moduleId: FIXTURE_SCANPY_QC_ID, alias: "SCANPY_QC", widgets: { min_genes: 200, max_pct_mt: 5 }, config: { publish: true } },
       },
     ],
     edges: [{ id: "e1", source: "counts", sourceHandle: "out:file", target: "qc", targetHandle: "in:adata" }],
@@ -165,7 +165,7 @@ export const InputNodes: Story = {
 };
 
 /** The example modules as if each had been published from a notebook. */
-const publishedModules = EXAMPLE_MODULES.map((def) => ({ ...def, sourceNotebookId: `nb_${def.path}` }));
+const publishedModules = FIXTURE_MODULES.map((def) => ({ ...def, sourceNotebookId: `nb_${def.path}` }));
 
 /** `</>` on a notebook module opens its notebook with the node's values and linked input paths. */
 export const SourceButton: Story = {
@@ -557,7 +557,7 @@ function linkedPair(): WorkflowDoc {
         id: "drop",
         position: { x: 420, y: 80 },
         data: {
-          moduleId: EXAMPLE_FASTQ_QC_ID,
+          moduleId: FIXTURE_FASTQ_QC_ID,
           alias: "FASTQ_QC",
           widgets: {},
           config: {},

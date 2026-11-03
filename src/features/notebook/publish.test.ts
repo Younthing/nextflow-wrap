@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { CATALOG_BUILTINS } from "@/features/workflow/catalog-builtins";
 import { modulesForCatalog, modulesForDrawer } from "@/features/workflow/origin";
-import { demoNotebooks, demoScriptModules } from "./seed";
+import { fixtureNotebooks, fixtureScriptModules } from "./test-fixtures";
 import { buildScriptModule } from "./publish";
 import type { TryRunRecord } from "./types";
 
@@ -19,7 +19,7 @@ const passed = (notebookId: string, rev: number): TryRunRecord => ({
 
 describe("publish", () => {
   it("refuses to save without a passing try-run for the current revision", () => {
-    const notebook = demoNotebooks().find((doc) => doc.id === "qc_summary")!;
+    const notebook = fixtureNotebooks().find((doc) => doc.id === "qc_summary")!;
     expect(() => buildScriptModule({
       notebook,
       name: "qc_summary",
@@ -30,8 +30,8 @@ describe("publish", () => {
   });
 
   it("overwrites a chosen module in place: same id, next version, no link to the notebook", () => {
-    const notebook = demoNotebooks().find((doc) => doc.id === "hello_py")!;
-    const existing = demoScriptModules();
+    const notebook = fixtureNotebooks().find((doc) => doc.id === "hello_py")!;
+    const existing = fixtureScriptModules();
     const mod = buildScriptModule({
       notebook,
       name: "hello.py",
@@ -54,7 +54,7 @@ describe("publish", () => {
   });
 
   it("stores hand-filled conda and container without copying them from the kernel", () => {
-    const notebook = demoNotebooks().find((doc) => doc.id === "qc_summary")!;
+    const notebook = fixtureNotebooks().find((doc) => doc.id === "qc_summary")!;
     const mod = buildScriptModule({
       notebook,
       name: "qc_summary",
@@ -97,8 +97,8 @@ describe("publish", () => {
 });
 
 describe("export target", () => {
-  const notebook = demoNotebooks().find((doc) => doc.id === "hello_py")!;
-  const build = (name: string, overwrite?: string) => buildScriptModule({ notebook, name, description: "", existing: demoScriptModules(), overwrite, receipt: passed(notebook.id, notebook.rev) });
+  const notebook = fixtureNotebooks().find((doc) => doc.id === "hello_py")!;
+  const build = (name: string, overwrite?: string) => buildScriptModule({ notebook, name, description: "", existing: fixtureScriptModules(), overwrite, receipt: passed(notebook.id, notebook.rev) });
 
   it("makes a new module from an unused name", () => {
     const mod = build("hello_again");
@@ -112,7 +112,7 @@ describe("export target", () => {
 
 describe("module lists", () => {
   const builtins = CATALOG_BUILTINS;
-  const scripts = demoScriptModules();
+  const scripts = fixtureScriptModules();
   const all = [...builtins, ...scripts];
 
   it("hides failed scripts from the drawer", () => {

@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 
-import { demoScriptModules } from "@/features/notebook/seed";
+import { fixtureScriptModules } from "@/features/notebook/test-fixtures";
 import { FILE_ID } from "@/features/workflow/builtins";
 import { indexModules } from "@/features/workflow/catalog";
 import { emptyWorkflow } from "@/features/workflow/document";
@@ -10,7 +10,7 @@ import { ProjectPreview } from "../components/project-preview";
 import { generateProject } from "../generate";
 import { defaultLaunchConfig, renderRunConfig } from "../launch";
 
-const hello = demoScriptModules().find((def) => def.id === "script/hello_py")!;
+const hello = fixtureScriptModules().find((def) => def.id === "script/hello_py")!;
 const workflow: WorkflowDoc = {
   ...emptyWorkflow("wf_story", "Hello"),
   params: { outdir: "results" },

@@ -3,11 +3,11 @@ import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 
 import { Button } from "@/components/ui/button";
 import { defaultLaunchConfig } from "@/features/project/launch";
-import { demoWorkflow } from "@/features/workflow/demo";
+import { fixtureWorkflow } from "@/features/workflow/fixture-workflows";
 import { RunConfirmDialog } from "../run-confirm";
 import { cancelConfirmView, resumeConfirmView, startConfirmView, type RunConfirmView, type StartRunPlan } from "../run-actions";
 
-const workflow = demoWorkflow("wf_story");
+const workflow = fixtureWorkflow("wf_story");
 const readyPlan: StartRunPlan = {
   launch: defaultLaunchConfig(),
   command: "nextflow run . \\\n    -profile docker \\\n    -c run.config",

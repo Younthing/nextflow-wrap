@@ -4,10 +4,10 @@ import { createNode } from "@/features/workflow/nodes";
 import type { ModuleDef } from "@/features/workflow/types";
 import { convertNotebook, inputPorts, scriptFileName, tryRunArgv, tryRunCommand } from "./convert";
 import { countCellChanges } from "./changes";
-import { demoNotebooks, demoRevisions } from "./seed";
+import { fixtureNotebooks, fixtureRevisions } from "./test-fixtures";
 import type { NotebookDoc } from "./types";
 
-const qc = () => demoNotebooks().find((doc) => doc.id === "qc_summary")!;
+const qc = () => fixtureNotebooks().find((doc) => doc.id === "qc_summary")!;
 
 describe("convertNotebook", () => {
   it("turns markers into a CLI and drops explore cells", () => {
@@ -32,8 +32,8 @@ describe("convertNotebook", () => {
   });
 
   it("names the script after the notebook, not main.py", () => {
-    expect(scriptFileName(convertNotebook(demoNotebooks().find((doc) => doc.id === "hello_py")!).entry)).toBe("hello.py");
-    expect(scriptFileName(convertNotebook(demoNotebooks().find((doc) => doc.id === "deseq2_plot")!).entry)).toBe("deseq2_plot.R");
+    expect(scriptFileName(convertNotebook(fixtureNotebooks().find((doc) => doc.id === "hello_py")!).entry)).toBe("hello.py");
+    expect(scriptFileName(convertNotebook(fixtureNotebooks().find((doc) => doc.id === "deseq2_plot")!).entry)).toBe("deseq2_plot.R");
     expect(tryRunCommand("r", "bin/deseq2_plot.R", ["--counts", "counts.tsv"])).toBe("Rscript deseq2_plot.R --counts counts.tsv");
     expect(tryRunCommand("python", "bin/qc_summary.py")).toBe("python3 qc_summary.py");
     const renamed = convertNotebook(qc(), "bin/custom_entry.py");
@@ -86,9 +86,9 @@ describe("convertNotebook", () => {
 
 describe("seed revisions", () => {
   it("counts three cell edits since the pinned qc_summary publish", () => {
-    const notebooks = demoNotebooks();
+    const notebooks = fixtureNotebooks();
     const latest = notebooks.find((doc) => doc.id === "qc_summary")!;
-    const pinned = demoRevisions(notebooks).find((rev) => rev.notebookId === "qc_summary" && rev.rev === 12)!;
+    const pinned = fixtureRevisions(notebooks).find((rev) => rev.notebookId === "qc_summary" && rev.rev === 12)!;
     expect(countCellChanges(pinned.cells, latest.cells)).toBe(3);
   });
 });

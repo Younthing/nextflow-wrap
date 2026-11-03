@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { cacheDirectory, dataDirectory, moduleLibraryDirectory, nextflowCacheEnv, pipelineDirectory, workDirectory, workspaceDirectory } from "./paths";
+import { cacheDirectory, dataDirectory, nextflowCacheEnv, pipelineDirectory, workDirectory, workspaceDirectory } from "./paths";
 
 const none = () => false;
 
@@ -42,10 +42,8 @@ describe("run directories", () => {
   });
 
   it("keeps the module library and default workspace next to the data, unless pointed elsewhere", () => {
-    expect(moduleLibraryDirectory(input)).toBe("/home/a/.local/share/nextflow-studio/library/modules");
     expect(workspaceDirectory(input)).toBe("/home/a/.local/share/nextflow-studio/workspaces/default");
     expect(workspaceDirectory({ ...input, env: { NEXTFLOW_STUDIO_WORKSPACE: "/projects/pbmc" } })).toBe("/projects/pbmc");
-    expect(moduleLibraryDirectory({ ...input, env: { NEXTFLOW_STUDIO_MODULE_LIBRARY: "/team/modules" } })).toBe("/team/modules");
   });
 
   it("hashes workflow ids that are not safe directory names", () => {

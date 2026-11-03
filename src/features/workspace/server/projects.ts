@@ -3,7 +3,7 @@ import { isAbsolute, resolve } from "node:path";
 
 import { HttpError } from "@/features/runs/server/service";
 import type { StudioStore } from "@/lib/server/database";
-import { EXAMPLE_PROJECT_ID, folderName, joinProjectPath, normalizeProjectPath, PROJECT_SCAFFOLD, projectIdForPath, projectNameError, touchProject } from "../projects";
+import { EXAMPLE_PROJECT_ID, folderName, notebookProjectId, joinProjectPath, normalizeProjectPath, PROJECT_SCAFFOLD, projectIdForPath, projectNameError, touchProject } from "../projects";
 import type { CreateProjectRequest, Project, ProjectList } from "../types";
 
 const CURRENT_KEY = "currentProject";
@@ -26,13 +26,13 @@ async function directoryExists(path: string): Promise<boolean> {
 }
 
 /**
- * Notebooks from before projects existed have no `projectId`. They show up in an example project so nothing
- * disappears; it is created the first time the list is read while such notebooks exist.
+ * The example project (the seeded examples, see src/features/notebook/examples.ts) is listed once it holds
+ * notebooks; it is created the first time the list is read.
  */
-async function ensureExampleProject(context: ProjectContext) {
+async function registerExampleProject(context: ProjectContext) {
   const { db } = context;
   if (db.project(EXAMPLE_PROJECT_ID)) return;
-  if (!db.notebooks().some((doc) => !doc.projectId)) return;
+  if (!db.notebooks().some((doc) => notebookProjectId(doc) === EXAMPLE_PROJECT_ID)) return;
   await mkdir(/* turbopackIgnore: true */ context.exampleDir, { recursive: true });
   const now = timestamp(context);
   // Older than anything the user opens, so it sits at the bottom of the recent list until it is used.
@@ -40,7 +40,7 @@ async function ensureExampleProject(context: ProjectContext) {
 }
 
 export async function listProjects(context: ProjectContext): Promise<ProjectList> {
-  await ensureExampleProject(context);
+  await registerExampleProject(context);
   const projects = context.db.projects();
   const current = context.db.meta(CURRENT_KEY);
   return { projects, current: current && projects.some((project) => project.id === current) ? current : undefined };

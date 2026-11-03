@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { z } from "zod";
 
-import { ensureNotebookDemo } from "@/features/notebook/server/http";
+import { ensureExampleProject } from "@/features/notebook/server/http";
 import { HttpError } from "@/features/runs/server/service";
 import { store, type StudioStore } from "@/lib/server/database";
 import { dataDirectory } from "@/lib/server/paths";
@@ -20,8 +20,8 @@ const idPattern = /^[\w-]{1,80}$/;
  * - `DELETE /:id` forget it (the folder stays on disk)
  */
 export async function handleProjectsApi(method: string, path: string[], request: Request, db: StudioStore = store()): Promise<Response> {
-  // The demo notebooks are seeded on first use; doing it here makes the example project show up on a fresh install.
-  ensureNotebookDemo(db);
+  // The example project is seeded on first use; doing it here makes it show up on a fresh install.
+  ensureExampleProject(db);
   const context: ProjectContext = { db, exampleDir: db.workspace ?? join(dataDirectory(), "projects", "example") };
   const [, id, action] = path;
   if (!id && method === "GET") return json(await listProjects(context));

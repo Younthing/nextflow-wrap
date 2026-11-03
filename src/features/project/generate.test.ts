@@ -1,20 +1,20 @@
 import { describe, expect, it } from "vitest";
 
-import { demoScriptModules } from "@/features/notebook/seed";
+import { fixtureScriptModules } from "@/features/notebook/test-fixtures";
 import { FILE_ID } from "@/features/workflow/builtins";
 import { indexModules } from "@/features/workflow/catalog";
-import { demoWorkflow, readsQcWorkflow } from "@/features/workflow/demo";
-import { EXAMPLE_MODULES } from "@/features/workflow/example-modules";
+import { fixtureWorkflow, fixtureReadsWorkflow } from "@/features/workflow/fixture-workflows";
+import { FIXTURE_MODULES } from "@/features/workflow/fixture-modules";
 import type { WorkflowDoc } from "@/features/workflow/types";
 import { GenerateError, generateProject, projectMeta } from "./generate";
 
-const index = indexModules(EXAMPLE_MODULES);
+const index = indexModules(FIXTURE_MODULES);
 const generate = (doc: WorkflowDoc) => generateProject(doc, index);
 const file = (doc: WorkflowDoc, path: string) => generate(doc).files.find((f) => f.path === path)!.content;
 
 describe("generateProject", () => {
-  const demo = demoWorkflow("wf");
-  const reads = readsQcWorkflow("qc");
+  const demo = fixtureWorkflow("wf");
+  const reads = fixtureReadsWorkflow("qc");
 
   it("lays out a plain Nextflow project without nf-core pieces", () => {
     const paths = generate(demo).files.map((f) => f.path);
@@ -90,7 +90,7 @@ describe("generateProject", () => {
   });
 
   it("writes published notebook modules and their scripts", () => {
-    const hello = demoScriptModules().find((def) => def.id === "script/hello_py")!;
+    const hello = fixtureScriptModules().find((def) => def.id === "script/hello_py")!;
     const doc: WorkflowDoc = {
       ...demo,
       params: { outdir: "results" },

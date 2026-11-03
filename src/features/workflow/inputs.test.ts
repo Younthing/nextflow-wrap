@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { FILE_ID, FOLDER_ID } from "./builtins";
-import { demoWorkflow } from "./demo";
+import { fixtureWorkflow } from "./fixture-workflows";
 import { inputParams, launchParams } from "./inputs";
 import type { WorkflowNode } from "./types";
 
@@ -29,7 +29,7 @@ describe("inputParams", () => {
 
 describe("launchParams", () => {
   it("adds the chosen paths to the workflow params", () => {
-    expect(launchParams(demoWorkflow("wf"))).toEqual({ outdir: "results", counts: "data/pbmc3k.h5ad" });
+    expect(launchParams(fixtureWorkflow("wf"))).toEqual({ outdir: "results", counts: "data/pbmc3k.h5ad" });
   });
 
   it("leaves out inputs with no path", () => {

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { defaultLaunchConfig } from "@/features/project/launch";
-import { readsQcWorkflow } from "@/features/workflow/demo";
+import { fixtureReadsWorkflow } from "@/features/workflow/fixture-workflows";
 import { StudioStore, type StoredExecution } from "@/lib/server/database";
 import { emptyProgress } from "./service";
 import { ingestEvent, taskFromTrace } from "./tasks";
@@ -9,7 +9,7 @@ const databases: StudioStore[] = [];
 afterEach(() => { for (const database of databases.splice(0)) database.close(); });
 function setup() {
   const db = new StudioStore(":memory:"); databases.push(db);
-  const workflow = readsQcWorkflow("qc");
+  const workflow = fixtureReadsWorkflow("qc");
   const run: StoredExecution = {
     lineageId: "run", projectDir: "/project", attemptDir: "/attempt",
     detail: { id: "run", runName: "run", workflowId: workflow.id, workflowName: workflow.name, status: "running", executor: "local", profile: "docker", submittedAt: new Date().toISOString(), progress: emptyProgress(), command: "nextflow run .", launch: defaultLaunchConfig(), params: workflow.params, runConfig: "", project: { name: "studio/qc", files: [] }, workflow },

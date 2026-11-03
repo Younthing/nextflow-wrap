@@ -1,5 +1,5 @@
 import { FILE_ID, SAMPLESHEET_ID } from "./builtins";
-import { EXAMPLE_CLUSTER_ID, EXAMPLE_DOCK_ID, EXAMPLE_FASTQ_QC_ID, EXAMPLE_LIGANDS_ID, EXAMPLE_REPORT_ID, EXAMPLE_SCANPY_QC_ID, EXAMPLE_TRIM_ID } from "./example-modules";
+import { FIXTURE_CLUSTER_ID, FIXTURE_DOCK_ID, FIXTURE_FASTQ_QC_ID, FIXTURE_LIGANDS_ID, FIXTURE_REPORT_ID, FIXTURE_SCANPY_QC_ID, FIXTURE_TRIM_ID } from "./fixture-modules";
 import { inHandle, outHandle } from "./ports";
 import type { WorkflowDoc, WorkflowEdge, WorkflowNode } from "./types";
 
@@ -24,8 +24,8 @@ const edge = (source: string, out: string, target: string, inp: string): Workflo
   targetHandle: inHandle(inp),
 });
 
-/** A small single-cell pipeline on the example modules. Seeds the mock backend and stories. */
-export function demoWorkflow(id: string): WorkflowDoc {
+/** A small single-cell pipeline on the fixture modules, for tests and stories. */
+export function fixtureWorkflow(id: string): WorkflowDoc {
   return {
     id,
     name: "单细胞质控与聚类",
@@ -34,9 +34,9 @@ export function demoWorkflow(id: string): WorkflowDoc {
     params: { outdir: "results" },
     nodes: [
       node("counts", FILE_ID, "COUNTS", 0, 160, { config: {}, settings: { path: "data/pbmc3k.h5ad" } }),
-      node("qc", EXAMPLE_SCANPY_QC_ID, "SCANPY_QC", 360, 120, { widgets: { min_genes: 200, max_pct_mt: 5 } }),
-      node("cluster", EXAMPLE_CLUSTER_ID, "SCANPY_CLUSTER", 760, 120, { widgets: { resolution: 0.5 } }),
-      node("report", EXAMPLE_REPORT_ID, "SUMMARY_REPORT", 1160, 160, { widgets: { title: "PBMC 3k" } }),
+      node("qc", FIXTURE_SCANPY_QC_ID, "SCANPY_QC", 360, 120, { widgets: { min_genes: 200, max_pct_mt: 5 } }),
+      node("cluster", FIXTURE_CLUSTER_ID, "SCANPY_CLUSTER", 760, 120, { widgets: { resolution: 0.5 } }),
+      node("report", FIXTURE_REPORT_ID, "SUMMARY_REPORT", 1160, 160, { widgets: { title: "PBMC 3k" } }),
     ],
     edges: [
       edge("counts", "file", "qc", "adata"),
@@ -49,8 +49,8 @@ export function demoWorkflow(id: string): WorkflowDoc {
   };
 }
 
-/** A per-sample read pipeline on the example modules, for simulator and output tests. */
-export function readsQcWorkflow(id: string): WorkflowDoc {
+/** A per-sample read pipeline on the fixture modules, for simulator and output tests. */
+export function fixtureReadsWorkflow(id: string): WorkflowDoc {
   return {
     id,
     name: "测序质控",
@@ -59,9 +59,9 @@ export function readsQcWorkflow(id: string): WorkflowDoc {
     params: { input: "assets/samplesheet.csv", outdir: "results" },
     nodes: [
       node("input", SAMPLESHEET_ID, "SAMPLESHEET", 0, 140, { config: {} }),
-      node("trim", EXAMPLE_TRIM_ID, "TRIM_READS", 360, 100, { widgets: { min_length: 30 } }),
-      node("qc", EXAMPLE_FASTQ_QC_ID, "FASTQ_QC", 760, 0),
-      node("report", EXAMPLE_REPORT_ID, "SUMMARY_REPORT", 1160, 120, { widgets: { title: "Reads" } }),
+      node("trim", FIXTURE_TRIM_ID, "TRIM_READS", 360, 100, { widgets: { min_length: 30 } }),
+      node("qc", FIXTURE_FASTQ_QC_ID, "FASTQ_QC", 760, 0),
+      node("report", FIXTURE_REPORT_ID, "SUMMARY_REPORT", 1160, 120, { widgets: { title: "Reads" } }),
     ],
     edges: [
       edge("input", "reads", "trim", "reads"),
@@ -74,7 +74,7 @@ export function readsQcWorkflow(id: string): WorkflowDoc {
 }
 
 /** The docking example: SMILES → ligand PDBQT → CPU Vina against a prepared receptor. Seeds the mock backend and stories. */
-export function dockingWorkflow(id: string): WorkflowDoc {
+export function fixtureDockingWorkflow(id: string): WorkflowDoc {
   return {
     id,
     name: "分子对接（Vina）",
@@ -84,8 +84,8 @@ export function dockingWorkflow(id: string): WorkflowDoc {
     nodes: [
       node("ligands", FILE_ID, "LIGANDS", 0, 80, { config: {}, settings: { path: "data/ligands.csv" } }),
       node("receptor", FILE_ID, "RECEPTOR", 0, 320, { config: {}, settings: { path: "data/receptor.pdbqt" } }),
-      node("prepare", EXAMPLE_LIGANDS_ID, "PREPARE_LIGANDS", 360, 60),
-      node("dock", EXAMPLE_DOCK_ID, "VINA_DOCK", 760, 160, { widgets: { center_x: 0, center_y: 0, center_z: 0, size: 18, exhaustiveness: 8 } }),
+      node("prepare", FIXTURE_LIGANDS_ID, "PREPARE_LIGANDS", 360, 60),
+      node("dock", FIXTURE_DOCK_ID, "VINA_DOCK", 760, 160, { widgets: { center_x: 0, center_y: 0, center_z: 0, size: 18, exhaustiveness: 8 } }),
     ],
     edges: [
       edge("ligands", "file", "prepare", "smiles"),

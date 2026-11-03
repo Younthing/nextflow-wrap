@@ -1,6 +1,5 @@
 import { CATALOG_BUILTINS } from "./catalog-builtins";
 import { OPERATOR_MODULES } from "./operators";
-import { TEST_MODULES } from "./test-modules";
 import type { ModuleDef } from "./types";
 
 export const SAMPLESHEET_ID = "builtin/samplesheet";
@@ -84,7 +83,6 @@ export const BUILTIN_MODULES: ModuleDef[] = [
   },
   ...CATALOG_BUILTINS,
   ...OPERATOR_MODULES,
-  ...TEST_MODULES,
 ];
 
 const FORMAT_ALIASES: Record<string, string> = {

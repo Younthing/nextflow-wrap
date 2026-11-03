@@ -1,10 +1,8 @@
 import type { ChannelElement, ModuleDef, PortDef } from "./types";
 
 /**
- * Published local modules used by tests, stories and the mock backend.
- * They have the shape a notebook publish produces, with single-cell and
- * docking steps as the examples. They carry no generated script, so they
- * are never written into a real project.
+ * Test and story fixtures: modules with the shape an export produces, including tuple ports a notebook export
+ * does not make, for port and channel logic. Not shipped; the example project is src/features/notebook/examples.ts.
  */
 
 const meta = (): ChannelElement => ({ name: "meta", type: "map", kind: "meta", description: "样本信息，如 [ id:'S1' ]" });
@@ -44,16 +42,16 @@ function example(spec: Pick<ModuleDef, "process" | "name" | "description" | "cat
   };
 }
 
-export const EXAMPLE_TRIM_ID = "script/trim_reads/v1";
-export const EXAMPLE_FASTQ_QC_ID = "script/fastq_qc/v1";
-export const EXAMPLE_SCANPY_QC_ID = "script/scanpy_qc/v1";
-export const EXAMPLE_CLUSTER_ID = "script/scanpy_cluster/v1";
-export const EXAMPLE_REPORT_ID = "script/summary_report/v1";
-export const EXAMPLE_RECEPTOR_ID = "script/prepare_receptor/v1";
-export const EXAMPLE_DOCK_ID = "script/vina_dock/v1";
-export const EXAMPLE_LIGANDS_ID = "script/prepare_ligands/v1";
+export const FIXTURE_TRIM_ID = "script/trim_reads/v1";
+export const FIXTURE_FASTQ_QC_ID = "script/fastq_qc/v1";
+export const FIXTURE_SCANPY_QC_ID = "script/scanpy_qc/v1";
+export const FIXTURE_CLUSTER_ID = "script/scanpy_cluster/v1";
+export const FIXTURE_REPORT_ID = "script/summary_report/v1";
+export const FIXTURE_RECEPTOR_ID = "script/prepare_receptor/v1";
+export const FIXTURE_DOCK_ID = "script/vina_dock/v1";
+export const FIXTURE_LIGANDS_ID = "script/prepare_ligands/v1";
 
-export const EXAMPLE_MODULES: ModuleDef[] = [
+export const FIXTURE_MODULES: ModuleDef[] = [
   example({
     process: "TRIM_READS",
     name: "trim_reads",
@@ -171,8 +169,8 @@ export const EXAMPLE_MODULES: ModuleDef[] = [
 ];
 
 /** Example modules keyed by id, for tests. */
-export const exampleModule = (id: string): ModuleDef => {
-  const def = EXAMPLE_MODULES.find((m) => m.id === id);
+export const fixtureModule = (id: string): ModuleDef => {
+  const def = FIXTURE_MODULES.find((m) => m.id === id);
   if (!def) throw new Error(`Unknown example module ${id}`);
   return def;
 };

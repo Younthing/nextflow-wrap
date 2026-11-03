@@ -3,17 +3,15 @@
  * so saved workflows survive reloads while there is no real server.
  */
 import type { ModuleLibraryCopy } from "@/features/notebook/library-copy";
-import { demoLibraryCopies, demoNotebooks, demoRevisions, demoScriptModules } from "@/features/notebook/seed";
+import { exampleLibraryCopies, exampleModules, exampleNotebooks, exampleWorkflow } from "@/features/notebook/examples";
 import type { NotebookDoc, NotebookRevision, TryRunRecord } from "@/features/notebook/types";
-import { demoWorkflow, dockingWorkflow } from "@/features/workflow/demo";
-import { EXAMPLE_MODULES } from "@/features/workflow/example-modules";
 import type { RunDetail } from "@/features/runs/types";
 import type { ModuleDef, WorkflowDoc } from "@/features/workflow/types";
 import type { Project } from "@/features/workspace/types";
 import { EXAMPLE_PROJECT_ID } from "@/features/workspace/projects";
 
 // Bumped when the seed changes shape, so old browsers start from the new seed.
-const KEY = "nf-studio-mock-db-v2";
+const KEY = "nf-studio-mock-db-v3";
 
 /** Stored run: everything except the simulated, time-dependent state. */
 export type StoredRun = Omit<RunDetail, "status" | "progress" | "startedAt" | "completedAt" | "errorMessage">;
@@ -35,26 +33,18 @@ export const MOCK_EXAMPLE_PROJECT_PATH = "/home/demo/projects/example";
 
 let memory: MockDb | null = null;
 
+/** The same example project a real server starts with (src/features/notebook/examples.ts). */
 function seed(): MockDb {
-  const demo = demoWorkflow("wf_demo_scrna");
-  const docking = dockingWorkflow("wf_demo_docking");
-  const notebooks = demoNotebooks();
-  const revisionsList = demoRevisions(notebooks);
-  const revisions: Record<string, NotebookRevision> = {};
-  for (const revision of revisionsList) revisions[`${revision.notebookId}:${revision.rev}`] = revision;
-  const scriptList = demoScriptModules(notebooks, revisionsList);
-  const scriptModules: Record<string, ModuleDef> = {};
-  for (const mod of [...scriptList, ...EXAMPLE_MODULES]) scriptModules[mod.id] = mod;
-  const libraryCopies: Record<string, ModuleLibraryCopy> = {};
-  for (const copy of demoLibraryCopies(notebooks, revisionsList, scriptList)) libraryCopies[copy.moduleId] = copy;
+  const notebooks = exampleNotebooks(EXAMPLE_PROJECT_ID);
+  const modules = exampleModules(notebooks);
+  const workflow = exampleWorkflow(EXAMPLE_PROJECT_ID);
   return {
-    // The demo workflows belong to the example project, like everything a project holds.
-    workflows: { [demo.id]: { ...demo, projectId: EXAMPLE_PROJECT_ID }, [docking.id]: { ...docking, projectId: EXAMPLE_PROJECT_ID } },
+    workflows: { [workflow.id]: workflow },
     runs: {},
     notebooks: Object.fromEntries(notebooks.map((doc) => [doc.id, doc])),
-    revisions,
-    scriptModules,
-    libraryCopies,
+    revisions: Object.fromEntries(notebooks.map((doc) => [`${doc.id}:${doc.rev}`, { notebookId: doc.id, rev: doc.rev, cells: doc.cells, savedAt: doc.updatedAt }])),
+    scriptModules: Object.fromEntries(modules.map((mod) => [mod.id, mod])),
+    libraryCopies: Object.fromEntries(exampleLibraryCopies(notebooks, modules).map((copy) => [copy.moduleId, copy])),
     tryRuns: {},
     projects: {
       [EXAMPLE_PROJECT_ID]: { id: EXAMPLE_PROJECT_ID, name: "示例项目", path: MOCK_EXAMPLE_PROJECT_PATH, createdAt: "2026-01-01T00:00:00.000Z", openedAt: "1970-01-01T00:00:00.000Z", example: true },

@@ -2,12 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import { FILE_ID, FOLDER_ID, SAMPLESHEET_ID } from "./builtins";
 import { indexModules } from "./catalog";
-import { demoWorkflow, dockingWorkflow } from "./demo";
-import { EXAMPLE_MODULES, EXAMPLE_TRIM_ID } from "./example-modules";
+import { fixtureWorkflow, fixtureDockingWorkflow } from "./fixture-workflows";
+import { FIXTURE_MODULES, FIXTURE_TRIM_ID } from "./fixture-modules";
 import type { ModuleDef, WorkflowNode } from "./types";
 import { validateWorkflow } from "./validate";
 
-const index = indexModules(EXAMPLE_MODULES);
+const index = indexModules(FIXTURE_MODULES);
 const node = (id: string, moduleId: string, alias: string): WorkflowNode => ({
   id,
   position: { x: 0, y: 0 },
@@ -16,17 +16,17 @@ const node = (id: string, moduleId: string, alias: string): WorkflowNode => ({
 
 describe("validateWorkflow", () => {
   it("accepts the demo workflow", () => {
-    const doc = demoWorkflow("wf");
+    const doc = fixtureWorkflow("wf");
     expect(validateWorkflow(doc.nodes, doc.edges, doc.params, index)).toEqual([]);
   });
 
   it("accepts the docking example", () => {
-    const doc = dockingWorkflow("dock");
+    const doc = fixtureDockingWorkflow("dock");
     expect(validateWorkflow(doc.nodes, doc.edges, doc.params, index)).toEqual([]);
   });
 
   it("reports a missing main input and duplicate aliases", () => {
-    const doc = demoWorkflow("wf");
+    const doc = fixtureWorkflow("wf");
     const edges = doc.edges.filter((e) => e.target !== "cluster");
     const nodes = doc.nodes.map((n) => (n.id === "report" ? { ...n, data: { ...n.data, alias: "SCANPY_QC" } } : n));
     const messages = validateWorkflow(nodes, edges, doc.params, index).map((i) => i.message);
@@ -60,7 +60,7 @@ describe("validateWorkflow", () => {
 });
 
 describe("validateWorkflow padded inputs", () => {
-  const nodes = [node("input", SAMPLESHEET_ID, "SAMPLESHEET"), node("trim", EXAMPLE_TRIM_ID, "TRIM_READS")];
+  const nodes = [node("input", SAMPLESHEET_ID, "SAMPLESHEET"), node("trim", FIXTURE_TRIM_ID, "TRIM_READS")];
   const edges = [{ id: "e", source: "input", sourceHandle: "out:reads", target: "trim", targetHandle: "in:reads" }];
   const params = { input: "samples.csv", outdir: "results" };
 
@@ -70,8 +70,8 @@ describe("validateWorkflow padded inputs", () => {
 
   it("warns when a link leaves a required-looking tuple file empty", () => {
     const strict: ModuleDef = {
-      ...EXAMPLE_MODULES.find((m) => m.id === EXAMPLE_TRIM_ID)!,
-      inputs: EXAMPLE_MODULES.find((m) => m.id === EXAMPLE_TRIM_ID)!.inputs.map((port) => ({
+      ...FIXTURE_MODULES.find((m) => m.id === FIXTURE_TRIM_ID)!,
+      inputs: FIXTURE_MODULES.find((m) => m.id === FIXTURE_TRIM_ID)!.inputs.map((port) => ({
         ...port,
         elements: port.elements.map((el) => (el.name === "adapters" ? { ...el, description: "接头序列" } : el)),
       })),

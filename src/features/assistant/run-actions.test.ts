@@ -5,8 +5,8 @@ import { createEditorStore, selectIsDirty, type EditorStore } from "@/features/e
 import { defaultLaunchConfig } from "@/features/project/launch";
 import { indexModules } from "@/features/workflow/catalog";
 import { emptyWorkflow } from "@/features/workflow/document";
-import { readsQcWorkflow } from "@/features/workflow/demo";
-import { EXAMPLE_MODULES } from "@/features/workflow/example-modules";
+import { fixtureReadsWorkflow } from "@/features/workflow/fixture-workflows";
+import { FIXTURE_MODULES } from "@/features/workflow/fixture-modules";
 import type { WorkflowDoc } from "@/features/workflow/types";
 import { composeAssistantPrompt } from "./modules/compose";
 import {
@@ -29,8 +29,8 @@ import {
   type StartRunInput,
 } from "./run-actions";
 
-const index = indexModules(EXAMPLE_MODULES);
-const qcDemoWorkflow = () => readsQcWorkflow("qc-smoke");
+const index = indexModules(FIXTURE_MODULES);
+const qcDemoWorkflow = () => fixtureReadsWorkflow("qc-smoke");
 
 function input(overrides: Partial<StartRunInput> = {}): StartRunInput {
   const doc = overrides.doc ?? qcDemoWorkflow();

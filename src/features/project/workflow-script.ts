@@ -4,7 +4,6 @@ import { resolveNodeDef, type ModuleIndex } from "@/features/workflow/catalog";
 import { isOperator, operatorChannel } from "@/features/workflow/operators";
 import { renderCatalogBuiltinProcesses } from "@/features/workflow/catalog-builtins";
 import { moduleOrigin } from "@/features/workflow/origin";
-import { renderTemporaryProcesses } from "@/features/workflow/test-modules";
 import { checkCompatibility, findPort, portFromHandle, socketInputs } from "@/features/workflow/ports";
 import type { ModuleDef, PortDef, WorkflowDoc, WorkflowEdge, WorkflowNode } from "@/features/workflow/types";
 import { ChannelOpError, paren, renderOperator } from "./channel-ops";
@@ -381,11 +380,6 @@ export function renderDataflow(doc: WorkflowDoc, index: ModuleIndex): string {
   return renderSteps(buildContext(doc, index, "pipeline")).join("\n\n");
 }
 
-/** Inline host-command processes. Empty when the canvas has none. */
-export function renderTemporaryModuleText(doc: WorkflowDoc, index: ModuleIndex): string {
-  return renderTemporaryProcesses(planNodes(doc, index).order);
-}
-
 export function workflowIncludes(order: PlannedNode[]): string[] {
   const rows = order.flatMap(({ node, def }) =>
     moduleOrigin(def) === "script" ? [{ node, def, from: `./modules/${moduleNamespace(def)}/${def.path}/main` }] : [],
@@ -428,7 +422,6 @@ export function generateMainScript(doc: WorkflowDoc, index: ModuleIndex, opts: {
   if (order.some((planned) => planned.def.id === SAMPLESHEET_ID)) steps.unshift(SAMPLESHEET_CHANNEL);
   if (!steps.length) throw new GenerateError("画布上还没有可运行的节点");
   const includes = workflowIncludes(order);
-  const temporary = renderTemporaryProcesses(order);
   const builtins = renderCatalogBuiltinProcesses(order);
   return nf`#!/usr/bin/env nextflow
 /*
@@ -441,11 +434,7 @@ ${"~".repeat(88)}
 ${includes.length ? `
 ${includes.join("\n")}
 ` : ""}
-${temporary ? `${section("TEMPORARY TEST MODULES")}
-
-${temporary}
-
-` : ""}${builtins ? `${section("BUILTIN NODES")}
+${builtins ? `${section("BUILTIN NODES")}
 
 ${builtins}
 

@@ -9,12 +9,12 @@ import { convertNotebook, scriptFileName } from "./convert";
 import { executeCells, executeTryRun } from "./execute";
 import { SAMPLE_PDF } from "@/features/output/samples";
 import { planMime } from "./mime";
-import { demoNotebooks } from "./seed";
+import { fixtureNotebooks } from "./test-fixtures";
 import { simulateTryRun } from "./simulate";
 import type { PortBindingRequest } from "./input-bindings";
 import type { CellOutput, NotebookCell, NotebookDoc } from "./types";
 
-const qc = () => demoNotebooks().find((doc) => doc.id === "qc_summary")!;
+const qc = () => fixtureNotebooks().find((doc) => doc.id === "qc_summary")!;
 
 const qcBindings: PortBindingRequest[] = [
   { port: "fastq_zip", source: "sample", value: "fastqc-pair" },
@@ -165,7 +165,7 @@ describe("executeTryRun module environment", () => {
 });
 
 describe("executeTryRun own data", () => {
-  const hello = () => demoNotebooks().find((doc) => doc.id === "hello_py")!;
+  const hello = () => fixtureNotebooks().find((doc) => doc.id === "hello_py")!;
 
   it("runs an uploaded samplesheet and a sample fixture", async () => {
     const csv = Buffer.from("sample,fastq_1\nUploaded,a.fq\n").toString("base64");

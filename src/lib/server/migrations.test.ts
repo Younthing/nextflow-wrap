@@ -73,7 +73,7 @@ describe("migrateDirectory", () => {
 });
 
 describe("StudioStore upgrade", () => {
-  it("upgrades a version 3 data directory in place: backup, layout and library markers", () => {
+  it("upgrades a version 3 data directory in place: backup and layout marker", () => {
     const dir = temp();
     const path = join(dir, "studio.sqlite");
     const legacy = new DatabaseSync(path);
@@ -83,7 +83,6 @@ describe("StudioStore upgrade", () => {
     expect(db.migration).toMatchObject({ from: 3, to: SCHEMA_VERSION });
     expect(readdirSync(join(dir, "backups"))).toHaveLength(1);
     expect(JSON.parse(readFileSync(join(dir, "layout.json"), "utf8")).formatVersion).toBe(1);
-    expect(JSON.parse(readFileSync(join(dir, "library", "modules", "library.json"), "utf8")).formatVersion).toBe(1);
     db.setMeta("appVersion", "0.2.0");
     expect(db.meta("appVersion")).toBe("0.2.0");
     db.close();

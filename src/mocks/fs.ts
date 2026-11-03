@@ -25,23 +25,14 @@ const TREE: Record<string, FsEntry[]> = {
     { name: "tissue_positions.csv", path: "/home/demo/Projects/visium-pilot/spatial/tissue_positions.csv", kind: "file", size: 312_400 },
   ],
   "/home/demo/projects": [{ name: "example", path: EXAMPLE, kind: "directory" }],
+  // The example project: its data, as src/features/notebook/examples.ts writes it.
   [EXAMPLE]: [
     { name: "data", path: `${EXAMPLE}/data`, kind: "directory" },
-    { name: "figures", path: `${EXAMPLE}/figures`, kind: "directory" },
     { name: "results", path: `${EXAMPLE}/results`, kind: "directory" },
-    { name: "samplesheet.csv", path: `${EXAMPLE}/samplesheet.csv`, kind: "file", size: 512 },
   ],
   [`${EXAMPLE}/data`]: [
-    { name: "raw", path: `${EXAMPLE}/data/raw`, kind: "directory" },
-    { name: "pbmc_qc.h5ad", path: `${EXAMPLE}/data/pbmc_qc.h5ad`, kind: "file", size: 48_211_200 },
-  ],
-  [`${EXAMPLE}/data/raw`]: [
-    { name: "barcodes.tsv.gz", path: `${EXAMPLE}/data/raw/barcodes.tsv.gz`, kind: "file", size: 20_480 },
-    { name: "features.tsv.gz", path: `${EXAMPLE}/data/raw/features.tsv.gz`, kind: "file", size: 264_000 },
-    { name: "matrix.mtx.gz", path: `${EXAMPLE}/data/raw/matrix.mtx.gz`, kind: "file", size: 4_700_000 },
-  ],
-  [`${EXAMPLE}/figures`]: [
-    { name: "umap_leiden.png", path: `${EXAMPLE}/figures/umap_leiden.png`, kind: "file", size: 182_000 },
+    { name: "counts.tsv", path: `${EXAMPLE}/data/counts.tsv`, kind: "file", size: 14_000 },
+    { name: "samples.csv", path: `${EXAMPLE}/data/samples.csv`, kind: "file", size: 140 },
   ],
   [`${EXAMPLE}/results`]: [],
   "/home/demo/data": [

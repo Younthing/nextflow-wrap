@@ -7,7 +7,7 @@ export const START_RUN_DESCRIPTION =
   "启动编辑器里当前已保存的流程。调用后会弹出确认对话框，只有用户接受才会提交运行；拒绝、关闭或中断都不会启动。使用运行对话框里保存的执行器、profile 和工作目录。你必须等这个工具返回后再说运行已启动。";
 
 const prompt = `## 搭建流程
-- 画布上每个节点是一个从笔记本发布的模块（moduleId 形如 script/scanpy_qc/v1）或内置节点，例如输入节点：builtin/file（文件输入，在节点上选一个文件，输出 [meta, file]）、builtin/folder（文件夹输入，整个文件夹作为一个路径，输出 [meta, dir]）、builtin/samplesheet（样本表，输出每个样本的 [meta, reads]）。
+- 画布上每个节点是一个从笔记本发布的模块（moduleId 形如 script/count_qc）或内置节点，例如输入节点：builtin/file（文件输入，在节点上选一个文件，输出 [meta, file]）、builtin/folder（文件夹输入，整个文件夹作为一个路径，输出 [meta, dir]）、builtin/samplesheet（样本表，输出每个样本的 [meta, reads]）。
 - 端口携带的是通道元组，例如 "meta, h5ad" 或 "meta, sdf"。连线前确认上下游的元组形状和文件格式对得上；不确定的模块先用 search_modules 查端口。
 - 流程从输入节点开始：单个数据文件（如 h5ad、受体结构、配体表）用文件输入节点，并用 configure_node 的 inputPath 设置路径；一个文件夹（如 10x 矩阵目录）用文件夹输入节点；只有每样本一行的 FastQ 数据才用样本表节点。文件输入的流程参数名是别名的小写，例如 COUNTS → --counts。
 - 修改画布要调用工具，不要只描述步骤。一次改动多个节点时按顺序逐个调用；工具报错时读错误信息并修正后重试。

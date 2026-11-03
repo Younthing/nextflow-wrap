@@ -1,3 +1,7 @@
+/**
+ * Notebook fixtures for tests: a Python notebook with a file-list input and explore cells, a minimal one, and an R
+ * notebook whose try-run fails. Not shipped; the example project is ./examples.ts.
+ */
 import type { ModuleDef } from "@/features/workflow/types";
 import { convertNotebook, inputPorts, outputPorts } from "./convert";
 import { buildLibraryCopy, type ModuleLibraryCopy } from "./library-copy";
@@ -146,7 +150,7 @@ print(len(body), len(kept))
   },
 ];
 
-export function demoNotebooks(now = Date.now()): NotebookDoc[] {
+export function fixtureNotebooks(now = Date.now()): NotebookDoc[] {
   const at = (ms: number) => new Date(now - ms).toISOString();
   return [
     notebook({
@@ -222,7 +226,7 @@ export function demoNotebooks(now = Date.now()): NotebookDoc[] {
   ];
 }
 
-export function demoRevisions(notebooks = demoNotebooks()): NotebookRevision[] {
+export function fixtureRevisions(notebooks = fixtureNotebooks()): NotebookRevision[] {
   const revisions: NotebookRevision[] = [];
   for (const doc of notebooks) {
     revisions.push({ notebookId: doc.id, rev: doc.rev, cells: doc.cells, savedAt: doc.updatedAt });
@@ -234,7 +238,7 @@ export function demoRevisions(notebooks = demoNotebooks()): NotebookRevision[] {
   return revisions;
 }
 
-/** A demo module exported from `notebook` (its `cells` at export time). Modules keep no link back to it. */
+/** A module exported from `notebook` (its `cells` at export time). Modules keep no link back to it. */
 function published(notebook: NotebookDoc, version: string, tryRun: "passed" | "failed", rev: number, cells: NotebookCell[] = notebook.cells): ModuleDef {
   const converted = convertNotebook({ ...notebook, cells, rev }, `bin/${notebook.id}_${version}.${notebook.language === "r" ? "R" : "py"}`);
   return {
@@ -261,7 +265,7 @@ function published(notebook: NotebookDoc, version: string, tryRun: "passed" | "f
   };
 }
 
-export function demoScriptModules(notebooks = demoNotebooks(), revisions = demoRevisions(notebooks)): ModuleDef[] {
+export function fixtureScriptModules(notebooks = fixtureNotebooks(), revisions = fixtureRevisions(notebooks)): ModuleDef[] {
   const byId = new Map(notebooks.map((doc) => [doc.id, doc]));
   const pinned = (id: string, rev: number, fallback: NotebookCell[]) =>
     revisions.find((item) => item.notebookId === id && item.rev === rev)?.cells ?? fallback;
@@ -276,10 +280,10 @@ export function demoScriptModules(notebooks = demoNotebooks(), revisions = demoR
 }
 
 /** The notebook copy saved with each seeded module: the cells it was exported from. */
-export function demoLibraryCopies(
-  notebooks = demoNotebooks(),
-  revisions = demoRevisions(notebooks),
-  modules = demoScriptModules(notebooks, revisions),
+export function fixtureLibraryCopies(
+  notebooks = fixtureNotebooks(),
+  revisions = fixtureRevisions(notebooks),
+  modules = fixtureScriptModules(notebooks, revisions),
 ): ModuleLibraryCopy[] {
   const exported: Record<string, { id: string; rev: number }> = { "script/qc_summary": { id: "qc_summary", rev: 12 } };
   return modules.flatMap((mod) => {

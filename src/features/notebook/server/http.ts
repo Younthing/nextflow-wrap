@@ -1,20 +1,21 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 
 import { ConvertError } from "@/features/notebook/convert";
 import { EnvFieldError, patchModuleEnv } from "@/features/notebook/env";
 import { PercentError } from "@/features/notebook/jupytext";
-import { notebookFromLibrary, type ModuleLibraryCopy } from "@/features/notebook/library-copy";
+import { notebookFromLibrary } from "@/features/notebook/library-copy";
 import { publishScriptModule } from "@/features/notebook/publish";
-import { demoLibraryCopies, demoNotebooks, demoRevisions, demoScriptModules } from "@/features/notebook/seed";
+import { exampleData, exampleLibraryCopies, exampleModules, exampleNotebooks, exampleWorkflow } from "@/features/notebook/examples";
 import { executeTryRun, runNotebookCells } from "@/features/notebook/execute";
 import { NotebookConflictError, notebookFiles } from "@/features/notebook/server/notebook-files";
-import { ensureModuleLibrary, ModuleLibraryError, readEnvironmentYml, writeLibraryModule } from "@/features/notebook/server/module-library";
+import { readEnvironmentYml } from "@/features/notebook/server/environment-yml";
 import { existingKernel, kernelFor, kernelInfo, KernelUnavailableError, listKernelSpecs, shutdownKernel } from "@/features/notebook/server/kernels";
 import { referenceCounts, scriptModuleViews, summarizeNotebook } from "@/features/notebook/library";
 import { languageForKernel, type NotebookDoc } from "@/features/notebook/types";
 import { HttpError } from "@/features/runs/server/service";
-import type { ModuleDef } from "@/features/workflow/types";
 import type { StudioStore } from "@/lib/server/database";
 import { store } from "@/lib/server/database";
 import { EXAMPLE_PROJECT_ID, notebookProjectId } from "@/features/workspace/projects";
@@ -83,19 +84,37 @@ const editSchema = z.object({
   moduleId: z.string().trim().min(1).max(200).regex(/^[\w./-]+$/),
 });
 
-export function ensureNotebookDemo(db: StudioStore = store()) {
+/**
+ * A fresh data directory gets the example project: four analysis notebooks, the modules exported from them, a
+ * workflow that chains them, and the example data in the project's `data/`. Once: an empty database only.
+ */
+export function ensureExampleProject(db: StudioStore = store()) {
   if (db.notebookCount() > 0) return;
-  const notebooks = demoNotebooks();
-  const revisions = demoRevisions(notebooks);
-  const modules = demoScriptModules(notebooks, revisions);
-  const libraries = demoLibraryCopies(notebooks, revisions, modules);
+  const notebooks = exampleNotebooks(EXAMPLE_PROJECT_ID);
+  const modules = exampleModules(notebooks);
+  const copies = exampleLibraryCopies(notebooks, modules);
   db.transaction(() => {
     if (db.notebookCount() > 0) return;
-    for (const doc of notebooks) db.insertNotebookSnapshot(doc);
-    for (const revision of revisions) db.saveRevision(revision);
+    for (const doc of notebooks) {
+      db.insertNotebookSnapshot(doc);
+      db.saveRevision({ notebookId: doc.id, rev: doc.rev, cells: doc.cells, savedAt: doc.updatedAt });
+    }
     for (const mod of modules) db.saveScriptModule(mod);
-    for (const copy of libraries) db.saveLibraryCopy(copy);
+    for (const copy of copies) db.saveLibraryCopy(copy);
+    if (!db.workflow(exampleWorkflow().id)) db.saveWorkflow(exampleWorkflow(EXAMPLE_PROJECT_ID));
   });
+  // The data the notebooks and the workflow read, next to them in the example project. Existing files are kept.
+  if (db.workspace) {
+    for (const file of exampleData()) {
+      const path = join(db.workspace, file.path);
+      try {
+        mkdirSync(dirname(path), { recursive: true });
+        writeFileSync(path, file.content, { flag: "wx" });
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      }
+    }
+  }
 }
 
 function requireNotebook(db: StudioStore, id: string): NotebookDoc {
@@ -118,20 +137,8 @@ function newNotebookId(db: StudioStore): string {
   throw new HttpError(500, "无法分配笔记本 id");
 }
 
-/** The library folder is written first, so a module the database lists always has one. */
-async function saveToLibrary(db: StudioStore, def: ModuleDef, copy?: ModuleLibraryCopy) {
-  if (!db.moduleLibrary) return;
-  try {
-    await writeLibraryModule(def, db.moduleLibrary, copy);
-  } catch (error) {
-    if (error instanceof ModuleLibraryError) throw new HttpError(409, error.message);
-    throw error;
-  }
-}
-
 export async function handleNotebookApi(method: string, path: string[], request: Request, db: StudioStore = store()): Promise<Response> {
-  ensureNotebookDemo(db);
-  await ensureModuleLibrary(db);
+  ensureExampleProject(db);
   const [resource, id, action, extra] = path;
   // Each project's notebooks live as `.ipynb` files in its folder. Pick up edits made outside the app before
   // anything reads them; a save checks instead.
@@ -181,7 +188,6 @@ export async function handleNotebookApi(method: string, path: string[], request:
       throw new HttpError(400, error instanceof Error ? error.message : "无法保存环境");
     }
     next = { ...next, environmentYml: await readEnvironmentYml(next.condaYaml) };
-    await saveToLibrary(db, next, db.libraryCopy(next.id));
     db.saveScriptModule(next);
     return json(scriptModuleViews([next], db.workflows())[0]);
   }
@@ -334,7 +340,6 @@ export async function handleNotebookApi(method: string, path: string[], request:
       throw new HttpError(400, error instanceof Error ? error.message : "无法发布");
     }
     published.module.environmentYml = await readEnvironmentYml(published.module.condaYaml);
-    await saveToLibrary(db, published.module, published.library);
     db.transaction(() => {
       db.saveScriptModule(published.module);
       db.saveLibraryCopy(published.library);

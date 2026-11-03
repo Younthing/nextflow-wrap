@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { demoNotebooks, demoRevisions, demoScriptModules, demoLibraryCopies } from "./seed";
+import { fixtureNotebooks, fixtureRevisions, fixtureScriptModules, fixtureLibraryCopies } from "./test-fixtures";
 import { readPercent } from "./jupytext";
 import { notebookFromLibrary } from "./library-copy";
 import { publishScriptModule } from "./publish";
@@ -145,11 +145,11 @@ describe("library copies", () => {
   });
 
   it("seeds each demo module with the cells it was exported from", () => {
-    const notebooks = demoNotebooks();
-    const revisions = demoRevisions(notebooks);
+    const notebooks = fixtureNotebooks();
+    const revisions = fixtureRevisions(notebooks);
     const qc = notebooks.find((doc) => doc.id === "qc_summary")!;
     const exported = revisions.find((rev) => rev.notebookId === "qc_summary" && rev.rev === 12)!;
-    const copy = demoLibraryCopies(notebooks, revisions, demoScriptModules(notebooks, revisions)).find((item) => item.moduleId === "script/qc_summary")!;
+    const copy = fixtureLibraryCopies(notebooks, revisions, fixtureScriptModules(notebooks, revisions)).find((item) => item.moduleId === "script/qc_summary")!;
     expect(readPercent(copy.percent).cells).toEqual(exported.cells);
     expect(readPercent(copy.percent).cells).not.toEqual(qc.cells);
   });

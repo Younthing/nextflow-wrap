@@ -2,18 +2,18 @@ import { describe, expect, it } from "vitest";
 
 import { BUILTIN_MODULES } from "./builtins";
 import {
-  EXAMPLE_CLUSTER_ID,
-  EXAMPLE_DOCK_ID,
-  EXAMPLE_FASTQ_QC_ID,
-  EXAMPLE_MODULES,
-  EXAMPLE_REPORT_ID,
-  EXAMPLE_SCANPY_QC_ID,
-  EXAMPLE_TRIM_ID,
-} from "./example-modules";
+  FIXTURE_CLUSTER_ID,
+  FIXTURE_DOCK_ID,
+  FIXTURE_FASTQ_QC_ID,
+  FIXTURE_MODULES,
+  FIXTURE_REPORT_ID,
+  FIXTURE_SCANPY_QC_ID,
+  FIXTURE_TRIM_ID,
+} from "./fixture-modules";
 import { modulesForSearch, moduleSearchEmptyLabel, type PendingConnection } from "./module-search";
 import type { ModuleDef, PortDef } from "./types";
 
-const all: ModuleDef[] = [...BUILTIN_MODULES, ...EXAMPLE_MODULES];
+const all: ModuleDef[] = [...BUILTIN_MODULES, ...FIXTURE_MODULES];
 const def = (id: string) => all.find((module) => module.id === id)!;
 const output = (id: string, name: string) => def(id).outputs.find((port) => port.name === name)!;
 const input = (id: string, name: string) => def(id).inputs.find((port) => port.name === name)!;
@@ -27,25 +27,25 @@ const ids = (query: string, pending?: PendingConnection) =>
   modulesForSearch(all, query, pending).map((hit) => hit.def.id);
 
 describe("modulesForSearch", () => {
-  const adata = from(EXAMPLE_SCANPY_QC_ID, "adata", "source", "out");
+  const adata = from(FIXTURE_SCANPY_QC_ID, "adata", "source", "out");
 
   it("lists only modules that can take a dangling AnnData output", () => {
     const hits = modulesForSearch(all, "", adata);
     const listed = hits.map((hit) => hit.def.id);
 
-    expect(listed).not.toContain(EXAMPLE_FASTQ_QC_ID);
-    expect(listed).not.toContain(EXAMPLE_TRIM_ID);
-    expect(listed).not.toContain(EXAMPLE_DOCK_ID);
-    expect(listed).toContain(EXAMPLE_CLUSTER_ID);
-    expect(listed).toContain(EXAMPLE_REPORT_ID);
-    expect(hits.find((hit) => hit.def.id === EXAMPLE_CLUSTER_ID)?.port?.name).toBe("adata");
-    expect(hits.find((hit) => hit.def.id === EXAMPLE_REPORT_ID)?.port?.name).toBe("files");
-    expect(listed.indexOf(EXAMPLE_CLUSTER_ID)).toBeLessThan(listed.indexOf(EXAMPLE_REPORT_ID));
+    expect(listed).not.toContain(FIXTURE_FASTQ_QC_ID);
+    expect(listed).not.toContain(FIXTURE_TRIM_ID);
+    expect(listed).not.toContain(FIXTURE_DOCK_ID);
+    expect(listed).toContain(FIXTURE_CLUSTER_ID);
+    expect(listed).toContain(FIXTURE_REPORT_ID);
+    expect(hits.find((hit) => hit.def.id === FIXTURE_CLUSTER_ID)?.port?.name).toBe("adata");
+    expect(hits.find((hit) => hit.def.id === FIXTURE_REPORT_ID)?.port?.name).toBe("files");
+    expect(listed.indexOf(FIXTURE_CLUSTER_ID)).toBeLessThan(listed.indexOf(FIXTURE_REPORT_ID));
   });
 
   it("keeps a typed query inside the compatible set", () => {
     expect(ids("vina", adata)).toEqual([]);
-    expect(ids("leiden", adata)).toEqual([EXAMPLE_CLUSTER_ID]);
+    expect(ids("leiden", adata)).toEqual([FIXTURE_CLUSTER_ID]);
   });
 
   it("lists read processors for a FastQ output and skips AnnData inputs", () => {
@@ -53,24 +53,24 @@ describe("modulesForSearch", () => {
     const hits = modulesForSearch(all, "", reads);
     const listed = hits.map((hit) => hit.def.id);
 
-    expect(listed).toContain(EXAMPLE_FASTQ_QC_ID);
-    expect(listed).toContain(EXAMPLE_TRIM_ID);
-    expect(listed).not.toContain(EXAMPLE_SCANPY_QC_ID);
-    expect(hits.find((hit) => hit.def.id === EXAMPLE_TRIM_ID)?.port?.name).toBe("reads");
-    expect(listed.indexOf(EXAMPLE_FASTQ_QC_ID)).toBeLessThan(listed.indexOf(EXAMPLE_REPORT_ID));
+    expect(listed).toContain(FIXTURE_FASTQ_QC_ID);
+    expect(listed).toContain(FIXTURE_TRIM_ID);
+    expect(listed).not.toContain(FIXTURE_SCANPY_QC_ID);
+    expect(hits.find((hit) => hit.def.id === FIXTURE_TRIM_ID)?.port?.name).toBe("reads");
+    expect(listed.indexOf(FIXTURE_FASTQ_QC_ID)).toBeLessThan(listed.indexOf(FIXTURE_REPORT_ID));
   });
 
   it("finds modules that emit a channel into a dangling input", () => {
-    const clusterIn = from(EXAMPLE_CLUSTER_ID, "adata", "target", "in");
+    const clusterIn = from(FIXTURE_CLUSTER_ID, "adata", "target", "in");
     const hits = modulesForSearch(all, "", clusterIn);
 
-    expect(hits.map((hit) => hit.def.id)).not.toContain(EXAMPLE_FASTQ_QC_ID);
-    expect(hits.find((hit) => hit.def.id === EXAMPLE_SCANPY_QC_ID)?.port?.elements.some((el) => el.format === "h5ad")).toBe(true);
+    expect(hits.map((hit) => hit.def.id)).not.toContain(FIXTURE_FASTQ_QC_ID);
+    expect(hits.find((hit) => hit.def.id === FIXTURE_SCANPY_QC_ID)?.port?.elements.some((el) => el.format === "h5ad")).toBe(true);
   });
 
   it("searches the whole catalog when no link is pending", () => {
     expect(ids("")).toEqual(all.map((module) => module.id));
-    expect(ids("scanpy")).toContain(EXAMPLE_SCANPY_QC_ID);
+    expect(ids("scanpy")).toContain(FIXTURE_SCANPY_QC_ID);
   });
 
   it("returns nothing when no port agrees, including after the query is cleared", () => {

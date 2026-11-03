@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { createEditorStore, type EditorStore } from "@/features/editor/store";
 import { indexModules } from "@/features/workflow/catalog";
 import { emptyWorkflow } from "@/features/workflow/document";
-import { EXAMPLE_FASTQ_QC_ID, EXAMPLE_MODULES, EXAMPLE_REPORT_ID, EXAMPLE_TRIM_ID } from "@/features/workflow/example-modules";
+import { FIXTURE_FASTQ_QC_ID, FIXTURE_MODULES, FIXTURE_REPORT_ID, FIXTURE_TRIM_ID } from "@/features/workflow/fixture-modules";
 import { createEditorActions } from "./editor-actions";
 
 let store: EditorStore;
@@ -13,14 +13,14 @@ beforeEach(() => {
   store = createEditorStore();
   actions = createEditorActions(store);
   store.getState().load(emptyWorkflow("wf", "测试"));
-  store.getState().setIndex(indexModules(EXAMPLE_MODULES));
+  store.getState().setIndex(indexModules(FIXTURE_MODULES));
 });
 
 /** Builds samplesheet -> FASTQ_QC -> SUMMARY_REPORT the way the assistant would. */
 function buildQc() {
   actions.addModule({ moduleId: "builtin/samplesheet" });
-  actions.addModule({ moduleId: EXAMPLE_FASTQ_QC_ID, after: "SAMPLESHEET" });
-  actions.addModule({ moduleId: EXAMPLE_REPORT_ID, after: "FASTQ_QC" });
+  actions.addModule({ moduleId: FIXTURE_FASTQ_QC_ID, after: "SAMPLESHEET" });
+  actions.addModule({ moduleId: FIXTURE_REPORT_ID, after: "FASTQ_QC" });
   actions.connectNodes({ source: "SAMPLESHEET", target: "fastq_qc" });
   return actions.connectNodes({ source: "FASTQ_QC", sourcePort: "html", target: "SUMMARY_REPORT" });
 }
@@ -28,7 +28,7 @@ function buildQc() {
 describe("assistant editor actions", () => {
   it("finds modules with their ports", () => {
     const [first] = actions.searchCatalog("fastq_qc", 3);
-    expect(first.moduleId).toBe(EXAMPLE_FASTQ_QC_ID);
+    expect(first.moduleId).toBe(FIXTURE_FASTQ_QC_ID);
     expect(first.inputs.map((p) => p.name)).toEqual(["reads"]);
     expect(first.outputs.map((p) => p.name)).toContain("html");
   });
@@ -42,7 +42,7 @@ describe("assistant editor actions", () => {
 
   it("places new nodes to the right of the one they follow", () => {
     actions.addModule({ moduleId: "builtin/samplesheet" });
-    const next = actions.addModule({ moduleId: EXAMPLE_FASTQ_QC_ID, after: "SAMPLESHEET" });
+    const next = actions.addModule({ moduleId: FIXTURE_FASTQ_QC_ID, after: "SAMPLESHEET" });
     const [a, b] = store.getState().nodes;
     expect(next.alias).toBe("FASTQ_QC");
     expect(b.position.x).toBeGreaterThan(a.position.x);
@@ -59,14 +59,14 @@ describe("assistant editor actions", () => {
   it("leaves the canvas unchanged when a request is rejected", () => {
     buildQc();
     const before = store.getState().nodes;
-    expect(() => actions.addModule({ moduleId: EXAMPLE_TRIM_ID, alias: "fastq_qc" })).toThrow(/已经被别的节点用了/);
-    expect(() => actions.addModule({ moduleId: EXAMPLE_TRIM_ID, alias: "9bad" })).toThrow(/不合法/);
+    expect(() => actions.addModule({ moduleId: FIXTURE_TRIM_ID, alias: "fastq_qc" })).toThrow(/已经被别的节点用了/);
+    expect(() => actions.addModule({ moduleId: FIXTURE_TRIM_ID, alias: "9bad" })).toThrow(/不合法/);
     expect(() => actions.configureNode({ node: "FASTQ_QC", config: { args: "--quiet" }, alias: "SUMMARY_REPORT" })).toThrow(/已经被别的节点用了/);
     expect(store.getState().nodes).toBe(before);
   });
 
   it("checks widget values against their declared type", () => {
-    actions.addModule({ moduleId: EXAMPLE_TRIM_ID });
+    actions.addModule({ moduleId: FIXTURE_TRIM_ID });
     expect(() => actions.configureNode({ node: "TRIM_READS", widgets: { min_length: "30" } })).toThrow(/integer 类型/);
     actions.configureNode({ node: "TRIM_READS", widgets: { min_length: 30 } });
     expect(actions.findNode("TRIM_READS").data.widgets.min_length).toBe(30);
@@ -95,7 +95,7 @@ describe("assistant editor actions", () => {
   });
 
   it("reports validation issues in the summary", () => {
-    actions.addModule({ moduleId: EXAMPLE_FASTQ_QC_ID });
+    actions.addModule({ moduleId: FIXTURE_FASTQ_QC_ID });
     expect(actions.workflowSummary().issues).toContainEqual(expect.objectContaining({ level: "error", node: "FASTQ_QC" }));
   });
 });

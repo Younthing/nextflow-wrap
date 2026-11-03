@@ -106,7 +106,7 @@ function publishLines(alias: string, config: NodeConfig): string[] {
 function modulesConfig(doc: WorkflowDoc, index: ModuleIndex, meta: ProjectMeta): string {
   const { order } = planNodes(doc, index);
   const blocks = order
-    .filter((p) => !p.def.builtin || p.def.temporary)
+    .filter((p) => !p.def.builtin)
     .map(({ node, def }) => {
       const { config, alias } = { config: node.data.config, alias: node.data.alias };
       const lines: string[] = [];

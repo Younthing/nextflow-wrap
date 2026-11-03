@@ -7,8 +7,8 @@ import type { RunDetail, TaskRecord } from "@/features/runs/types";
 import type { Project } from "@/features/workspace/types";
 import { commitWorkflowPut, type WorkflowPutResult } from "@/features/workflow/revision";
 import type { ModuleDef, WorkflowDoc } from "@/features/workflow/types";
-import { DataVersionError, migrateDataLayout, migrateDatabase, migrateModuleLibrary, type MigrationResult } from "./migrations";
-import { dataDirectory, moduleLibraryDirectory, workspaceDirectory } from "./paths";
+import { migrateDataLayout, migrateDatabase, type MigrationResult } from "./migrations";
+import { dataDirectory, workspaceDirectory } from "./paths";
 
 // Runtime data is intentionally outside the deployable Next.js source tree.
 export { dataDirectory };
@@ -32,8 +32,6 @@ export interface StoredExecution {
 /** All mutations are synchronous transactions so web and runner cannot lose updates. */
 export class StudioStore {
   readonly db: DatabaseSync;
-  /** Module library folder for this database. An in-memory database has none. */
-  readonly moduleLibrary?: string;
   /** Example project folder (the default workspace). An in-memory database has none. */
   readonly workspace?: string;
   /** What opening this database upgraded, for the setup page and diagnostics. */
@@ -41,7 +39,6 @@ export class StudioStore {
   constructor(path = join(dataDirectory(), "studio.sqlite")) {
     if (path !== ":memory:") {
       mkdirSync(dirname(path), { recursive: true });
-      this.moduleLibrary = moduleLibraryDirectory(undefined, dirname(path));
       this.workspace = workspaceDirectory(undefined, dirname(path));
     }
     this.db = new DatabaseSync(path);
@@ -52,11 +49,6 @@ export class StudioStore {
       this.migration = migrateDatabase(this.db, path === ":memory:" ? {} : { backupDir: join(dirname(path), "backups") });
       if (path !== ":memory:") {
         migrateDataLayout(dirname(path), appVersion);
-        if (this.moduleLibrary) {
-          // A shared library can be read-only (a team checkout); reading it does not need the marker.
-          try { migrateModuleLibrary(this.moduleLibrary, appVersion); }
-          catch (error) { if (error instanceof DataVersionError) throw error; console.warn(`模块库版本标记未写入：${error instanceof Error ? error.message : String(error)}`); }
-        }
       }
       if (appVersion) this.setMeta("appVersion", appVersion);
       // The web server and the runner open the same file; whichever starts first upgrades it. Keep the result so

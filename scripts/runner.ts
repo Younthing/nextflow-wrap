@@ -16,7 +16,6 @@ import { historySession, historyStatus, nextQueued, slotLimits } from "@/feature
 import { ingestEvent, reconcileTrace, refreshProgress } from "@/features/runs/server/tasks";
 import { resultFiles } from "@/features/runs/server/files";
 import { publishMode } from "@/features/runs/server/publish-mode";
-import { hostChainWorkflow, writeHostChainInputs } from "@/features/workflow/host-chain-demo";
 import type { PipelineParams } from "@/features/workflow/types";
 import { dataDirectory, store, type StoredExecution } from "@/lib/server/database";
 import { workDirectory } from "@/lib/server/paths";
@@ -68,18 +67,6 @@ async function seedDemo() {
   }
   const input = join(root, "samplesheet.csv");
   await writeFile(input, `sample,fastq_1,fastq_2\nSINGLE,${join(root, "single_R1.fastq.gz")},\nPAIRED,${join(root, "paired_R1.fastq.gz")},${join(root, "paired_R2.fastq.gz")}\n`, { flag: "wx" }).catch((error: NodeJS.ErrnoException) => { if (error.code !== "EEXIST") throw error; });
-  const hostRoot = join(dataDirectory(), "host-chain");
-  writeHostChainInputs(hostRoot);
-  const reads = join(hostRoot, "reads.fastq.gz");
-  await writeFile(reads, gzipSync(smokeFastq(3, 1, 4)), { flag: "wx" }).catch((error: NodeJS.ErrnoException) => { if (error.code !== "EEXIST") throw error; });
-  const hostInput = join(hostRoot, "samplesheet.csv");
-  await writeFile(hostInput, `sample,fastq_1,fastq_2\nHOST,${reads},\n`, { flag: "wx" }).catch((error: NodeJS.ErrnoException) => { if (error.code !== "EEXIST") throw error; });
-  if (!db.workflow("hostchain")) {
-    const demo = hostChainWorkflow(hostRoot, hostInput);
-    demo.id = "hostchain";
-    demo.updatedAt = new Date().toISOString();
-    db.saveWorkflow(demo);
-  }
 }
 
 function track(id: string, job: (controller: AbortController) => Promise<void>) {

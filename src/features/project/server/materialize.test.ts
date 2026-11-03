@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { indexModules } from "@/features/workflow/catalog";
-import { hostChainWorkflow } from "@/features/workflow/host-chain-demo";
+import { exampleModules, exampleWorkflow } from "@/features/notebook/examples";
 import { generateProject } from "../generate";
 import { materializeProject, projectPath, syncProject } from "./materialize";
 
@@ -17,7 +17,7 @@ describe("materializeProject", () => {
     const parent = await mkdtemp(join(tmpdir(), "nf-studio-"));
     temporaryDirectories.push(parent);
     const directory = join(parent, "project");
-    const project = generateProject(hostChainWorkflow("/tmp/inputs"), indexModules([]));
+    const project = generateProject(exampleWorkflow(), indexModules(exampleModules()));
     await materializeProject(project, directory);
     expect(await readFile(join(directory, "main.nf"), "utf8")).toContain("workflow {");
     expect(await readFile(join(directory, "nextflow.config"), "utf8")).toContain("profiles {");

@@ -1,6 +1,6 @@
 import { http, HttpResponse } from "msw";
-import { demoWorkflow } from "@/features/workflow/demo";
-import { EXAMPLE_MODULES } from "@/features/workflow/example-modules";
+import { fixtureWorkflow } from "@/features/workflow/fixture-workflows";
+import { FIXTURE_MODULES } from "@/features/workflow/fixture-modules";
 import { defaultLaunchConfig } from "@/features/project/launch";
 import { NEXTFLOW_VERSION } from "@/features/project/templates";
 import type { RunDetail } from "@/features/runs/types";
@@ -13,7 +13,7 @@ import { kernelHandlers } from "./kernels";
 import type { Project, ProjectList } from "@/features/workspace/types";
 
 export const storyWorkflow = {
-  ...demoWorkflow("wf_story"),
+  ...fixtureWorkflow("wf_story"),
   id: "wf_story",
   updatedAt: "2026-01-01T12:00:00.000Z",
 };
@@ -73,7 +73,7 @@ export const storyHandlers = [
   ...storageHandlers,
   ...diagnosticsHandlers,
   ...remoteHandlers,
-  http.get("/api/script-modules", () => HttpResponse.json({ modules: EXAMPLE_MODULES, references: {} })),
+  http.get("/api/script-modules", () => HttpResponse.json({ modules: FIXTURE_MODULES, references: {} })),
   // Editing a module opens a temporary notebook built from its saved copy.
   http.post("/api/script-modules/edit", async ({ request }) => {
     const { moduleId } = await request.json() as { moduleId: string };

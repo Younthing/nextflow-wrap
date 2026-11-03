@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { indexModules } from "@/features/workflow/catalog";
-import { demoWorkflow } from "@/features/workflow/demo";
-import { EXAMPLE_MODULES } from "@/features/workflow/example-modules";
+import { fixtureWorkflow } from "@/features/workflow/fixture-workflows";
+import { FIXTURE_MODULES } from "@/features/workflow/fixture-modules";
 import { generateProject } from "./generate";
 
 import {
@@ -90,7 +90,7 @@ describe("runtime profiles", () => {
     expect(conda).toContain("env.PYTHONNOUSERSITE = 1");
     expect(conda).toContain('env.R_ENVIRON_USER = "/.Renviron"');
     // Shell has no profile, so host runs still see packages installed with pip --user.
-    const config = generateProject(demoWorkflow("wf"), indexModules(EXAMPLE_MODULES)).files.find((file) => file.path === "nextflow.config")!.content;
+    const config = generateProject(fixtureWorkflow("wf"), indexModules(FIXTURE_MODULES)).files.find((file) => file.path === "nextflow.config")!.content;
     expect(config.replace(/\n {4}\w+ \{[\s\S]*?\n {4}\}/g, "")).not.toContain("PYTHONNOUSERSITE");
     expect(config).toContain("env.PYTHONNOUSERSITE = 1");
   });

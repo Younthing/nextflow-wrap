@@ -3,13 +3,13 @@ import { ReactFlowProvider } from "@xyflow/react";
 
 import { BUILTIN_MODULES } from "@/features/workflow/builtins";
 import { indexModules } from "@/features/workflow/catalog";
-import { demoWorkflow } from "@/features/workflow/demo";
-import { EXAMPLE_MODULES } from "@/features/workflow/example-modules";
+import { fixtureWorkflow } from "@/features/workflow/fixture-workflows";
+import { FIXTURE_MODULES } from "@/features/workflow/fixture-modules";
 import type { ModuleDef, WorkflowDoc } from "@/features/workflow/types";
 import { createEditorStore, type EditorStore } from "../store";
 import { EditorProvider } from "../editor-provider";
 
-export const storyModules = [...BUILTIN_MODULES, ...EXAMPLE_MODULES];
+export const storyModules = [...BUILTIN_MODULES, ...FIXTURE_MODULES];
 
 const fixtureStores = new WeakMap<Element, EditorStore>();
 
@@ -25,9 +25,9 @@ export function getStoryEditorStore(root: HTMLElement): EditorStore {
 
 /** Seeds the editor store so editor components render outside the app. */
 export function EditorFixture({
-  doc = demoWorkflow("wf_story"),
+  doc = fixtureWorkflow("wf_story"),
   selectedNodeIds = [],
-  modules = EXAMPLE_MODULES,
+  modules = FIXTURE_MODULES,
   children,
 }: {
   doc?: WorkflowDoc;

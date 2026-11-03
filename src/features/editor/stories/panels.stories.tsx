@@ -7,7 +7,7 @@ import type { PortDef } from "@/features/workflow/types";
 import { ModuleLibrary } from "../components/module-library";
 import { NodeSearchDialog } from "../components/node-search-dialog";
 import { SchemaForm } from "../components/schema-form";
-import { EXAMPLE_CLUSTER_ID } from "@/features/workflow/example-modules";
+import { FIXTURE_CLUSTER_ID } from "@/features/workflow/fixture-modules";
 import { storyModules } from "./fixtures";
 
 const meta = {
@@ -54,7 +54,7 @@ export const NodeSearch: Story = {
 
 const samplesheet = storyModules.find((m) => m.id === SAMPLESHEET_ID)!;
 const clustered = storyModules
-  .find((module) => module.id === EXAMPLE_CLUSTER_ID)!
+  .find((module) => module.id === FIXTURE_CLUSTER_ID)!
   .outputs.find((port) => port.name === "adata")!;
 
 export const NodeSearchFromPort: Story = {

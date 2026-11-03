@@ -8,8 +8,7 @@ import type { DatabaseSync } from "node:sqlite";
  *
  * - `studio.sqlite`: `PRAGMA user_version` plus `SCHEMA_MIGRATIONS`. Before upgrading an existing file the
  *   database is copied to `backups/` with `VACUUM INTO`.
- * - The data directory and the module library: a small `layout.json` / `library.json` with `formatVersion`,
- *   upgraded by `LAYOUT_MIGRATIONS` / `LIBRARY_MIGRATIONS`.
+ * - The data directory: a small `layout.json` with `formatVersion`, upgraded by `LAYOUT_MIGRATIONS`.
  *
  * A file written by a newer app is refused instead of being read wrongly, so a downgrade never loses data.
  * Other features that keep their own files (the workspace's `studio.json`) carry their own format version.
@@ -124,15 +123,10 @@ export interface DirectoryMigration {
 
 /**
  * Data directory layout.
- * 1: `studio.sqlite`, `pipelines/<workflow>/`, shared `work/`, `executions/<lineage>/attempts/<run>/`, `library/modules/`.
+ * 1: `studio.sqlite`, `pipelines/<workflow>/`, shared `work/`, `executions/<lineage>/attempts/<run>/`. (Version 1 data directories may still hold an unused `library/modules/`.)
  */
 export const LAYOUT_MIGRATIONS: readonly DirectoryMigration[] = [
   { version: 1, description: "per-workflow launch directories, a shared work directory and execution records", up: () => {} },
-];
-
-/** Module library layout. 1: `<namespace>/<name>/<version>/` with `main.nf`, `meta.yml`, `module.json`. */
-export const LIBRARY_MIGRATIONS: readonly DirectoryMigration[] = [
-  { version: 1, description: "one folder per published module version", up: () => {} },
 ];
 
 interface VersionFile { formatVersion: number; updatedAt: string; appVersion?: string }
@@ -171,4 +165,3 @@ export function migrateDirectory(root: string, file: string, migrations: readonl
 }
 
 export const migrateDataLayout = (dataDir: string, appVersion?: string) => migrateDirectory(dataDir, "layout.json", LAYOUT_MIGRATIONS, appVersion);
-export const migrateModuleLibrary = (libraryDir: string, appVersion?: string) => migrateDirectory(libraryDir, "library.json", LIBRARY_MIGRATIONS, appVersion);

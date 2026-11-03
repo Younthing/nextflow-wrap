@@ -58,8 +58,6 @@ export interface ModuleDef {
   inputs: PortDef[];
   outputs: PortDef[];
   builtin?: boolean;
-  /** Host-command process used to exercise patterns. */
-  temporary?: boolean;
   /** Builtin functional node or a notebook-published CLI. */
   origin?: ModuleOrigin;
   /** Bumped each time a notebook export overwrites the module: `v1`, `v2`, … The id stays the same. */

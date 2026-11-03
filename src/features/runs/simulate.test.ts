@@ -2,17 +2,17 @@ import { describe, expect, it } from "vitest";
 
 import { defaultLaunchConfig } from "@/features/project/launch";
 import { indexModules } from "@/features/workflow/catalog";
-import { readsQcWorkflow } from "@/features/workflow/demo";
-import { EXAMPLE_MODULES } from "@/features/workflow/example-modules";
+import { fixtureReadsWorkflow } from "@/features/workflow/fixture-workflows";
+import { FIXTURE_MODULES } from "@/features/workflow/fixture-modules";
 import type { PipelineParams } from "@/features/workflow/types";
 import { simulateRun } from "./simulate";
 
-const index = indexModules(EXAMPLE_MODULES);
+const index = indexModules(FIXTURE_MODULES);
 const T0 = Date.parse("2026-01-01T00:00:00Z");
 const HOUR = 3_600_000;
 
 function run(extra: { params?: PipelineParams; cancelledAt?: number } = {}) {
-  const workflow = readsQcWorkflow("wf");
+  const workflow = fixtureReadsWorkflow("wf");
   return {
     id: "run_test",
     workflow,

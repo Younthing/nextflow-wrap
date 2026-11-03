@@ -3,8 +3,8 @@ import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { demoNotebooks, demoScriptModules } from "@/features/notebook/seed";
-import { readsQcWorkflow } from "@/features/workflow/demo";
+import { fixtureNotebooks, fixtureScriptModules } from "@/features/notebook/test-fixtures";
+import { fixtureReadsWorkflow } from "@/features/workflow/fixture-workflows";
 import { StudioStore } from "./database";
 import { SCHEMA_VERSION } from "./migrations";
 
@@ -27,7 +27,7 @@ describe("StudioStore", () => {
     const directory = mkdtempSync(join(tmpdir(), "studio-db-"));
     try {
       const first = new StudioStore(join(directory, "studio.sqlite"));
-      first.saveWorkflow(readsQcWorkflow("qc-smoke"));
+      first.saveWorkflow(fixtureReadsWorkflow("qc-smoke"));
       expect(() => first.transaction(() => { first.deleteWorkflow("qc-smoke"); throw new Error("rollback"); })).toThrow("rollback");
       first.close();
       const reopened = new StudioStore(join(directory, "studio.sqlite"));
@@ -40,7 +40,7 @@ describe("StudioStore", () => {
     const directory = mkdtempSync(join(tmpdir(), "studio-db-"));
     try {
       const db = new StudioStore(join(directory, "studio.sqlite"));
-      const original = readsQcWorkflow("qc-smoke");
+      const original = fixtureReadsWorkflow("qc-smoke");
       db.saveWorkflow(original);
       const renamed = db.putWorkflow({ ...original, name: "壳复验改名" });
       expect(renamed.status).toBe("ok");
@@ -59,7 +59,7 @@ describe("StudioStore", () => {
     const directory = mkdtempSync(join(tmpdir(), "studio-db-"));
     try {
       const db = new StudioStore(join(directory, "studio.sqlite"));
-      const notebook = demoNotebooks().find((doc) => doc.id === "sample_clean")!;
+      const notebook = fixtureNotebooks().find((doc) => doc.id === "sample_clean")!;
       const saved = db.saveNotebook({ ...notebook, rev: 1 });
       expect(saved.rev).toBe(1);
       const renamed = db.saveNotebook({ ...saved, name: "样本表清洗 2" });
@@ -76,7 +76,7 @@ describe("StudioStore", () => {
     try {
       const db = new StudioStore(join(directory, "studio.sqlite"));
       const mod = {
-        ...demoScriptModules().find((item) => item.id === "script/hello_py")!,
+        ...fixtureScriptModules().find((item) => item.id === "script/hello_py")!,
         condaYaml: "/envs/py311-pandas.yml",
         containerImage: "ghcr.io/org/py311-pandas:1.2",
       };
@@ -96,7 +96,7 @@ describe("StudioStore", () => {
     try {
       const path = join(directory, "studio.sqlite");
       const legacy = new DatabaseSync(path);
-      const doc = demoNotebooks().find((item) => item.id === "sample_clean")!;
+      const doc = fixtureNotebooks().find((item) => item.id === "sample_clean")!;
       legacy.exec("PRAGMA user_version=2; CREATE TABLE notebooks (id TEXT PRIMARY KEY, updated TEXT NOT NULL, data TEXT NOT NULL);");
       legacy.prepare("INSERT INTO notebooks(id, updated, data) VALUES (?,?,?)").run(doc.id, doc.updatedAt, JSON.stringify(doc));
       legacy.close();

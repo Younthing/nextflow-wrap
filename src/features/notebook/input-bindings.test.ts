@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { demoNotebooks } from "./seed";
+import { fixtureNotebooks } from "./test-fixtures";
 import { simulateTryRun } from "./simulate";
 import { stageInputPlan } from "./input-bindings-stage";
 import {
@@ -147,7 +147,7 @@ describe("stageInputPlan", () => {
 
 describe("simulateTryRun bindings", () => {
   it("names each port source in the demo log", () => {
-    const hello = demoNotebooks().find((doc) => doc.id === "hello_py")!;
+    const hello = fixtureNotebooks().find((doc) => doc.id === "hello_py")!;
     const record = simulateTryRun(hello, [{ port: "samplesheet", source: "sample", value: "samplesheet" }]);
     expect(record.passed).toBe(true);
     expect(record.log).toContain("输入 samplesheet · 样例 · 内置样例：samplesheet.csv");
