@@ -135,6 +135,13 @@ export const handlers = [
     return doc ? HttpResponse.json(doc) : HttpResponse.json({ message: "笔记本不存在" }, { status: 404 });
   }),
 
+  http.delete("/api/notebooks/:id", ({ params }) => {
+    const id = params.id as string;
+    if (!readDb().notebooks[id]) return HttpResponse.json({ message: "笔记本不存在" }, { status: 404 });
+    writeDb((db) => { delete db.notebooks[id]; });
+    return new HttpResponse(null, { status: 204 });
+  }),
+
   http.put("/api/notebooks/:id", async ({ params, request }) => {
     const id = params.id as string;
     const current = readDb().notebooks[id];

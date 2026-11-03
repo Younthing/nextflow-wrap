@@ -6,23 +6,25 @@ import { BarChart3, FileText, Folder, FolderOpen, PackageOpen } from "lucide-rea
 import { AsyncPlaceholder } from "@/components/ui/async-placeholder";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { OutputRenderer } from "@/features/output/output-renderer";
-import { viewFromText, type OutputView } from "@/features/output/model";
 import { cn } from "@/lib/utils";
 import { formatBytes } from "../format";
 import type { ResultFile } from "../outputs";
-import { firstPreviewable, imageMime, isBinaryPreview } from "../preview";
-import { useAnnDataSummary, useHealthStatus, useResultBlob, useResultContent, useRunLog, useRunResults } from "../queries";
-import { staticReportHtml } from "../report-preview";
+import { firstPreviewable } from "../preview";
+import { runKeys, useHealthStatus, useRunLog, useRunResults } from "../queries";
 import type { TaskRecord } from "../types";
 import { RemoteResultsNotice } from "@/features/remote/components/remote-results-notice";
 import type { RemoteRunState } from "@/features/remote/types";
 import type { WorkflowDoc } from "@/features/workflow/types";
-import { AnnDataSummaryView } from "./anndata-summary";
-import { MoleculeViewer } from "./molecule-viewer";
+import { FilePreview, type PreviewSource } from "./file-preview";
 import { ResultSource } from "./result-source";
 
 const MULTIQC = "multiqc/multiqc_report.html";
+
+/** Result files of a run, read from its --outdir. */
+function resultSource(runId: string): PreviewSource {
+  const url = (kind: string) => (path: string) => `/api/runs/${runId}/results/${kind}?path=${encodeURIComponent(path)}`;
+  return { key: runKeys.detail(runId), contentUrl: url("content"), summaryUrl: url("summary") };
+}
 
 function DirectoryPlaceholder({ path, description }: { path: string; description: string }) {
   return (
@@ -30,70 +32,6 @@ function DirectoryPlaceholder({ path, description }: { path: string; description
       <code className="rounded bg-secondary px-2 py-1 font-mono text-xs">{path}</code>
     </AsyncPlaceholder>
   );
-}
-
-function BlobPreview({ blob, view }: { blob: Blob; view: (src: string) => OutputView }) {
-  const src = React.useMemo(() => URL.createObjectURL(blob), [blob]);
-  React.useEffect(() => () => URL.revokeObjectURL(src), [src]);
-  return <OutputRenderer view={view(src)} className="min-h-0 flex-1" />;
-}
-
-function Preview({ runId, file, outdir }: { runId: string; file: ResultFile; outdir: string }) {
-  const binary = isBinaryPreview(file.preview);
-  const textual = file.preview === "html" || file.preview === "markdown" || file.preview === "csv" || file.preview === "tsv" || file.preview === "text" || file.preview === "molecule";
-  const content = useResultContent(runId, textual ? file.path : null);
-  const summary = useAnnDataSummary(runId, file.preview === "anndata" ? file.path : null);
-  const blob = useResultBlob(runId, binary ? file.path : null);
-  const fullPath = `${outdir.replace(/\/$/, "")}/${file.path}`;
-  const reportHtml = React.useMemo(
-    () => (file.preview === "html" && content.data ? staticReportHtml(content.data.body) : ""),
-    [file.preview, content.data],
-  );
-
-  if (!file.preview) {
-    if (file.path.endsWith("/")) return <DirectoryPlaceholder path={fullPath} description="目录" />;
-    return (
-      <AsyncPlaceholder
-        status="empty"
-        className="flex-1"
-        icon={<PackageOpen />}
-        description={`二进制文件 · ${formatBytes(file.size)}`}
-      >
-        <code className="rounded bg-secondary px-2 py-1 font-mono text-xs">{fullPath}</code>
-      </AsyncPlaceholder>
-    );
-  }
-  if (file.preview === "anndata") {
-    if (summary.isPending) return <AsyncPlaceholder status="pending" className="flex-1" />;
-    if (summary.error) return <AsyncPlaceholder status="error" className="h-auto" message={`无法读取摘要：${summary.error.message}`} />;
-    return <AnnDataSummaryView summary={summary.data} />;
-  }
-  const pending = binary ? blob.isPending : content.isPending;
-  const error = binary ? blob.error : content.error;
-  if (pending) return <AsyncPlaceholder status="pending" className="flex-1" />;
-  if (error) {
-    return <AsyncPlaceholder status="error" className="h-auto" message={`读取失败：${error.message}`} />;
-  }
-  if (binary && blob.data) {
-    const mime = imageMime(file.preview);
-    return (
-      <BlobPreview
-        blob={blob.data}
-        view={(src) => mime
-          ? { kind: "image", mime, src, alt: file.path }
-          : { kind: "pdf", src, title: file.path }}
-      />
-    );
-  }
-  if (!content.data) return <AsyncPlaceholder status="pending" className="flex-1" />;
-  if (file.preview === "html") {
-    return <OutputRenderer view={{ kind: "html-document", html: reportHtml, title: file.path }} className="min-h-0 flex-1" />;
-  }
-  if (file.preview === "molecule") return <MoleculeViewer path={file.path} text={content.data.body} />;
-  if (file.preview === "markdown" || file.preview === "csv" || file.preview === "tsv" || file.preview === "text") {
-    return <OutputRenderer view={viewFromText(file.preview, content.data.body)} className="min-h-0 flex-1" />;
-  }
-  return <AsyncPlaceholder status="pending" className="flex-1" />;
 }
 
 /** Files under --outdir grouped by their first directory (one per module). */
@@ -209,7 +147,7 @@ export function RunResults({ runId, active, outdir, workflow, tasks = [], remote
               <ResultSource file={current} fullPath={`${outdir.replace(/\/$/, "")}/${current.path}`} workflow={workflow} tasks={tasks} />
               {health.data?.mocked === false && <Button asChild variant="outline" size="sm" className="self-start"><a href={`/api/runs/${runId}/results/content?download=1&path=${encodeURIComponent(current.path)}`}>下载原始文件</a></Button>}
               {current.preview === "html" && <p className="text-xs text-muted-foreground">静态预览</p>}
-              <Preview key={current.path} runId={runId} file={current} outdir={outdir} />
+              <FilePreview key={current.path} source={resultSource(runId)} file={current} fullPath={`${outdir.replace(/\/$/, "")}/${current.path}`} />
             </>
           ) : (
             <DirectoryPlaceholder path={outdir} description="无可预览的文件" />

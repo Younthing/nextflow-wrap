@@ -120,6 +120,8 @@ export class StudioStore {
     const row = this.db.prepare("SELECT data FROM notebooks WHERE id=?").get(id);
     return row ? JSON.parse(String(row.data)) as NotebookDoc : undefined;
   }
+  /** Removes the notebook. Its revisions and try-run receipts stay, for modules published from it. */
+  deleteNotebook(id: string) { this.db.prepare("DELETE FROM notebooks WHERE id=?").run(id); }
   notebookCount(): number {
     return Number(this.db.prepare("SELECT COUNT(*) AS n FROM notebooks").get()?.n ?? 0);
   }

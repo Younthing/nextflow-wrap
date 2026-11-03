@@ -85,23 +85,21 @@ const editSchema = z.object({
 });
 
 /**
- * The example project is always there: a project row whose folder is the database's default workspace. A new
- * data directory also gets its content once: four analysis notebooks, the modules exported from them, a workflow
- * that chains them, and the example data in `data/`. Deleting them later does not bring them back.
+ * A new data directory starts with the example project: an ordinary project whose folder is the database's default
+ * workspace, preset with four analysis notebooks, the modules exported from them, a workflow that chains them, and
+ * the example data in `data/`. Once: removing the project or any of its content later does not bring it back.
  */
 export function ensureExampleProject(db: StudioStore = store()) {
-  const folder = db.workspace ?? join(dataDirectory(), "projects", "example");
-  if (!db.project(EXAMPLE_PROJECT_ID)) {
-    mkdirSync(folder, { recursive: true });
-    // Older than anything the user opens, so it sits at the bottom of the recent list until it is used.
-    db.saveProject({ id: EXAMPLE_PROJECT_ID, name: "示例项目", path: folder, createdAt: new Date().toISOString(), openedAt: "1970-01-01T00:00:00.000Z", example: true });
-  }
   if (db.meta(EXAMPLE_SEEDED)) return;
+  const folder = db.workspace ?? join(dataDirectory(), "projects", "example");
+  mkdirSync(folder, { recursive: true });
   const notebooks = exampleNotebooks(EXAMPLE_PROJECT_ID);
   const modules = exampleModules(notebooks);
   const copies = exampleLibraryCopies(notebooks, modules);
   db.transaction(() => {
     if (db.meta(EXAMPLE_SEEDED)) return;
+    const now = new Date().toISOString();
+    if (!db.project(EXAMPLE_PROJECT_ID)) db.saveProject({ id: EXAMPLE_PROJECT_ID, name: "示例项目", path: folder, createdAt: now, openedAt: now });
     for (const doc of notebooks) {
       db.insertNotebookSnapshot(doc);
       db.saveRevision({ notebookId: doc.id, rev: doc.rev, cells: doc.cells, savedAt: doc.updatedAt });
@@ -135,6 +133,25 @@ function requireNotebook(db: StudioStore, id: string): NotebookDoc {
 function workspaceOf(db: StudioStore, doc: NotebookDoc): string | undefined {
   const projectId = doc.projectId;
   return db.project(projectId)?.path;
+}
+
+/**
+ * Delete notebooks: their kernels stop, their files in the project folder go, and their rows leave the database.
+ * Revisions stay for the modules published from them. A file already removed by the caller is fine.
+ */
+export async function deleteNotebooks(db: StudioStore, ids: string[]): Promise<void> {
+  for (const id of ids) {
+    const doc = db.notebook(id);
+    if (!doc) continue;
+    shutdownKernel(id);
+    if (!doc.temporary) await (await notebookFiles(db, doc.projectId))?.remove(id);
+    db.deleteNotebook(id);
+  }
+}
+
+/** Notebooks of a project whose `.ipynb` files are at, or under, these workspace-relative paths. */
+export async function notebooksAtPaths(db: StudioStore, projectId: string, paths: string[]): Promise<string[]> {
+  return (await notebookFiles(db, projectId))?.notebooksAt(paths) ?? [];
 }
 
 function newNotebookId(db: StudioStore): string {
@@ -249,6 +266,12 @@ export async function handleNotebookApi(method: string, path: string[], request:
   if (!/^[\w-]{1,80}$/.test(id)) throw new HttpError(400, "无效的笔记本 id");
 
   if (!action && method === "GET") return json(requireNotebook(db, id));
+
+  if (!action && method === "DELETE") {
+    requireNotebook(db, id);
+    await deleteNotebooks(db, [id]);
+    return new Response(null, { status: 204 });
+  }
 
   // Keep a temporary notebook: it joins the project's notebooks and gets its file.
   if (action === "keep" && method === "POST") {

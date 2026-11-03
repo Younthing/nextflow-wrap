@@ -1,8 +1,9 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { handleNotebookApi } from "@/features/notebook/server/http";
 import { handleProjectsApi } from "@/features/workspace/server/http";
 import { EXAMPLE_PROJECT_ID } from "@/features/workspace/projects";
 import { StudioStore } from "@/lib/server/database";
@@ -12,7 +13,7 @@ describe("example project on a fresh install", () => {
   let dir: string;
   afterEach(() => { if (dir) rmSync(dir, { recursive: true, force: true }); });
 
-  it("is always listed, with its notebooks, modules, workflow and data", async () => {
+  it("is listed once, with its notebooks, modules, workflow and data", async () => {
     dir = mkdtempSync(join(tmpdir(), "nfs-example-"));
     const db = new StudioStore(join(dir, "studio.sqlite"));
     try {
@@ -30,6 +31,22 @@ describe("example project on a fresh install", () => {
       await handleProjectsApi("GET", ["projects"], new Request("http://studio.local/api/projects"), db);
       expect(db.workflow("example_expression")).toBeUndefined();
       expect(db.project(EXAMPLE_PROJECT_ID)).toBeDefined();
+      // Its notebooks open and can be deleted, file and all.
+      const opened = await handleNotebookApi("GET", ["notebooks", "count_qc"], new Request("http://studio.local/api/notebooks/count_qc"), db);
+      expect(opened.status).toBe(200);
+      const files = () => readdirSync(join(example!.path, "notebooks"));
+      expect(files().length).toBe(4);
+      const deleted = await handleNotebookApi("DELETE", ["notebooks", "count_qc"], new Request("http://studio.local/api/notebooks/count_qc", { method: "DELETE" }), db);
+      expect(deleted.status).toBe(204);
+      expect(db.notebook("count_qc")).toBeUndefined();
+      expect(files().length).toBe(3);
+      await handleNotebookApi("GET", ["notebooks"], new Request("http://studio.local/api/notebooks"), db);
+      expect(db.notebook("count_qc")).toBeUndefined();
+      // It is an ordinary project: removing it from the list does not bring it back either.
+      const removed = await handleProjectsApi("DELETE", ["projects", EXAMPLE_PROJECT_ID], new Request(`http://studio.local/api/projects/${EXAMPLE_PROJECT_ID}`, { method: "DELETE" }), db);
+      expect(removed.status).toBe(204);
+      const after = await (await handleProjectsApi("GET", ["projects"], new Request("http://studio.local/api/projects"), db)).json() as { projects: { id: string }[] };
+      expect(after.projects.map((project) => project.id)).not.toContain(EXAMPLE_PROJECT_ID);
     } finally {
       db.close();
     }

@@ -47,7 +47,7 @@ function seed(): MockDb {
     libraryCopies: Object.fromEntries(exampleLibraryCopies(notebooks, modules).map((copy) => [copy.moduleId, copy])),
     tryRuns: {},
     projects: {
-      [EXAMPLE_PROJECT_ID]: { id: EXAMPLE_PROJECT_ID, name: "示例项目", path: MOCK_EXAMPLE_PROJECT_PATH, createdAt: "2026-01-01T00:00:00.000Z", openedAt: "1970-01-01T00:00:00.000Z", example: true },
+      [EXAMPLE_PROJECT_ID]: { id: EXAMPLE_PROJECT_ID, name: "示例项目", path: MOCK_EXAMPLE_PROJECT_PATH, createdAt: "2026-01-01T00:00:00.000Z", openedAt: "2026-01-01T00:00:00.000Z" },
     },
   };
 }

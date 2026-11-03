@@ -17,7 +17,7 @@ import type { StudioStore } from "@/lib/server/database";
  * - A save writes the file. If the file changed on disk since the app last saw it, the save is refused
  *   with a conflict instead of overwriting the other edit.
  * - A file without app metadata (dropped in, or made in Jupyter) becomes a new notebook.
- * - A notebook whose file is missing is written again; deleting notebooks is not supported yet.
+ * - A notebook whose file is missing is written again. Deleting a notebook (`remove`) deletes its file.
  */
 export class NotebookConflictError extends Error {}
 
@@ -60,6 +60,22 @@ export class NotebookFiles {
   pathOf(id: string): string | undefined {
     const entry = this.entries.get(id);
     return entry ? `${FOLDER}/${entry.file}` : undefined;
+  }
+
+  /** Ids of the notebooks whose files are `paths` (workspace-relative) or lie under them. */
+  notebooksAt(paths: string[]): string[] {
+    return [...this.entries].filter(([, entry]) => {
+      const path = `${FOLDER}/${entry.file}`;
+      return paths.some((target) => path === target || path.startsWith(`${target.replace(/\/$/, "")}/`) || target === "");
+    }).map(([id]) => id);
+  }
+
+  /** Forget a notebook and delete its file, if it still has one. */
+  async remove(id: string): Promise<void> {
+    const entry = this.entries.get(id);
+    if (!entry) return;
+    this.entries.delete(id);
+    await rm(join(this.folder, entry.file), { force: true });
   }
 
   private chooseFile(doc: NotebookDoc): string {
@@ -211,7 +227,7 @@ export function notebookFiles(db: StudioStore, projectId: string = EXAMPLE_PROJE
     const root = project?.path;
     if (!root) return Promise.resolve(undefined);
     pending = (async () => {
-      if (!project?.example && !(await stat(root).then((info) => info.isDirectory(), () => false))) {
+      if (!(await stat(root).then((info) => info.isDirectory(), () => false))) {
         cache.delete(projectId);
         return undefined;
       }

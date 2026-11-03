@@ -184,26 +184,26 @@ export function useRunResults(id: string, active: boolean) {
   });
 }
 
-export function useResultBlob(id: string, path: string | null) {
+/** Bytes of a file to preview (an image or a PDF). `key` names the cache entry; no URL means nothing to fetch. */
+export function useFileBlob(key: readonly unknown[], url: string | null) {
   return useQuery({
-    queryKey: [...runKeys.detail(id), "blob", path],
+    queryKey: [...key, "blob", url],
     queryFn: async () => {
-      const res = await fetch(`/api/runs/${id}/results/content?path=${encodeURIComponent(path ?? "")}`);
+      const res = await fetch(url ?? "");
       if (!res.ok) throw new Error((await res.json().catch(() => null))?.message ?? res.statusText);
       return res.blob();
     },
-    enabled: !!path,
+    enabled: !!url,
     staleTime: Infinity,
   });
 }
 
-export function useResultContent(id: string, path: string | null) {
+/** Text of a file to preview, with its content type. */
+export function useFileText(key: readonly unknown[], url: string | null) {
   return useQuery({
-    queryKey: [...runKeys.detail(id), "content", path],
+    queryKey: [...key, "content", url],
     queryFn: async () => {
-      const res = await fetch(
-        `/api/runs/${id}/results/content?path=${encodeURIComponent(path ?? "")}`,
-      );
+      const res = await fetch(url ?? "");
       if (!res.ok)
         throw new Error(
           (await res.json().catch(() => null))?.message ?? res.statusText,
@@ -213,18 +213,34 @@ export function useResultContent(id: string, path: string | null) {
         body: await res.text(),
       };
     },
-    enabled: !!path,
+    enabled: !!url,
     staleTime: Infinity,
   });
 }
 
-/** Server-side summary of an `.h5ad` result: shape, columns and embeddings. */
-export function useAnnDataSummary(id: string, path: string | null) {
+/** Server-side summary of an `.h5ad` file: shape, columns and embeddings. */
+export function useAnnDataSummaryAt(key: readonly unknown[], url: string | null) {
   return useQuery({
-    queryKey: [...runKeys.detail(id), "summary", path],
-    queryFn: () => api<AnnDataSummary>(`/runs/${id}/results/summary?path=${encodeURIComponent(path ?? "")}`),
-    enabled: !!path,
+    queryKey: [...key, "summary", url],
+    queryFn: () => api<AnnDataSummary>(url!.replace(/^\/api/, "")),
+    enabled: !!url,
     staleTime: Infinity,
     retry: false,
   });
+}
+
+const resultUrl = (id: string, path: string | null, kind = "content") =>
+  path ? `/api/runs/${id}/results/${kind}?path=${encodeURIComponent(path)}` : null;
+
+export function useResultBlob(id: string, path: string | null) {
+  return useFileBlob(runKeys.detail(id), resultUrl(id, path));
+}
+
+export function useResultContent(id: string, path: string | null) {
+  return useFileText(runKeys.detail(id), resultUrl(id, path));
+}
+
+/** Server-side summary of an `.h5ad` result: shape, columns and embeddings. */
+export function useAnnDataSummary(id: string, path: string | null) {
+  return useAnnDataSummaryAt(runKeys.detail(id), resultUrl(id, path, "summary"));
 }
