@@ -165,18 +165,17 @@ function tryRunLog(page: Page) {
 
 async function publish(page: Page, version: "v1" | "v2", condaYaml: string, image: string, shotName: string) {
   await exportModule(page);
-  await page.waitForURL(/\/publish\?step=1/);
-  await expect(page.getByRole("button", { name: "下一步：试跑" })).toBeEnabled();
-  await page.getByRole("button", { name: "下一步：试跑" }).click();
+  await page.waitForURL(/\/publish$/);
+  await page.getByText("试跑输入", { exact: true }).click();
   await expect(page.locator("#arg-title")).toHaveValue("S1");
   await page.locator("#publish-env-conda").fill(condaYaml);
   await page.locator("#publish-env-container").fill(image);
-  await page.getByRole("button", { name: "开始试跑" }).click();
+  await page.getByRole("button", { name: "只试跑" }).click();
   const tryLog = tryRunLog(page);
   await expect
     .poll(
       async () => {
-        const alert = page.locator("section").filter({ has: page.getByRole("heading", { name: "试跑参数" }) }).getByRole("alert");
+        const alert = page.locator("section").filter({ has: page.getByRole("heading", { name: "模块信息" }) }).getByRole("alert");
         if (await alert.count()) throw new Error(await alert.first().innerText());
         const heading = await page.getByRole("heading", { name: /^日志/ }).innerText();
         if (heading.includes("失败")) throw new Error(`${heading}\n${await tryLog.innerText()}`);
@@ -191,8 +190,6 @@ async function publish(page: Page, version: "v1" | "v2", condaYaml: string, imag
   await expect(tryLog).toContainText(`e2e docker shim: image ${image}`);
   await expect(tryLog).not.toContainText("选用本机");
   await expect(page.getByRole("cell", { name: "符合" }).first()).toBeVisible();
-  await expect(page.getByRole("button", { name: "下一步：保存" })).toBeEnabled();
-  await page.getByRole("button", { name: "下一步：保存" }).click();
   await expect(page.locator("#publish-env-conda")).toHaveValue(condaYaml);
   await expect(page.locator("#publish-env-container")).toHaveValue(image);
   await expect(page.locator("#module-version")).toHaveValue(new RegExp(`^${version}`));
@@ -201,7 +198,7 @@ async function publish(page: Page, version: "v1" | "v2", condaYaml: string, imag
   await expect(page.getByText(`container '${image}'`).first()).toBeVisible();
   if (version === "v2") await page.locator("#module-changelog").fill("第二次发布，画布上的 v1 复跑应命中缓存");
   await shot(page, shotName);
-  await page.getByRole("button", { name: `保存为模块 ${version}` }).click();
+  await page.getByRole("button", { name: version === "v1" ? "新建模块" : new RegExp(`^覆盖 .* → ${version}$`) }).click();
   await page.waitForURL("**/modules");
 }
 

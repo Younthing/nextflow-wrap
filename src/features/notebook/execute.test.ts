@@ -1,18 +1,21 @@
-import { chmod, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
 import { convertNotebook, scriptFileName } from "./convert";
-import { executeCells, executeTryRun } from "./execute";
+import { CommandError } from "@/features/project/server/command";
+import { executeCells, executeTryRun, type TryRunExecOptions } from "./execute";
 import { SAMPLE_PDF } from "@/features/output/samples";
 import { planMime } from "./mime";
 import { fixtureNotebooks } from "./test-fixtures";
 import { simulateTryRun } from "./simulate";
 import type { PortBindingRequest } from "./input-bindings";
 import type { CellOutput, NotebookCell, NotebookDoc } from "./types";
+
+/** Real `nextflow module run` starts a JVM per try-run. */
+const NEXTFLOW_TIMEOUT = 120_000;
 
 const qc = () => fixtureNotebooks().find((doc) => doc.id === "qc_summary")!;
 
@@ -23,7 +26,7 @@ const qcBindings: PortBindingRequest[] = [
 ];
 
 describe("executeTryRun", () => {
-  it("runs the generated qc_summary CLI and checks output files", async () => {
+  it("runs the generated qc_summary module with nextflow module run and checks output files", async () => {
     const notebook = qc();
     const scriptName = scriptFileName(convertNotebook(notebook).entry);
     const record = await executeTryRun(notebook, qcBindings);
@@ -47,56 +50,61 @@ describe("executeTryRun", () => {
       ["min_q", "path"],
       ["title", "path"],
     ]);
-    expect(record.log).toContain(`$ python3 ${scriptName} `);
+    expect(record.log).toContain("Nextflow 模块测试：modules/local/qc_summary");
+    expect(record.log).toContain("$ nextflow module run local/qc_summary --fastq_zip inputs/");
+    expect(record.log).not.toContain(`$ python3 ${scriptName}`);
     expect(record.log).not.toContain("main.py");
     const demo = simulateTryRun(notebook, qcBindings);
     const commandLine = (log: string) => log.split("\n").find((line) => line.startsWith("$"));
     expect(demo.log.split("\n")[0]).toBe(record.log.split("\n")[0]);
     expect(commandLine(demo.log)).toBe(commandLine(record.log));
     expect(demo.envVia).toBe("host");
-  });
+  }, NEXTFLOW_TIMEOUT);
 });
 
-const shimPath = fileURLToPath(new URL("../../../scripts/e2e-docker-shim.sh", import.meta.url));
-
-async function fakeConda(dir: string): Promise<{ bin: string; log: string }> {
-  const log = join(dir, "conda.log");
-  const bin = join(dir, "conda");
-  const quoted = log.replaceAll("'", "'\\''");
-  await writeFile(bin, `#!/bin/sh
-printf '%s\\n' "$*" >> '${quoted}'
-if [ "$1" = "env" ] || [ "$1" = "create" ]; then
-  exit 0
-fi
-while [ "$#" -gt 0 ]; do
-  if [ "$1" = "python3" ] || [ "$1" = "Rscript" ]; then
-    exec "$@"
-  fi
-  shift
-done
-echo "conda shim: no interpreter" >&2
-exit 1
-`);
-  await chmod(bin, 0o755);
-  return { bin, log };
+/** A stand-in for `nextflow module run`: records the call and the draft module, then writes the outputs. */
+function fakeNextflow(outputs: Record<string, string> = { report: "qc_report.html", stats: "qc_stats.tsv" }) {
+  const calls: { args: string[]; cwd: string; env: NodeJS.ProcessEnv; config: string; main: string }[] = [];
+  const run = async (_bin: string, args: string[], options: { cwd?: string; env?: NodeJS.ProcessEnv } = {}) => {
+    const cwd = options.cwd ?? "";
+    const target = args[args.indexOf("run") + 1];
+    calls.push({
+      args,
+      cwd,
+      env: options.env ?? process.env,
+      config: await readFile(join(cwd, "nextflow.config"), "utf8"),
+      main: await readFile(join(cwd, "modules", target, "main.nf"), "utf8"),
+    });
+    const task = join(cwd, "work", "ab", "cdef");
+    await mkdir(task, { recursive: true });
+    await writeFile(join(task, ".command.out"), "fake task stdout\n");
+    const reported: Record<string, string> = {};
+    for (const [name, file] of Object.entries(outputs)) {
+      await writeFile(join(task, file), "ok\n");
+      reported[name] = join(task, file);
+    }
+    return `Nextflow 26.10.5 is available\n${JSON.stringify(reported, null, 4)}\n`;
+  };
+  return { calls, run: run as unknown as NonNullable<TryRunExecOptions["run"]>, nextflow: { bin: "nextflow", env: { ...process.env, PATH: "/usr/bin" } } };
 }
 
 describe("executeTryRun module environment", () => {
-  it("runs through the container named on the module and keeps the conda path in the log", async () => {
+  it("enables the container engine for the draft module and keeps the conda path in the log", async () => {
     const dir = await mkdtemp(join(tmpdir(), "nb-env-"));
     try {
       const yaml = join(dir, "py311-pandas.yml");
       await writeFile(yaml, "name: py311-pandas\ndependencies:\n  - python\n");
-      const conda = await fakeConda(dir);
-      await chmod(shimPath, 0o755);
+      const fake = fakeNextflow();
       const record = await executeTryRun(qc(), qcBindings, {
         condaYaml: yaml,
         containerImage: "python:3.11-slim",
       }, {
         cacheDir: join(dir, "cache"),
+        run: fake.run,
+        nextflow: fake.nextflow,
         tools: {
-          conda: { bin: conda.bin, kind: "conda" },
-          container: { bin: shimPath, kind: "docker" },
+          conda: { bin: "/opt/conda/bin/conda", kind: "conda" },
+          container: { bin: "/opt/tools/podman", kind: "podman" },
         },
       });
       expect(record.passed).toBe(true);
@@ -105,10 +113,17 @@ describe("executeTryRun module environment", () => {
       expect(record.containerImage).toBe("python:3.11-slim");
       expect(record.log).toContain(`conda '${yaml}'`);
       expect(record.log).toContain("选用 container 'python:3.11-slim'");
-      expect(record.log).toContain("e2e docker shim: image python:3.11-slim");
       expect(record.log).toContain("试跑选用容器");
+      expect(record.log).toContain("fake task stdout");
       expect(record.log).not.toContain("选用本机");
-      await expect(readFile(conda.log, "utf8")).rejects.toThrow();
+      const [call] = fake.calls;
+      expect(call.args.slice(0, 4)).toEqual(["-q", "module", "run", "local/qc_summary"]);
+      expect(call.args).toContain("-output-format");
+      expect(call.config).toContain("nextflow.enable.moduleBinaries = true");
+      expect(call.config).toContain("podman.enabled = true");
+      expect(call.config).not.toContain("conda.enabled");
+      expect(call.main).toContain("container 'python:3.11-slim'");
+      expect(call.env.PATH?.startsWith("/opt/tools")).toBe(true);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -119,13 +134,15 @@ describe("executeTryRun module environment", () => {
     try {
       const yaml = join(dir, "py.yml");
       await writeFile(yaml, "name: py\n");
-      const conda = await fakeConda(dir);
+      const fake = fakeNextflow();
       const record = await executeTryRun(qc(), qcBindings, {
         condaYaml: `  ${yaml}  `,
         containerImage: "python:3.11-slim",
       }, {
         cacheDir: join(dir, "cache"),
-        tools: { conda: { bin: conda.bin, kind: "conda" } },
+        run: fake.run,
+        nextflow: fake.nextflow,
+        tools: { conda: { bin: "/opt/mm/bin/micromamba", kind: "micromamba" } },
       });
       expect(record.passed).toBe(true);
       expect(record.envVia).toBe("conda");
@@ -133,34 +150,47 @@ describe("executeTryRun module environment", () => {
       expect(record.log).toContain(`选用 conda '${yaml}'`);
       expect(record.log).toContain("未找到容器运行时");
       expect(record.log).not.toContain("选用本机");
-      const trace = await readFile(conda.log, "utf8");
-      expect(trace).toContain(yaml);
-      expect(trace).toContain("--no-capture-output");
-      expect(trace).toContain("python3");
+      const [call] = fake.calls;
+      expect(call.config).toContain("conda.enabled = true");
+      expect(call.config).toContain("conda.useMicromamba = true");
+      expect(call.main).toContain(`conda '${yaml}'`);
+      expect(call.env.NXF_CONDA_CACHEDIR).toBe(join(dir, "cache"));
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
   });
 
-  it("does not fall back to the host interpreter when the requested runtime is missing", async () => {
+  it("fails with the Nextflow log when the module exits non-zero", async () => {
+    const run = (async () => {
+      throw new CommandError("nextflow exited with 1", 1, "ERROR ~ Error executing process > 'QC_SUMMARY'\nTraceback: boom");
+    }) as unknown as NonNullable<TryRunExecOptions["run"]>;
+    const record = await executeTryRun(qc(), qcBindings, undefined, { run, nextflow: { bin: "nextflow", env: process.env } });
+    expect(record.passed).toBe(false);
+    expect(record.exitCode).toBe(1);
+    expect(record.log).toContain("Traceback: boom");
+    expect(record.outputs.every((output) => !output.ok)).toBe(true);
+  });
+
+  it("does not run when the requested runtime is missing", async () => {
     const notebook = qc();
+    const fake = fakeNextflow();
     const missing = await executeTryRun(notebook, qcBindings, {
       containerImage: "python:3.11-slim",
-    }, { tools: {} });
+    }, { tools: {}, run: fake.run, nextflow: fake.nextflow });
     expect(missing.passed).toBe(false);
     expect(missing.envVia).toBeUndefined();
     expect(missing.log).toContain("未找到容器运行时");
     expect(missing.log).toContain("container 'python:3.11-slim'");
     expect(missing.log).not.toContain("选用本机");
-    expect(missing.log).not.toContain("$ python3");
+    expect(missing.log).not.toContain("$ nextflow");
 
     const absent = await executeTryRun(notebook, qcBindings, {
       condaYaml: "/tmp/nextflow-wrap-missing-env.yml",
       containerImage: "python:3.11-slim",
-    }, { tools: { container: { bin: shimPath, kind: "docker" } } });
+    }, { tools: { container: { bin: "/usr/bin/docker", kind: "docker" } }, run: fake.run, nextflow: fake.nextflow });
     expect(absent.passed).toBe(false);
     expect(absent.log).toContain("找不到 conda 文件");
-    expect(absent.log).not.toContain("e2e docker shim");
+    expect(fake.calls).toHaveLength(0);
   });
 });
 
@@ -173,14 +203,14 @@ describe("executeTryRun own data", () => {
     expect(uploaded.passed).toBe(true);
     expect(uploaded.bindings).toEqual([{ port: "samplesheet", source: "upload", label: "mine.csv" }]);
     expect(uploaded.log).toContain("输入 samplesheet · 上传 · mine.csv");
-    expect(uploaded.log).toContain("--samplesheet mine.csv");
+    expect(uploaded.log).toContain("--samplesheet inputs/mine.csv");
 
     const sample = await executeTryRun(hello(), [{ port: "samplesheet", source: "sample", value: "samplesheet" }]);
     expect(sample.passed).toBe(true);
     expect(sample.log).toContain("输入 samplesheet · 样例 · 内置样例：samplesheet.csv");
-  });
+  }, NEXTFLOW_TIMEOUT);
 
-  it("copies a host path into the work directory before the CLI runs", async () => {
+  it("copies a host path into the work directory before the module runs", async () => {
     const dir = await mkdtemp(join(tmpdir(), "nb-own-"));
     const csvPath = join(dir, "sheet.csv");
     await writeFile(csvPath, "sample,fastq_1\nHost,a.fq\n");
@@ -188,18 +218,37 @@ describe("executeTryRun own data", () => {
       const record = await executeTryRun(hello(), [{ port: "samplesheet", source: "path", value: csvPath }]);
       expect(record.passed).toBe(true);
       expect(record.log).toContain(`输入 samplesheet · 路径 · ${csvPath} → sheet.csv`);
-      expect(record.log).toContain("--samplesheet sheet.csv");
+      expect(record.log).toContain("--samplesheet inputs/sheet.csv");
       expect(record.bindings?.[0]?.source).toBe("path");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
-  });
+  }, NEXTFLOW_TIMEOUT);
 
-  it("keeps a missing path string and reports the failure in the log", async () => {
-    const record = await executeTryRun(hello(), [{ port: "samplesheet", source: "path", value: "missing.csv" }]);
+  it("reads a relative path such as data/sample.csv from the project workspace", async () => {
+    const workspace = await mkdtemp(join(tmpdir(), "nb-ws-"));
+    await mkdir(join(workspace, "data"));
+    await writeFile(join(workspace, "data", "sample.csv"), "sample,fastq_1\nWs,a.fq\n");
+    try {
+      const record = await executeTryRun(hello(), [{ port: "samplesheet", source: "path", value: "data/sample.csv" }], undefined, { workspace });
+      expect(record.passed).toBe(true);
+      expect(record.log).toContain("输入 samplesheet · 路径 · data/sample.csv → sample.csv");
+      expect(record.log).toContain("--samplesheet inputs/sample.csv");
+
+      const missing = await executeTryRun(hello(), [{ port: "samplesheet", source: "path", value: "data/missing.csv" }], undefined, { workspace });
+      expect(missing.passed).toBe(false);
+      expect(missing.log).toContain("工作区里没有 data/missing.csv");
+      expect(missing.log).not.toContain("$ nextflow");
+    } finally {
+      await rm(workspace, { recursive: true, force: true });
+    }
+  }, NEXTFLOW_TIMEOUT);
+
+  it("fails before running when a path does not exist", async () => {
+    const record = await executeTryRun(hello(), [{ port: "samplesheet", source: "path", value: "/tmp/nextflow-wrap-missing.csv" }]);
     expect(record.passed).toBe(false);
-    expect(record.log).toContain("输入 samplesheet · 路径 · missing.csv");
-    expect(record.log).toContain("--samplesheet missing.csv");
+    expect(record.log).toContain("输入 samplesheet · 路径 · /tmp/nextflow-wrap-missing.csv");
+    expect(record.log).toContain("找不到文件：/tmp/nextflow-wrap-missing.csv");
   });
 });
 

@@ -1,11 +1,13 @@
-import { access, mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 
 import { CommandError, runCommand } from "@/features/project/server/command";
+import { findJava, findNextflow, toolEnvironment } from "@/features/project/server/preflight";
+import { nextflowCacheEnv } from "@/lib/server/paths";
 import { CELL_DRIVER } from "./cell-driver";
 import { cellsForKernelRun, cellsForRun } from "./cells";
-import { ConvertError, convertNotebook, scriptFileName, scriptInterpreter, tryRunArgv } from "./convert";
+import { ConvertError, convertNotebook, tryRunArgv } from "./convert";
 import { readModuleEnv, type ModuleEnvPatch } from "./env";
 import { planTryRunInputs, type InputPlan, type PortBindingRequest } from "./input-bindings";
 import { stageInputPlan, type StagedInputs } from "./input-bindings-stage";
@@ -14,42 +16,62 @@ import { kernelFor, KernelUnavailableError, shutdownKernel } from "./server/kern
 import {
   buildTryRunHeader,
   clipTryRunLog,
-  condaCreateCommand,
-  condaRunCommand,
-  containerCommand,
   formatArgv,
-  hostTryRunCommand,
   selectTryRunEngine,
   tryRunEnvLines,
+  type TryRunSelection,
   type TryRunTools,
   type TryRunVia,
 } from "./try-run-env";
-import { condaCachePrefix, condaFileProblem, discoverTryRunTools } from "./try-run-tools";
+import { draftModuleDef, draftModuleFiles, moduleRunParams, parseModuleOutputs, TRY_RUN_NAMESPACE, tryRunNextflowConfig } from "./try-run-module";
+import { condaFileProblem, discoverTryRunTools } from "./try-run-tools";
 import type { CellRunResult, ConvertedNotebook, NotebookDoc, NotebookRunResult, TryRunOutput, TryRunRecord } from "./types";
 
 // Single-cell steps such as clustering take minutes on real data; a few seconds is too short.
+// Creating a conda environment or pulling an image comes on top of that.
 const HOST_TIMEOUT_MS = 10 * 60_000;
-const ENV_TIMEOUT_MS = 10 * 60_000;
+const ENV_TIMEOUT_MS = 20 * 60_000;
+const INPUTS_DIR = "inputs";
 
 const inDir = (dir: string, name: string) => join(/* turbopackIgnore: true */ dir, name);
+
+/** The Nextflow launcher and the environment it runs with. */
+export interface NextflowLauncher {
+  bin: string;
+  env: NodeJS.ProcessEnv;
+}
 
 export interface TryRunExecOptions {
   tools?: TryRunTools;
   cacheDir?: string;
   run?: typeof runCommand;
+  /** Project folder: relative input paths such as `data/sample.csv` are read from here. */
+  workspace?: string;
+  nextflow?: NextflowLauncher;
 }
 
-interface LaunchStep {
-  executable: string;
-  args: string[];
-  timeoutMs: number;
-  display?: string;
-  cleanup?: () => Promise<void>;
-}
-
-function safeOutputName(pattern: string): string {
-  if (!/^[\w.-]+$/.test(pattern)) throw new ConvertError(`输出文件名无效：${pattern}`);
-  return pattern;
+/** Nextflow with a supported Java, the same lookup project runs use. */
+export async function findTryRunNextflow(): Promise<NextflowLauncher> {
+  const base = toolEnvironment();
+  let bin: string;
+  try {
+    bin = await findNextflow(base);
+  } catch {
+    throw new ConvertError("找不到 nextflow，无法用 Nextflow 模块测试试跑。请先在设置页安装 Nextflow。");
+  }
+  const { home } = await findJava(base);
+  return {
+    bin,
+    env: {
+      ...base,
+      ...nextflowCacheEnv(base),
+      JAVA_HOME: home,
+      NXF_JAVA_HOME: home,
+      NXF_ANSI_LOG: "false",
+      NXF_DISABLE_CHECK_LATEST: "true",
+      PATH: [base.PATH, join(home, "bin")].filter(Boolean).join(delimiter),
+    },
+  };
 }
 
 function envFields(env: { condaYaml?: string; containerImage?: string }, via?: TryRunVia) {
@@ -94,25 +116,42 @@ function refusedRecord(
   };
 }
 
-async function collectOutputs(dir: string, converted: ConvertedNotebook): Promise<TryRunOutput[]> {
+/** Check each output port against the files Nextflow reported for it. */
+async function collectOutputs(reported: Record<string, string[]>, converted: ConvertedNotebook): Promise<TryRunOutput[]> {
   const outputs: TryRunOutput[] = [];
   for (const output of converted.outputs) {
-    const outputFile = safeOutputName(output.pattern);
-    try {
-      const info = await stat(inDir(dir, outputFile));
-      outputs.push({
-        name: output.name,
-        file: output.pattern,
-        bytes: info.size,
-        ok: info.isFile() && info.size > 0,
-      });
-    } catch {
-      outputs.push({ name: output.name, file: output.pattern, bytes: 0, ok: false, message: "未生成" });
+    const files = reported[output.name] ?? [];
+    let bytes = 0;
+    let ok = files.length > 0;
+    for (const file of files) {
+      try {
+        const info = await stat(file);
+        bytes += info.size;
+        if (!info.isFile() || info.size === 0) ok = false;
+      } catch {
+        ok = false;
+      }
     }
+    outputs.push({ name: output.name, file: output.pattern, bytes, ok, ...(files.length ? {} : { message: "未生成" }) });
   }
   return outputs;
 }
 
+/** What the CLI printed, read from the task folder next to the first output. */
+async function taskStreams(reported: Record<string, string[]>): Promise<string> {
+  const first = Object.values(reported).flat()[0];
+  if (!first) return "";
+  const task = dirname(first);
+  const read = (name: string) => readFile(inDir(task, name), "utf8").catch(() => "");
+  return [(await read(".command.out")).trim(), (await read(".command.err")).trim()].filter(Boolean).join("\n");
+}
+
+/**
+ * Publish try-run through Nextflow's module test: the converted notebook becomes the draft module a publish
+ * would write (`modules/local/<slug>/main.nf` + the CLI under `resources/usr/bin`), and
+ * `nextflow module run local/<slug> --<port> <value> …` runs it with the chosen conda or container.
+ * It passes when Nextflow exits 0 and every output port got a non-empty file.
+ */
 export async function executeTryRun(
   notebook: NotebookDoc,
   bindings: PortBindingRequest[],
@@ -122,8 +161,6 @@ export async function executeTryRun(
   const started = Date.now();
   const converted = convertNotebook(notebook);
   const env = readModuleEnv(envInput ?? {});
-  const scriptName = scriptFileName(converted.entry);
-  const interpreter = scriptInterpreter(converted.language);
   const run = options.run ?? runCommand;
   let planned: InputPlan;
   try {
@@ -133,41 +170,89 @@ export async function executeTryRun(
   }
   const fail = (message: string) => refusedRecord(notebook, converted, env, started, message, planned);
 
-  const perform = async (
-    dir: string,
-    steps: LaunchStep[],
-    via: TryRunVia,
-    staged: StagedInputs,
-    note?: string,
-  ): Promise<TryRunRecord> => {
+  if (env.condaYaml) {
+    const problem = await condaFileProblem(env.condaYaml);
+    if (problem) return fail(problem);
+  }
+  let selection: TryRunSelection = { via: "host" };
+  if (env.condaYaml || env.containerImage) {
+    let tools: TryRunTools;
+    try {
+      tools = options.tools ?? await discoverTryRunTools();
+    } catch (error) {
+      return fail(error instanceof Error ? error.message : "无法检查运行环境");
+    }
+    selection = selectTryRunEngine(env, tools);
+    if (selection.via === "unavailable") return fail(selection.message);
+  }
+  const via: TryRunVia = selection.via;
+  const note = selection.via === "conda" || selection.via === "container" ? selection.note : undefined;
+
+  let launcher: NextflowLauncher;
+  try {
+    launcher = options.nextflow ?? await findTryRunNextflow();
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : "找不到 nextflow");
+  }
+
+  const dir = await mkdtemp(join(/* turbopackIgnore: true */ tmpdir(), "nb-try-"));
+  try {
+    const inputsDir = inDir(dir, INPUTS_DIR);
+    await mkdir(inputsDir);
+    let staged: StagedInputs;
+    let params: string[];
+    try {
+      staged = await stageInputPlan(inputsDir, planned, [], { workspace: options.workspace });
+      tryRunArgv(converted.inputs, staged.values);
+      params = moduleRunParams(converted.inputs, staged.values, INPUTS_DIR);
+    } catch (error) {
+      return fail(error instanceof Error ? error.message : "无法准备输入");
+    }
+
+    const def = draftModuleDef(notebook, converted, env);
+    for (const file of draftModuleFiles(def)) {
+      const path = inDir(dir, file.path);
+      await mkdir(dirname(path), { recursive: true });
+      await writeFile(path, file.content, file.executable ? { mode: 0o755 } : undefined);
+    }
+    await writeFile(inDir(dir, "nextflow.config"), tryRunNextflowConfig(selection));
+
+    const target = `${TRY_RUN_NAMESPACE}/${def.path}`;
+    const args = ["-q", "module", "run", target, ...params, "-output-format", "json"];
+    const runEnv: NodeJS.ProcessEnv = { ...launcher.env };
+    if (options.cacheDir) runEnv.NXF_CONDA_CACHEDIR = options.cacheDir;
+    // A runtime found outside PATH (TRY_RUN_*_BIN) still has to be visible to Nextflow by name.
+    const toolBin = selection.via === "conda" || selection.via === "container" ? selection.tool.bin : undefined;
+    if (toolBin) runEnv.PATH = [dirname(toolBin), runEnv.PATH].filter(Boolean).join(delimiter);
+
     let exitCode: number | null = 0;
     let output = "";
-    const displays: string[] = [];
-    for (const step of steps) {
-      if (exitCode !== 0) break;
-      displays.push(step.display ?? formatArgv([step.executable, ...step.args]));
-      try {
-        const chunk = await run(step.executable, step.args, { cwd: dir, timeoutMs: step.timeoutMs, quiet: true });
-        output = [output, chunk.trim()].filter(Boolean).join("\n");
-      } catch (error) {
-        if (step.cleanup) await step.cleanup();
-        if (error instanceof CommandError) {
-          exitCode = error.exitCode;
-          output = [output, (error.output || error.message).trim()].filter(Boolean).join("\n");
-        } else {
-          exitCode = null;
-          output = [output, error instanceof Error ? error.message : "试跑失败"].filter(Boolean).join("\n");
-        }
+    try {
+      output = await run(launcher.bin, args, {
+        cwd: dir,
+        env: runEnv,
+        timeoutMs: via === "host" ? HOST_TIMEOUT_MS : ENV_TIMEOUT_MS,
+        quiet: true,
+      });
+    } catch (error) {
+      if (error instanceof CommandError) {
+        exitCode = error.exitCode;
+        output = (error.output || error.message).trim();
+      } else {
+        exitCode = null;
+        output = error instanceof Error ? error.message : "试跑失败";
       }
     }
-    const outputs = await collectOutputs(dir, converted);
+    const reported = exitCode === 0 ? parseModuleOutputs(output) : {};
+    const outputs = await collectOutputs(reported, converted);
     const passed = exitCode === 0 && outputs.length > 0 && outputs.every((item) => item.ok);
     const durationMs = Date.now() - started;
     const header = buildTryRunHeader(
-      [...tryRunEnvLines({ env, via, language: converted.language, note }), ...staged.lines],
-      displays,
+      [...tryRunEnvLines({ env, via, language: converted.language, note }), ...staged.lines, `Nextflow 模块测试：modules/${target}`],
+      [formatArgv(["nextflow", "module", "run", target, ...params])],
     );
-    const tail = [output, passed ? `完成，用时 ${durationMs}ms` : ""].filter(Boolean).join("\n");
+    const body = exitCode === 0 ? await taskStreams(reported) : output;
+    const tail = [body, passed ? `完成，用时 ${durationMs}ms` : exitCode === 0 ? "输出端口没有生成文件" : ""].filter(Boolean).join("\n");
     return {
       notebookId: notebook.id,
       rev: notebook.rev,
@@ -180,90 +265,9 @@ export async function executeTryRun(
       bindings: staged.records,
       ...envFields(env, via),
     };
-  };
-
-  const inWorkDir = async (
-    stepsFor: (dir: string, argv: string[]) => Promise<LaunchStep[]> | LaunchStep[],
-    via: TryRunVia,
-    note?: string,
-  ) => {
-    const dir = await mkdtemp(join(/* turbopackIgnore: true */ tmpdir(), "nb-try-"));
-    try {
-      let staged: StagedInputs;
-      try {
-        staged = await stageInputPlan(dir, planned, [scriptName]);
-      } catch (error) {
-        return fail(error instanceof Error ? error.message : "无法准备输入");
-      }
-      await writeFile(inDir(dir, scriptName), converted.script, { mode: 0o755 });
-      let argv: string[];
-      try {
-        argv = tryRunArgv(converted.inputs, staged.values);
-      } catch (error) {
-        return fail(error instanceof Error ? error.message : "无法准备输入");
-      }
-      return await perform(dir, await stepsFor(dir, argv), via, staged, note);
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  };
-
-  const hostSteps = (_dir: string, argv: string[]): LaunchStep[] => [{
-    executable: interpreter,
-    args: [scriptName, ...argv],
-    timeoutMs: HOST_TIMEOUT_MS,
-    display: hostTryRunCommand(converted.language, converted.entry, argv),
-  }];
-
-  if (!env.condaYaml && !env.containerImage) return inWorkDir(hostSteps, "host");
-
-  if (env.condaYaml) {
-    const problem = await condaFileProblem(env.condaYaml);
-    if (problem) return fail(problem);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
   }
-
-  let tools: TryRunTools;
-  try {
-    tools = options.tools ?? await discoverTryRunTools();
-  } catch (error) {
-    return fail(error instanceof Error ? error.message : "无法检查运行环境");
-  }
-  const selection = selectTryRunEngine(env, tools);
-  if (selection.via === "unavailable") return fail(selection.message);
-  if (selection.via === "host") return inWorkDir(hostSteps, "host");
-  if (selection.via === "container") {
-    const image = env.containerImage ?? "";
-    return inWorkDir((dir, argv) => {
-      const launch = containerCommand(selection.tool, dir, image, [interpreter, scriptName, ...argv]);
-      return [{ executable: launch.executable, args: launch.args, timeoutMs: ENV_TIMEOUT_MS }];
-    }, "container", selection.note);
-  }
-
-  const yamlPath = env.condaYaml ?? "";
-  const prefix = await condaCachePrefix(yamlPath, options.cacheDir);
-  await mkdir(dirname(prefix), { recursive: true });
-  let ready = false;
-  try {
-    await access(prefix);
-    ready = true;
-  } catch {
-    ready = false;
-  }
-  return inWorkDir((_dir, argv) => {
-    const steps: LaunchStep[] = [];
-    if (!ready) {
-      const create = condaCreateCommand(selection.tool, prefix, yamlPath);
-      steps.push({
-        executable: create.executable,
-        args: create.args,
-        timeoutMs: ENV_TIMEOUT_MS,
-        cleanup: () => rm(prefix, { recursive: true, force: true }),
-      });
-    }
-    const launch = condaRunCommand(selection.tool, prefix, [interpreter, scriptName, ...argv]);
-    steps.push({ executable: launch.executable, args: launch.args, timeoutMs: ENV_TIMEOUT_MS });
-    return steps;
-  }, "conda", selection.note);
 }
 
 function failureText(error: unknown): string {

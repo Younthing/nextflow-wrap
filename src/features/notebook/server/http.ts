@@ -345,7 +345,7 @@ export async function handleNotebookApi(method: string, path: string[], request:
       const record = await executeTryRun(notebook, body.bindings ?? [], {
         condaYaml: body.condaYaml,
         containerImage: body.containerImage,
-      });
+      }, { workspace: workspaceOf(db, notebook) });
       db.saveTryRun(record);
       return json(record);
     } catch (error) {

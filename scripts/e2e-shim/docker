@@ -1,0 +1,28 @@
+#!/bin/sh
+# docker-compatible CLI for machines without a container daemon.
+# e2e points TRY_RUN_CONTAINER_BIN here. The publish try-run puts this folder first on PATH for its
+# own `nextflow module run`, so Nextflow's `docker run … <image> <command>` runs the command on the host.
+# It is not on the runner's PATH, so project runs still see a missing docker and keep the Shell engine.
+set -eu
+case "${1:-}" in
+  run) shift ;;
+  rm|stop|kill|pull|inspect|info) exit 0 ;;
+  *) echo "e2e docker shim: unsupported ${1:-}" >&2; exit 1 ;;
+esac
+workdir=$(pwd)
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -w|--workdir) workdir=$2; shift 2 ;;
+    -e|--env)
+      case "$2" in *=*) export "$2" ;; esac
+      shift 2 ;;
+    -v|--volume|--name|--cpu-shares|--cpus|-m|--memory|-u|--user|--entrypoint|--platform|--network) shift 2 ;;
+    -*) shift ;;
+    *) break ;;
+  esac
+done
+image=$1
+shift
+echo "e2e docker shim: image ${image}" >&2
+cd "$workdir"
+exec "$@"

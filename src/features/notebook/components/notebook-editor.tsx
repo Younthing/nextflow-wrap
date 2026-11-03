@@ -513,7 +513,7 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
   const selectedIndex = live.cells.findIndex((cell) => cell.id === selected);
   const selectedCell = live.cells.find((cell) => cell.id === selected);
   const openPublish = () => {
-    const href = `/workbench/${notebookId}/publish?step=1`;
+    const href = `/workbench/${notebookId}/publish`;
     if (dirty && override) {
       save.mutate(override, { onSuccess: () => router.push(href) });
       return;

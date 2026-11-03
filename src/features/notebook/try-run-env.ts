@@ -1,6 +1,6 @@
 import { scriptEnvDirectives } from "@/features/project/script-process";
 import { gstr } from "@/features/project/groovy";
-import { scriptInterpreter, tryRunCommand } from "./convert";
+import { scriptInterpreter } from "./convert";
 import type { NotebookLanguage } from "./types";
 
 export type TryRunVia = "host" | "conda" | "container";
@@ -33,7 +33,7 @@ const CONTAINER_TOOLS = "docker、podman、singularity、apptainer";
 const CONDA_TOOLS = "micromamba、mamba、conda";
 
 /**
- * Pick the engine for a publish try-run.
+ * Pick the engine Nextflow enables for a publish try-run.
  * A filled container wins when a runtime exists, matching a docker-enabled Nextflow
  * process. Otherwise a filled conda yaml is used. The host interpreter is only
  * for a module that left both fields blank.
@@ -77,47 +77,6 @@ export function selectTryRunEngine(
   };
 }
 
-export function containerCommand(
-  tool: ContainerTool,
-  dir: string,
-  image: string,
-  command: string[],
-): { executable: string; args: string[] } {
-  if (tool.kind === "singularity" || tool.kind === "apptainer") {
-    const target = image.includes("://") || image.endsWith(".sif") ? image : `docker://${image}`;
-    return {
-      executable: tool.bin,
-      args: ["exec", "--bind", `${dir}:${dir}`, "--pwd", dir, target, ...command],
-    };
-  }
-  return {
-    executable: tool.bin,
-    args: ["run", "--rm", "-v", `${dir}:${dir}`, "-w", dir, image, ...command],
-  };
-}
-
-export function condaCreateCommand(
-  tool: CondaTool,
-  prefix: string,
-  yamlPath: string,
-): { executable: string; args: string[] } {
-  const args = tool.kind === "micromamba"
-    ? ["create", "-y", "-p", prefix, "-f", yamlPath]
-    : ["env", "create", "-y", "-p", prefix, "-f", yamlPath];
-  return { executable: tool.bin, args };
-}
-
-export function condaRunCommand(
-  tool: CondaTool,
-  prefix: string,
-  command: string[],
-): { executable: string; args: string[] } {
-  const args = tool.kind === "micromamba"
-    ? ["run", "-p", prefix, ...command]
-    : ["run", "-p", prefix, "--no-capture-output", ...command];
-  return { executable: tool.bin, args };
-}
-
 function quoteArg(arg: string): string {
   if (arg === "") return "''";
   if (/[\s'"\\]/.test(arg)) return JSON.stringify(arg);
@@ -158,10 +117,6 @@ export function demoTryRunLines(
 
 export function buildTryRunHeader(lines: readonly string[], commands: readonly string[]): string {
   return [...lines, ...commands.map((command) => `$ ${command}`)].join("\n");
-}
-
-export function hostTryRunCommand(language: NotebookLanguage, entry: string, argv: readonly string[]): string {
-  return tryRunCommand(language, entry, argv);
 }
 
 /** Keep the environment header when the tool output is long. */

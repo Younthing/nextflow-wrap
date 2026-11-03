@@ -2,8 +2,8 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { Check, Loader2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Loader2 } from "lucide-react";
 
 import { AsyncPlaceholder } from "@/components/ui/async-placeholder";
 import { Button } from "@/components/ui/button";
@@ -14,27 +14,13 @@ import { convertNotebook, ConvertError, inputPorts, outputPorts } from "@/featur
 import { missingEnvLabels, sameModuleEnv, stageModuleEnv, tryRunEnvSummary } from "@/features/notebook/env";
 import { defaultInputDraft, SOURCE_LABEL, type InputDraft } from "@/features/notebook/input-bindings";
 import { useNotebook, usePublishNotebook, useScriptModules, useTryRunNotebook } from "@/features/notebook/queries";
+import type { TryRunRecord } from "@/features/notebook/types";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { versionNumber } from "@/features/workflow/origin";
-import { cn } from "@/lib/utils";
 import { ModuleEnvFields, ModuleEnvPreview } from "./module-env-form";
 import { bindingsFromDrafts, TryRunBindingTable, TryRunInputs } from "./try-run-inputs";
 
-const STEPS = ["转化预览", "试跑 CLI", "导出为模块"];
 const NEW_MODULE = "__new__";
-
-function StepPill({ index, current }: { index: number; current: number }) {
-  const done = current > index;
-  const active = current === index;
-  return (
-    <div className={cn("flex items-center gap-2 rounded-full px-3 py-1 text-xs", active && "bg-primary/15 text-primary", !active && "text-muted-foreground")}>
-      <span className={cn("grid size-5 place-items-center rounded-full border text-[11px]", done && "border-success bg-success/15 text-success", active && "border-primary")}>
-        {done ? <Check className="size-3" /> : index}
-      </span>
-      {STEPS[index - 1]}
-    </div>
-  );
-}
 
 export function PublishWizard({ notebookId }: { notebookId: string }) {
   return (
@@ -46,10 +32,26 @@ export function PublishWizard({ notebookId }: { notebookId: string }) {
   );
 }
 
+function Section({ title, open, onToggle, children }: { title: string; open: boolean; onToggle: (open: boolean) => void; children: React.ReactNode }) {
+  return (
+    <details
+      open={open}
+      onToggle={(event) => onToggle(event.currentTarget.open)}
+      className="rounded-lg border border-border"
+    >
+      <summary className="cursor-pointer select-none px-3 py-2 text-sm font-semibold">{title}</summary>
+      <div className="space-y-3 border-t border-border p-3">{children}</div>
+    </details>
+  );
+}
+
+/**
+ * One page: the module form, with the conversion preview and the try-run inputs and environment folded below.
+ * Saving runs the draft module through `nextflow module run` first and publishes only when that passes;
+ * a failure keeps the page and shows the Nextflow log.
+ */
 function PublishWizardScreen({ notebookId }: { notebookId: string }) {
   const router = useRouter();
-  const params = useSearchParams();
-  const step = Math.min(3, Math.max(1, Number(params.get("step") ?? "1") || 1));
   const notebook = useNotebook(notebookId);
   const scripts = useScriptModules();
   const tryRun = useTryRunNotebook();
@@ -65,6 +67,10 @@ function PublishWizardScreen({ notebookId }: { notebookId: string }) {
   const [containerImage, setContainerImage] = React.useState("");
   const [namedFor, setNamedFor] = React.useState<string | null>(null);
   const [envFor, setEnvFor] = React.useState<string | null>(null);
+  const [inputsOpen, setInputsOpen] = React.useState(false);
+  const [previewOpen, setPreviewOpen] = React.useState(false);
+  /** The inputs the last try-run used; edited inputs need a new run before saving. */
+  const [ranWith, setRanWith] = React.useState<string | null>(null);
 
   const doc = notebook.data;
   const converted = React.useMemo(() => {
@@ -82,7 +88,12 @@ function PublishWizardScreen({ notebookId }: { notebookId: string }) {
     for (const input of converted.value.inputs) next[input.name] = defaultInputDraft(input);
     setDrafts(next);
     setSeededFor(seedKey);
+    // A required input with nothing to fill it in: show the inputs instead of failing the first save.
+    if (converted.value.inputs.some((input) => input.required && input.defaultValue === undefined && next[input.name]?.source === "path" && !next[input.name]?.path)) {
+      setInputsOpen(true);
+    }
   }
+  if (converted && !converted.ok && !previewOpen) setPreviewOpen(true);
 
   if (doc && namedFor !== doc.id) {
     setNamedFor(doc.id);
@@ -102,122 +113,183 @@ function PublishWizardScreen({ notebookId }: { notebookId: string }) {
     }
   }
 
-  const go = (next: number) => router.replace(`/workbench/${notebookId}/publish?step=${next}`);
   const overwriting = scripts.data?.modules.find((mod) => mod.id === target);
   const version = overwriting ? `v${versionNumber(overwriting.version) + 1}` : "v1";
   const receipt = tryRun.data;
   const staged = stageModuleEnv({ condaYaml, containerImage });
   const envAligned = staged.ok && !!receipt && sameModuleEnv(receipt, staged);
-  const passed = staged.ok && !!receipt?.passed && receipt.rev === doc?.rev && envAligned;
+  const bindings = converted?.ok ? bindingsFromDrafts(converted.value.inputs, drafts) : [];
+  const inputsAligned = ranWith === JSON.stringify(bindings);
+  const passed = staged.ok && !!receipt?.passed && receipt.rev === doc?.rev && envAligned && inputsAligned;
   const envChanged = staged.ok && !!receipt?.passed && receipt.rev === doc?.rev && !envAligned;
-  const logMark = !receipt ? "" : passed ? "· 通过" : envChanged ? "· 需重跑" : "· 失败";
+  const logMark = !receipt ? "" : passed ? "· 通过" : envChanged || (receipt.passed && !inputsAligned) ? "· 需重跑" : "· 失败";
+  const busy = tryRun.isPending || publish.isPending;
+  const canConvert = !!converted?.ok && converted.value.outputs.length > 0;
 
   if (notebook.isPending) return <AsyncPlaceholder status="pending" className="h-full" />;
   if (notebook.error || !doc) return <AsyncPlaceholder status="error" className="h-auto" message={notebook.error?.message ?? "笔记本不存在"} />;
 
+  const runTry = (then?: (record: TryRunRecord) => void) => {
+    if (!staged.ok || !converted?.ok) return;
+    publish.reset();
+    setRanWith(JSON.stringify(bindings));
+    tryRun.mutate(
+      {
+        id: doc.id,
+        bindings,
+        condaYaml: staged.condaYaml,
+        containerImage: staged.containerImage,
+      },
+      { onSuccess: (record) => then?.(record) },
+    );
+  };
+  const save = () => {
+    const send = () => publish.mutate(
+      { id: doc.id, name: name.trim(), overwrite: overwriting?.id, description, changelog, condaYaml, containerImage },
+      { onSuccess: () => router.push("/modules") },
+    );
+    if (passed) {
+      send();
+      return;
+    }
+    runTry((record) => {
+      if (record.passed) send();
+    });
+  };
+  const saveLabel = overwriting ? `覆盖 ${overwriting.name} → ${version}` : "新建模块";
+
   return (
     <div className="flex size-full min-h-0 flex-col gap-3">
       <header className="glass flex flex-wrap items-center gap-3 rounded-xl px-4 py-3">
-        <div>
-          <div className="text-xs text-muted-foreground">
-            <Link href={`/workbench/${notebookId}`} className="hover:underline">笔记本 / {doc.name}</Link>
-            <span> / 导出为模块</span>
-          </div>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {STEPS.map((label, index) => (
-              <StepPill key={label} index={index + 1} current={step} />
-            ))}
-          </div>
+        <div className="text-xs text-muted-foreground">
+          <Link href={`/workbench/${notebookId}`} className="hover:underline">笔记本 / {doc.name}</Link>
+          <span> / 导出为模块</span>
         </div>
         <Button asChild variant="ghost" size="sm" className="ml-auto">
           <Link href={`/workbench/${notebookId}`}>取消，回笔记本</Link>
         </Button>
       </header>
 
-      {step === 1 && (
-        <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(0,1fr)_18rem]">
-          <section className="glass min-h-0 overflow-auto rounded-xl p-4">
-            <h2 className="text-sm font-semibold">生成的命令行</h2>
-            {converted?.ok ? (
-              <>
-                <pre className="mt-3 overflow-auto rounded-lg bg-secondary/60 p-3 font-mono text-xs">{converted.value.commandPreview}</pre>
-                <h3 className="mt-4 text-sm font-semibold">{converted.value.entry.split("/").pop()}</h3>
-                <pre className="mt-2 max-h-80 overflow-auto rounded-lg bg-secondary/60 p-3 font-mono text-xs">{converted.value.script}</pre>
-              </>
-            ) : (
-              <p className="mt-3 text-sm text-destructive">{converted?.message}</p>
-            )}
-          </section>
-          <aside className="glass space-y-4 overflow-auto rounded-xl p-4">
-            <div>
-              <h2 className="text-sm font-semibold">端口</h2>
-              <ul className="mt-2 grid gap-1 font-mono text-xs">
-                {(converted?.ok ? inputPorts(converted.value.inputs) : []).map((port) => (
-                  <li key={port.name}>入 · {port.name}{port.description === "文件列表" ? "[]" : ""}</li>
-                ))}
-                {(converted?.ok ? outputPorts(converted.value.outputs) : []).map((port) => (
-                  <li key={port.name}>出 · {port.name}</li>
-                ))}
-              </ul>
-            </div>
-            <div className="text-xs text-muted-foreground">
-              包含单元格 {(converted?.ok ? converted.value.included : []).map((cell) => `[${cell.index}]`).join(" ") || "无"}
-              <br />
-              排除 {(converted?.ok ? converted.value.excluded : []).map((cell) => `[${cell.index}] ${cell.role === "explore" ? "自由探索" : "说明"}`).join("、") || "无"}
-            </div>
-          </aside>
-        </div>
-      )}
-
-      {step === 2 && converted?.ok && (
-        <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[24rem_minmax(0,1fr)]">
-          <section className="glass space-y-3 overflow-auto rounded-xl p-4">
-            <h2 className="text-sm font-semibold">试跑参数</h2>
-            <ModuleEnvFields
-              idPrefix="publish-env"
-              condaYaml={condaYaml}
-              containerImage={containerImage}
-              onCondaYaml={setCondaYaml}
-              onContainerImage={setContainerImage}
-            />
-            {staged.ok ? (
-              <p className="text-xs text-muted-foreground" role={missingEnvLabels(staged).length ? "status" : undefined}>
-                {tryRunEnvSummary(staged)}
-              </p>
-            ) : (
-              <p role="alert" className="text-xs text-destructive">{staged.message}</p>
-            )}
-            <TryRunInputs
-              inputs={converted.value.inputs}
-              drafts={drafts}
-              onChange={(port, draft) => setDrafts((current) => ({ ...current, [port]: draft }))}
-            />
-            <Button
-              type="button"
-              variant="outline"
-              disabled={tryRun.isPending || !staged.ok}
-              onClick={() => {
-                if (!staged.ok) return;
-                tryRun.mutate({
-                  id: doc.id,
-                  bindings: bindingsFromDrafts(converted.value.inputs, drafts),
-                  condaYaml: staged.condaYaml,
-                  containerImage: staged.containerImage,
-                });
+      <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-2">
+        <section className="glass min-h-0 space-y-3 overflow-auto rounded-xl p-4">
+          <h2 className="text-sm font-semibold">模块信息</h2>
+          <FormField label="导出到" htmlFor="module-target">
+            <Select
+              value={target}
+              onValueChange={(next) => {
+                setTarget(next);
+                const mod = scripts.data?.modules.find((item) => item.id === next);
+                if (mod) setName(mod.name);
               }}
             >
-              {tryRun.isPending ? <Loader2 className="animate-spin" /> : null}
-              {receipt ? "重新试跑" : "开始试跑"}
-            </Button>
-            {envChanged && <p className="text-xs text-destructive">环境已改，按当前 conda／容器重新试跑后才能保存。</p>}
-            {tryRun.error && <p role="alert" className="text-sm text-destructive">{tryRun.error.message}</p>}
-          </section>
-          <section className="glass flex min-h-0 flex-col overflow-hidden rounded-xl p-4">
-            <h2 className="text-sm font-semibold">日志 {logMark}</h2>
-            <pre className="mt-3 min-h-32 flex-1 overflow-auto rounded-lg bg-secondary/60 p-3 font-mono text-xs">{receipt?.log || "试跑通过后才能保存。"}</pre>
-            {receipt?.bindings && <TryRunBindingTable bindings={receipt.bindings} />}
-            {receipt && (
-              <table className="mt-3 w-full text-left text-xs">
+              <SelectTrigger id="module-target" className="h-8 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NEW_MODULE} className="text-xs">新模块</SelectItem>
+                {(scripts.data?.modules ?? []).map((mod) => (
+                  <SelectItem key={mod.id} value={mod.id} className="text-xs">
+                    覆盖 <span className="font-mono">{mod.name}</span> {mod.version}{mod.referenceCount ? ` · ${mod.referenceCount} 个流程在用` : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FormField>
+          <FormField label="模块名" htmlFor="module-name">
+            <Input id="module-name" value={name} onChange={(event) => setName(event.target.value)} className="h-8 font-mono text-xs" />
+          </FormField>
+          <FormField label="说明" htmlFor="module-description">
+            <Input id="module-description" value={description} onChange={(event) => setDescription(event.target.value)} className="h-8 text-xs" />
+          </FormField>
+          <FormField label="版本" htmlFor="module-version">
+            <Input id="module-version" value={overwriting ? `${overwriting.version ?? "v1"} → ${version}` : version} readOnly className="h-8 font-mono text-xs" />
+          </FormField>
+          <FormField label="更新说明" htmlFor="module-changelog">
+            <Input id="module-changelog" value={changelog} onChange={(event) => setChangelog(event.target.value)} className="h-8 text-xs" />
+          </FormField>
+          <ModuleEnvFields
+            idPrefix="publish-env"
+            condaYaml={condaYaml}
+            containerImage={containerImage}
+            onCondaYaml={setCondaYaml}
+            onContainerImage={setContainerImage}
+          />
+          {staged.ok ? (
+            <p className="text-xs text-muted-foreground" role={missingEnvLabels(staged).length ? "status" : undefined}>
+              {tryRunEnvSummary(staged)}
+            </p>
+          ) : (
+            <p role="alert" className="text-xs text-destructive">{staged.message}</p>
+          )}
+
+          {converted?.ok && (
+            <Section title="试跑输入" open={inputsOpen} onToggle={setInputsOpen}>
+              <p className="text-xs text-muted-foreground">相对路径（如 data/sample.csv）从项目文件夹读取。保存前用 Nextflow 模块测试跑一遍。</p>
+              <TryRunInputs
+                inputs={converted.value.inputs}
+                drafts={drafts}
+                onChange={(port, draft) => setDrafts((current) => ({ ...current, [port]: draft }))}
+              />
+              <Button type="button" variant="outline" size="sm" disabled={busy || !staged.ok} onClick={() => runTry()}>
+                {tryRun.isPending ? <Loader2 className="animate-spin" /> : null}
+                {receipt ? "重新试跑" : "只试跑"}
+              </Button>
+            </Section>
+          )}
+
+          <Section title="转化预览" open={previewOpen} onToggle={setPreviewOpen}>
+            {converted?.ok ? (
+              <>
+                <pre className="overflow-auto rounded-lg bg-secondary/60 p-3 font-mono text-xs">{converted.value.commandPreview}</pre>
+                <h3 className="text-sm font-semibold">{converted.value.entry.split("/").pop()}</h3>
+                <pre className="max-h-80 overflow-auto rounded-lg bg-secondary/60 p-3 font-mono text-xs">{converted.value.script}</pre>
+                <ul className="grid gap-1 font-mono text-xs">
+                  {inputPorts(converted.value.inputs).map((port) => (
+                    <li key={`in-${port.name}`}>入 · {port.name}{port.description === "文件列表" ? "[]" : ""}</li>
+                  ))}
+                  {outputPorts(converted.value.outputs).map((port) => (
+                    <li key={`out-${port.name}`}>出 · {port.name}</li>
+                  ))}
+                </ul>
+                <p className="text-xs text-muted-foreground">
+                  包含单元格 {converted.value.included.map((cell) => `[${cell.index}]`).join(" ") || "无"}
+                  <br />
+                  排除 {converted.value.excluded.map((cell) => `[${cell.index}] ${cell.role === "explore" ? "自由探索" : "说明"}`).join("、") || "无"}
+                </p>
+              </>
+            ) : (
+              <p className="text-sm text-destructive">{converted?.message}</p>
+            )}
+          </Section>
+        </section>
+
+        <section className="glass flex min-h-0 flex-col gap-3 overflow-auto rounded-xl p-4 text-sm">
+          <h2 className="font-semibold">将写入模块库</h2>
+          <p>命令行 <span className="font-mono">{converted?.ok ? converted.value.entry : "—"}</span></p>
+          <p>端口 {converted?.ok ? `${converted.value.inputs.length} 输入 · ${converted.value.outputs.length} 输出` : "—"}</p>
+          {converted?.ok && converted.value.outputs.length === 0 && <p className="text-destructive">至少标一个输出端口才能发布</p>}
+          <ModuleEnvPreview condaYaml={condaYaml} containerImage={containerImage} />
+          <p className={passed ? "text-success" : receipt ? "text-destructive" : "text-muted-foreground"}>
+            {tryRun.isPending
+              ? "Nextflow 模块测试运行中…"
+              : passed
+                ? `试跑通过 · ${receipt?.durationMs ?? 0}ms`
+                : !staged.ok
+                  ? staged.message
+                  : envChanged
+                    ? "环境已改，保存时会按当前 conda／容器重新试跑"
+                    : receipt?.passed && !inputsAligned
+                      ? "试跑输入已改，保存时会重新试跑"
+                      : receipt
+                        ? "试跑没有通过，看下面的日志"
+                        : "保存时先用 Nextflow 模块测试试跑，通过后写入模块库"}
+          </p>
+          {tryRun.error && <p role="alert" className="text-destructive">{tryRun.error.message}</p>}
+          {publish.error && <p role="alert" className="text-destructive">{publish.error.message}</p>}
+          {receipt && (
+            <>
+              <h3 className="font-semibold">日志 {logMark}</h3>
+              <pre className="min-h-32 flex-1 overflow-auto rounded-lg bg-secondary/60 p-3 font-mono text-xs">{receipt.log}</pre>
+              {receipt.bindings && <TryRunBindingTable bindings={receipt.bindings} />}
+              <table className="w-full text-left text-xs">
                 <thead className="text-muted-foreground">
                   <tr><th className="py-1">输出端口</th><th>文件</th><th>大小</th><th>契约</th></tr>
                 </thead>
@@ -232,108 +304,26 @@ function PublishWizardScreen({ notebookId }: { notebookId: string }) {
                   ))}
                 </tbody>
               </table>
-            )}
-          </section>
-        </div>
-      )}
-
-      {step === 3 && (
-        <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-2">
-          <section className="glass space-y-3 rounded-xl p-4">
-            <h2 className="text-sm font-semibold">模块信息</h2>
-            <FormField label="导出到" htmlFor="module-target">
-              <Select
-                value={target}
-                onValueChange={(next) => {
-                  setTarget(next);
-                  const mod = scripts.data?.modules.find((item) => item.id === next);
-                  if (mod) setName(mod.name);
-                }}
-              >
-                <SelectTrigger id="module-target" className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NEW_MODULE} className="text-xs">新模块</SelectItem>
-                  {(scripts.data?.modules ?? []).map((mod) => (
-                    <SelectItem key={mod.id} value={mod.id} className="text-xs">
-                      覆盖 <span className="font-mono">{mod.name}</span> {mod.version}{mod.referenceCount ? ` · ${mod.referenceCount} 个流程在用` : ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </FormField>
-            <FormField label="模块名" htmlFor="module-name">
-              <Input id="module-name" value={name} onChange={(event) => setName(event.target.value)} className="h-8 font-mono text-xs" />
-            </FormField>
-            <FormField label="说明" htmlFor="module-description">
-              <Input id="module-description" value={description} onChange={(event) => setDescription(event.target.value)} className="h-8 text-xs" />
-            </FormField>
-            <FormField label="版本" htmlFor="module-version">
-              <Input id="module-version" value={overwriting ? `${overwriting.version ?? "v1"} → ${version}` : version} readOnly className="h-8 font-mono text-xs" />
-            </FormField>
-            <FormField label="更新说明" htmlFor="module-changelog">
-              <Input id="module-changelog" value={changelog} onChange={(event) => setChangelog(event.target.value)} className="h-8 text-xs" />
-            </FormField>
-            <ModuleEnvFields
-              idPrefix="publish-env"
-              condaYaml={condaYaml}
-              containerImage={containerImage}
-              onCondaYaml={setCondaYaml}
-              onContainerImage={setContainerImage}
-            />
-            {publish.error && <p role="alert" className="text-sm text-destructive">{publish.error.message}</p>}
-          </section>
-          <section className="glass space-y-3 rounded-xl p-4 text-sm">
-            <h2 className="font-semibold">将写入模块库</h2>
-            <p>命令行 <span className="font-mono">{converted?.ok ? converted.value.entry : "—"}</span></p>
-            <p>端口 {converted?.ok ? `${converted.value.inputs.length} 输入 · ${converted.value.outputs.length} 输出` : "—"}</p>
-            <ModuleEnvPreview condaYaml={condaYaml} containerImage={containerImage} />
-            {passed && receipt?.bindings?.length ? (
-              <ul className="grid gap-1 font-mono text-xs">
-                {receipt.bindings.map((binding) => (
-                  <li key={binding.port}>{binding.port} · {SOURCE_LABEL[binding.source]} · {binding.label}</li>
-                ))}
-              </ul>
-            ) : null}
-            <p className={passed ? "text-success" : "text-destructive"}>
-              {passed
-                ? `试跑通过 · ${receipt?.durationMs ?? 0}ms`
-                : !staged.ok
-                  ? staged.message
-                  : envChanged
-                    ? "环境已改，需重新试跑"
-                    : "当前修订未试跑通过"}
-            </p>
-          </section>
-        </div>
-      )}
+            </>
+          )}
+          {passed && receipt?.bindings?.length ? (
+            <ul className="grid gap-1 font-mono text-xs">
+              {receipt.bindings.map((binding) => (
+                <li key={binding.port}>{binding.port} · {SOURCE_LABEL[binding.source]} · {binding.label}</li>
+              ))}
+            </ul>
+          ) : null}
+        </section>
+      </div>
 
       <footer className="glass flex items-center justify-between rounded-xl px-4 py-3">
-        <Button type="button" variant="outline" onClick={() => (step === 1 ? router.push(`/workbench/${notebookId}`) : go(step - 1))}>
-          {step === 1 ? "返回笔记本" : step === 3 ? "返回试跑" : "上一步"}
+        <Button type="button" variant="outline" onClick={() => router.push(`/workbench/${notebookId}`)}>
+          返回笔记本
         </Button>
-        {step < 3 ? (
-          <Button
-            type="button"
-            disabled={step === 1 ? !converted?.ok || converted.value.outputs.length === 0 : !passed}
-            onClick={() => go(step + 1)}
-          >
-            {step === 1 ? "下一步：试跑" : "下一步：保存"}
-          </Button>
-        ) : (
-          <Button
-            type="button"
-            disabled={!passed || publish.isPending || !name.trim()}
-            onClick={() => {
-              publish.mutate(
-                { id: doc.id, name: name.trim(), overwrite: overwriting?.id, description, changelog, condaYaml, containerImage },
-                { onSuccess: () => router.push("/modules") },
-              );
-            }}
-          >
-            {publish.isPending ? <Loader2 className="animate-spin" /> : null}
-            {overwriting ? `覆盖 ${overwriting.name} → ${version}` : "新建模块"}
-          </Button>
-        )}
+        <Button type="button" disabled={busy || !name.trim() || !staged.ok || !canConvert} onClick={save}>
+          {busy ? <Loader2 className="animate-spin" /> : null}
+          {tryRun.isPending ? "试跑中…" : publish.isPending ? "保存中…" : passed ? saveLabel : `试跑并${saveLabel}`}
+        </Button>
       </footer>
     </div>
   );

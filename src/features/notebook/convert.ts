@@ -213,11 +213,6 @@ export function scriptInterpreter(language: NotebookLanguage): "python3" | "Rscr
   return language === "r" ? "Rscript" : "python3";
 }
 
-/** Interpreter plus the converted script name, the same text the try-run log prints. */
-export function tryRunCommand(language: NotebookLanguage, entry: string, argv: readonly string[] = []): string {
-  return [scriptInterpreter(language), scriptFileName(entry), ...argv].join(" ");
-}
-
 export function commandPreview(entry: string, inputs: MarkerInput[]): string {
   const parts = [entry];
   for (const input of inputs) {

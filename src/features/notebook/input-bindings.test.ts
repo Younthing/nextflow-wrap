@@ -130,17 +130,43 @@ describe("stageInputPlan", () => {
     }
   });
 
-  it("leaves a missing path as the typed string", async () => {
-    const work = await mkdtemp(join(tmpdir(), "nb-miss-"));
+  it("reads a relative path from the workspace and rejects one that is not there", async () => {
+    const root = await mkdtemp(join(tmpdir(), "nb-rel-"));
+    const work = join(root, "work");
+    const workspace = join(root, "project");
+    await mkdir(work);
+    await mkdir(join(workspace, "data"), { recursive: true });
+    await writeFile(join(workspace, "data", "sample.csv"), "sample\nWs\n");
     try {
       const plan = planTryRunInputs([input("samplesheet", "path")], [
-        { port: "samplesheet", source: "path", value: "missing.csv" },
+        { port: "samplesheet", source: "path", value: "data/sample.csv" },
       ]);
-      const staged = await stageInputPlan(work, plan);
-      expect(staged.values.samplesheet).toBe("missing.csv");
-      expect(staged.lines[0]).toBe("输入 samplesheet · 路径 · missing.csv");
+      const staged = await stageInputPlan(work, plan, [], { workspace });
+      expect(staged.values.samplesheet).toBe("sample.csv");
+      expect(staged.lines[0]).toBe("输入 samplesheet · 路径 · data/sample.csv → sample.csv");
+      await expect(readFile(join(work, "sample.csv"), "utf8")).resolves.toContain("Ws");
+
+      const missing = planTryRunInputs([input("samplesheet", "path")], [
+        { port: "samplesheet", source: "path", value: "data/missing.csv" },
+      ]);
+      await expect(stageInputPlan(work, missing, [], { workspace })).rejects.toThrow("工作区里没有 data/missing.csv");
+      await expect(stageInputPlan(work, missing)).rejects.toThrow("找不到文件：data/missing.csv");
     } finally {
-      await rm(work, { recursive: true, force: true });
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("passes a folder by its absolute path", async () => {
+    const root = await mkdtemp(join(tmpdir(), "nb-dir-"));
+    const work = join(root, "work");
+    await mkdir(work);
+    await mkdir(join(root, "reads"));
+    try {
+      const plan = planTryRunInputs([input("reads", "dir")], [{ port: "reads", source: "path", value: "reads" }]);
+      const staged = await stageInputPlan(work, plan, [], { workspace: root });
+      expect(staged.values.reads).toBe(join(root, "reads"));
+    } finally {
+      await rm(root, { recursive: true, force: true });
     }
   });
 });
@@ -154,6 +180,6 @@ describe("simulateTryRun bindings", () => {
     expect(record.bindings).toEqual([
       { port: "samplesheet", source: "sample", label: "内置样例：samplesheet.csv" },
     ]);
-    expect(record.log).toContain("--samplesheet samplesheet.csv");
+    expect(record.log).toContain("--samplesheet inputs/samplesheet.csv");
   });
 });

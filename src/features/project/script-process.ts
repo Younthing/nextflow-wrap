@@ -45,6 +45,8 @@ function outputLine(port: PortDef): string {
 }
 
 function cliFlag(port: PortDef): string {
+  // The CLI declares booleans as store_true flags: pass the bare flag when on, nothing when off.
+  if (port.widget === "boolean") return `@{${port.name}.toString() == 'true' ? '--${port.name}' : ''}`;
   if (port.widget) return `--${port.name} '@{${port.name}}'`;
   return `--${port.name} @{${port.name}_cli}`;
 }
