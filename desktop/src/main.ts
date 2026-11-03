@@ -357,8 +357,9 @@ function registerIpc() {
 
 const context = (): BackendContext => ({
   appVersion: app.getVersion(),
-  // A development shell on Windows can use packages built in WSL (\\wsl.localhost\<distro>\...\resources\server).
+  // `pnpm dev:win` builds the package in WSL and puts it here; NEXTFLOW_STUDIO_SERVER_PACKAGES points elsewhere.
   serverPackages: process.env.NEXTFLOW_STUDIO_SERVER_PACKAGES || join(resources, "server"),
+  requireServerPackage: !app.isPackaged,
   log: serviceLog,
   status: (message) => mainWindow?.webContents.send("connect:status", message),
 });
@@ -367,6 +368,10 @@ const context = (): BackendContext => ({
 async function connect(connection: Connection, token?: string) {
   if (backend) await disconnect();
   const next = await startBackend(connection, context(), { token: token ?? connectionToken(connection.id), startLocal });
+  // Another server build may answer at the same origin: drop cached pages and any service worker (the browser demo's
+  // MSW) so the window loads what this server serves.
+  await session.defaultSession.clearCache();
+  await session.defaultSession.clearStorageData({ storages: ["serviceworkers", "cachestorage"] });
   await session.defaultSession.cookies.set({ url: next.origin, name: SESSION_COOKIE, value: next.token, httpOnly: true, sameSite: "strict", secure: next.origin.startsWith("https:") });
   backend = next;
   saveConnection(connection, connection.kind === "url" ? token : undefined);

@@ -43,6 +43,20 @@ pnpm --dir desktop dist:linux        # AppImage
 pnpm --dir desktop exec electron-builder --win   # Windows NSIS 安装包（只含连接 WSL / SSH / 地址所需的部分）
 ```
 
+### Windows 开发
+
+```powershell
+cd desktop
+pnpm install
+pnpm dev:win              # 每次都在 WSL 里用当前代码构建服务端，再启动 Electron
+pnpm dev:win --fresh      # 另外清空 WSL 里的数据目录（toolchain/ 和已装的服务端保留）
+pnpm dev:win --skip-server  # 只重打包外壳，沿用 resources/server 里上次的服务端包
+```
+
+`dev:win` 把仓库同步到 WSL 的 `~/.cache/nextflow-studio/dev-src`（那里的 node_modules 和 .next 保留，之后是增量构建），用 `scripts/build-server.mjs` 构建 Linux 服务端包，停掉 WSL 里正在运行的服务端，把包放进 `desktop/resources/server/`。每个包有自己的构建号，所以连接 WSL 或 SSH 时会装上它，而不是继续用旧的。数据目录的格式版本和当前代码不同时（没有迁移），会自动清空。WSL 里需要 Node 22.5 以上（带 corepack）和 rsync；`NEXTFLOW_STUDIO_WSL_DISTRO` 指定发行版。
+
+开发版（未打包）连接 WSL 或 SSH 时，没有服务端包会直接报错，不会悄悄沿用之前装的服务端。每次连接都会清掉窗口的 HTTP 缓存和 service worker。
+
 `bundle --server-arm64` 额外打包 linux-arm64 服务端（ARM 服务器、ARM 版 Windows 的 WSL）。`bundle --skip-server` 跳过服务端包。
 
 `bundle` 会用 `nextflow plugin install nf-weblog@1.2.0` 把插件解到 `resources/plugins/`，打进安装包；首次启动时复制到数据目录的 `toolchain/plugins/`，离线也有实时进度。构建机连不上插件仓库时只打印警告，应用首次启动再装；都装不上时 runner 改为每 3 秒读 trace 文件。
