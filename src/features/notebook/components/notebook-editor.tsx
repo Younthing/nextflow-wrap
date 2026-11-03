@@ -525,38 +525,59 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
 
   return (
     <div className="flex size-full min-h-0 flex-col">
-      <div role="toolbar" aria-label="笔记本工具栏" className="flex flex-wrap items-center gap-0.5 border-b border-border bg-glass-strong px-2 py-1">
-        <Button type="button" size="sm" variant="ghost" className="h-7 gap-1 px-2 font-normal" aria-label="+ 代码" onClick={() => insertCell("code")}>
-          <Plus /> 代码
+      {/* Single row: never wrap. Narrow widths hide lower-priority actions via @container. */}
+      <div
+        role="toolbar"
+        aria-label="笔记本工具栏"
+        className="@container flex h-9 min-w-0 flex-nowrap items-center gap-0.5 overflow-hidden border-b border-border bg-glass-strong px-2"
+      >
+        <Button type="button" size="sm" variant="ghost" className="h-7 shrink-0 gap-1 px-2 font-normal" aria-label="+ 代码" onClick={() => insertCell("code")}>
+          <Plus /> <span className="hidden @[22rem]:inline">代码</span>
         </Button>
-        <Button type="button" size="sm" variant="ghost" className="h-7 gap-1 px-2 font-normal" aria-label="+ 说明" onClick={() => insertCell("markdown")}>
+        <Button type="button" size="sm" variant="ghost" className="hidden h-7 shrink-0 gap-1 px-2 font-normal @[28rem]:inline-flex" aria-label="+ 说明" onClick={() => insertCell("markdown")}>
           <Plus /> 说明
         </Button>
-        <span aria-hidden className="mx-1 h-4 w-px bg-border" />
+        <span aria-hidden className="mx-1 hidden h-4 w-px shrink-0 bg-border @[28rem]:block" />
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button type="button" size="sm" variant="ghost" className="h-7 gap-1 px-2 font-normal" aria-label="运行全部" disabled={runDisabled} onClick={() => beginRun()}>
-              {runningTarget === "all" ? <Loader2 className="animate-spin" /> : <FastForward />} 全部运行
+            <Button type="button" size="sm" variant="ghost" className="h-7 shrink-0 gap-1 px-2 font-normal" aria-label="运行全部" disabled={runDisabled} onClick={() => beginRun()}>
+              {runningTarget === "all" ? <Loader2 className="animate-spin" /> : <FastForward />}
+              <span className="hidden @[24rem]:inline">全部运行</span>
             </Button>
           </TooltipTrigger>
           <TooltipContent>重启内核后从第一格依次运行，遇到报错停下</TooltipContent>
         </Tooltip>
-        <Button type="button" size="sm" variant="ghost" className="h-7 gap-1 px-2 font-normal" aria-label="清除全部输出" disabled={!hasOutputs} onClick={() => clearOutput()}>
-          <Eraser /> 清除全部输出
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className="hidden h-7 shrink-0 gap-1 px-2 font-normal @[36rem]:inline-flex"
+          aria-label="清除全部输出"
+          disabled={!hasOutputs}
+          onClick={() => clearOutput()}
+        >
+          <Eraser /> <span className="hidden @[44rem]:inline">清除全部输出</span>
         </Button>
         {live.language === "python" ? (
           <>
-            <span aria-hidden className="mx-1 h-4 w-px bg-border" />
-            <KernelControls compact notebookId={notebookId} running={runningTarget !== null} />
+            <span aria-hidden className="mx-1 hidden h-4 w-px shrink-0 bg-border @[32rem]:block" />
+            <div className="hidden min-w-0 shrink @[32rem]:flex">
+              <KernelControls
+                compact
+                notebookId={notebookId}
+                running={runningTarget !== null}
+                statusClassName="hidden @[48rem]:inline-flex"
+              />
+            </div>
           </>
         ) : null}
-        <div className="ml-auto flex items-center gap-1.5">
+        <div className="ml-auto flex min-w-0 shrink-0 items-center gap-1.5">
           <Select
             value={selectedCell?.role ?? ""}
             disabled={!selectedCell}
             onValueChange={(role) => selected && updateCell(selected, { role: role as NotebookCellRole })}
           >
-            <SelectTrigger size="sm" className="h-7 w-24 border-transparent bg-transparent text-xs shadow-none hover:bg-accent" aria-label="当前单元格类型">
+            <SelectTrigger size="sm" className="hidden h-7 w-24 border-transparent bg-transparent text-xs shadow-none hover:bg-accent @[40rem]:flex" aria-label="当前单元格类型">
               <SelectValue placeholder="单元格类型" />
             </SelectTrigger>
             <SelectContent>
@@ -565,11 +586,13 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
               ))}
             </SelectContent>
           </Select>
-          <KernelPicker
-            subtle
-            value={live.kernel}
-            onChange={(kernel) => update({ kernel, language: languageForKernel(kernel) })}
-          />
+          <div className="hidden min-w-0 max-w-40 shrink @[30rem]:flex">
+            <KernelPicker
+              subtle
+              value={live.kernel}
+              onChange={(kernel) => update({ kernel, language: languageForKernel(kernel) })}
+            />
+          </div>
           <ExportMenu
             doc={live}
             outputs={outputs}

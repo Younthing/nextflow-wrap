@@ -30,6 +30,7 @@ export function KernelControls({
   running,
   disabled,
   compact = false,
+  statusClassName,
 }: {
   notebookId: string;
   /** A run request is in flight from this editor. */
@@ -37,6 +38,8 @@ export function KernelControls({
   disabled?: boolean;
   /** Icon buttons with tooltips, for the workbench toolbar. The state text stays readable. */
   compact?: boolean;
+  /** Extra classes on the state label (e.g. hide it in a narrow toolbar). */
+  statusClassName?: string;
 }) {
   const info = useKernelInfo(notebookId, !disabled);
   const action = useKernelAction();
@@ -49,7 +52,7 @@ export function KernelControls({
 
   const restarting = action.isPending && action.variables?.action === "restart";
   const status = (
-    <span className="inline-flex items-center gap-1.5 px-1 text-xs whitespace-nowrap text-muted-foreground" role="status" title={title || undefined}>
+    <span className={cn("inline-flex items-center gap-1.5 px-1 text-xs whitespace-nowrap text-muted-foreground", statusClassName)} role="status" title={title || undefined}>
       <span className={cn("size-1.5 shrink-0 rounded-full", STATE_DOT[shown])} aria-hidden />
       {STATE_TEXT[shown]}
     </span>
