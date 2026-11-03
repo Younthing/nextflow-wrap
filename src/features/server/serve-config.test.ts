@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  clearRouteCache,
   browserLink, clearServerState, guardHosts, parseReadyLine, parseServeArgs, probeHost, readServerState, readyLine,
   serverToken, writeServerState,
 } from "./serve-config";
@@ -64,5 +65,20 @@ describe("state files", () => {
     clearServerState(dir, 42);
     expect(readServerState(dir)).toBeUndefined();
     await expect(readFile(join(dir, "server.json"))).rejects.toThrow();
+  });
+});
+
+describe("clearRouteCache", () => {
+  it("removes pages the server cached on disk and nothing else", async () => {
+    const { mkdtempSync, mkdirSync, writeFileSync, existsSync, rmSync } = await import("node:fs");
+    const dir = mkdtempSync(join(tmpdir(), "nfs-app-"));
+    mkdirSync(join(dir, ".next/server/route-cache/APP_PAGE"), { recursive: true });
+    writeFileSync(join(dir, ".next/server/route-cache/APP_PAGE/runs.html"), "old");
+    writeFileSync(join(dir, ".next/server/app.js"), "code");
+    clearRouteCache(dir);
+    expect(existsSync(join(dir, ".next/server/route-cache"))).toBe(false);
+    expect(existsSync(join(dir, ".next/server/app.js"))).toBe(true);
+    clearRouteCache(dir);
+    rmSync(dir, { recursive: true, force: true });
   });
 });

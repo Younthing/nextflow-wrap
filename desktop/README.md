@@ -48,12 +48,14 @@ macOS 上的 GUI 应用拿不到 shell 的 `PATH`，启动时会从登录 shell 
 pnpm install                         # 仓库根目录：web 应用依赖
 pnpm --dir desktop install           # 桌面外壳依赖（Electron 只装在这里）
 pnpm --dir desktop bundle            # standalone 服务、runner、Linux 服务端包、main/preload、连接页，预取 nf-weblog
-pnpm --dir desktop start             # mac / Linux：用当前代码重建本机服务端和外壳，再打开；Windows 上等于 dev:win
-pnpm --dir desktop dev               # 先重新打包外壳（main / preload / 启动页）再打开，沿用 resources/ 里上次的服务端；Windows 上等于 dev:win
+pnpm --dir desktop dev               # 每个平台都一样：先用当前代码构建服务端和外壳再打开（Windows 在 WSL 里构建，同 dev:win；start 是同一个命令）
+pnpm --dir desktop dev --skip-server # 只重打包外壳，沿用上次构建的服务端（可能比代码旧）
 pnpm --dir desktop dist:mac          # 未签名的 .dmg / .zip（arm64 + x64）
 pnpm --dir desktop dist:linux        # AppImage
 pnpm --dir desktop exec electron-builder --win   # Windows NSIS 安装包（只含连接 WSL / SSH / 地址所需的部分）
 ```
+
+每个构建都装在只属于它的目录里：WSL / SSH 是 `~/.local/share/nextflow-studio/server/<包名>-<构建号>/`（`current` 指向它，其他构建删掉），打包应用是 userData 下按构建号命名的目录；服务端每次启动前还会清掉 Next.js 写在自己目录里的页面缓存（`.next/server/route-cache`）。这个缓存按路由而不是按构建存放，如果新构建解压到旧目录上，就会继续把旧构建渲染的页面（连同它引用的旧脚本）发给窗口，表现为接口是新的、页面却新旧混杂（右键菜单、预览消失，页面报错）。
 
 打包的应用每次构建都有自己的构建号（`resources/app-server.build`），版本号不变也会重新解压服务端，不会继续用 userData 里上一次解压的旧服务端。本机数据库的格式版本和当前代码不同时（没有迁移），启动本机服务端前会清掉数据库、示例项目、运行记录和工作目录；设置、工具链和放在自己文件夹里的项目保留。
 

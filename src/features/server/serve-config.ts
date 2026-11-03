@@ -159,6 +159,15 @@ export function parseReadyLine(line: string): ReadyLine | undefined {
   }
 }
 
+/**
+ * Rendered pages the Next.js server cached on disk (`.next/server/route-cache`). Their key is the route, not the
+ * build, so pages cached by another build of the same folder would be served with that build's JavaScript: the
+ * server clears them before every start (`nextflow-studio serve` and the desktop app's local server).
+ */
+export function clearRouteCache(appServerDir: string) {
+  rmSync(join(appServerDir, ".next", "server", "route-cache"), { recursive: true, force: true });
+}
+
 /** The link a person opens: it sets the session cookie once, then the address bar drops the token. */
 export function browserLink(host: string, port: number, token: string): string {
   const shown = WILDCARD.has(host) ? "127.0.0.1" : host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;

@@ -8,6 +8,7 @@ import { connectionDetail, ConnectionError, DATA_ENTRIES, LOCAL_CONNECTION, read
 import { readProjectMenuState } from "../../src/features/desktop/project-menu";
 import { SESSION_COOKIE } from "../../src/features/desktop/session-guard";
 import { parseEnvBlock, quitPrompt, RestartTracker, SHELL_ENV_KEYS } from "../../src/features/desktop/supervisor";
+import { clearRouteCache } from "../../src/features/server/serve-config";
 import { dataDirectory } from "../../src/lib/server/paths";
 import { SCHEMA_VERSION } from "../../src/lib/server/schema";
 import type { DesktopBackendAction, DesktopBackendInfo, DesktopMenuAction, DesktopNotification, ProjectMenuState } from "../../src/lib/desktop";
@@ -209,6 +210,8 @@ async function startLocal(context: BackendContext) {
   const origin = `http://127.0.0.1:${port}`;
   context.status("启动本机服务端…");
   const serverDir = await appServerDirectory(context.forceInstall);
+  // Pages another build of this folder rendered must not be served with this build's scripts.
+  clearRouteCache(serverDir);
   clearStaleLocalData();
   const build = localBuild();
   const env = serviceEnv({ PORT: String(port), HOSTNAME: "127.0.0.1", NEXTFLOW_STUDIO_SESSION_TOKEN: token, ...(build ? { NEXTFLOW_STUDIO_BUILD: build } : {}) });

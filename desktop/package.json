@@ -9,7 +9,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "bundle": "node scripts/bundle.mjs",
     "bundle:shell": "node scripts/bundle-shell.mjs",
-    "start": "node scripts/start.mjs",
+    "start": "node scripts/dev.mjs",
     "dev": "node scripts/dev.mjs",
     "dev:win": "node scripts/dev-win.mjs",
     "dist": "node scripts/bundle.mjs && electron-builder --publish never",

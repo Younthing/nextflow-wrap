@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -56,6 +56,8 @@ describe("connections", () => {
     expect(serverArch("ppc64le")).toBeUndefined();
     expect(serverPackageName("0.2.0", "x64")).toBe("nextflow-studio-server-0.2.0-linux-x64");
     expect(() => installCommand("evil; rm -rf ~", "stdin")).toThrow();
+    // SSH sends it as sh -c '<command>': it must not contain single quotes.
+    expect(installCommand(serverPackageName("0.2.0", "x64"), "stdin")).not.toContain("'");
   });
 });
 
@@ -75,11 +77,13 @@ describe("remote scripts", () => {
   afterEach(() => { if (home) rmSync(home, { recursive: true, force: true }); });
 
   /** A fake package whose `serve` prints a ready line, installed through the same command the app sends. */
-  function install(version: string) {
+  function install(version: string, buildId?: string, extra?: (dir: string) => void) {
     const name = serverPackageName(version, "x64");
     const build = mkdtempSync(join(tmpdir(), "nfs-pkg-"));
     mkdirSync(join(build, name, "bin"), { recursive: true });
     writeFileSync(join(build, name, "VERSION"), `${version}\n`);
+    if (buildId) writeFileSync(join(build, name, "BUILD"), `${buildId}\n`);
+    extra?.(join(build, name));
     writeFileSync(join(build, name, "bin", "nextflow-studio"), `#!/bin/sh\necho "[web] starting" >&2\necho '{"event":"ready","host":"127.0.0.1","port":4321,"token":"tok","version":"${version}","apiVersion":1,"pid":99,"reused":false}'\nsleep 1\n`);
     chmodSync(join(build, name, "bin", "nextflow-studio"), 0o755);
     const archive = join(build, "pkg.tar.gz");
@@ -99,6 +103,22 @@ describe("remote scripts", () => {
     expect(parseProbe(execFileSync("sh", ["-s"], { input: PROBE_SCRIPT, env }).toString()).version).toBe("0.3.0");
     const started = execFileSync("sh", ["-s"], { input: SSH_START_SCRIPT, env, timeout: 20_000 }).toString().trim();
     expect(parseReadyLine(started)).toMatchObject({ port: 4321, version: "0.3.0" });
+  });
+
+  it("installs every build into a clean folder of its own and removes the others", () => {
+    home = mkdtempSync(join(tmpdir(), "nfs-home-"));
+    const server = join(home, ".local/share/nextflow-studio/server");
+    install("0.2.0", "build-a");
+    // What the old server wrote while it ran: pages it rendered (keyed by route, not build).
+    const old = join(server, "nextflow-studio-server-0.2.0-linux-x64-build-a");
+    mkdirSync(join(old, "app-server/.next/server/route-cache"), { recursive: true });
+    writeFileSync(join(old, "app-server/.next/server/route-cache/runs.html"), "old page");
+    install("0.2.0", "build-b");
+    const entries = execFileSync("ls", ["-A", server], { encoding: "utf8" }).split("\n").filter(Boolean).sort();
+    expect(entries).toEqual(["current", "nextflow-studio-server-0.2.0-linux-x64-build-b"]);
+    expect(readFileSync(join(server, "current/BUILD"), "utf8").trim()).toBe("build-b");
+    expect(existsSync(join(server, "current/app-server/.next/server/route-cache/runs.html"))).toBe(false);
+    expect(parseProbe(execFileSync("sh", ["-s"], { input: PROBE_SCRIPT, env: { ...process.env, HOME: home } }).toString())).toMatchObject({ version: "0.2.0", build: "build-b" });
   });
 
   it("clears data but keeps settings, the toolchain and installed servers", () => {

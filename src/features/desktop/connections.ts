@@ -176,13 +176,24 @@ export const CLEAR_DATA_SCRIPT = `d="$HOME/.local/share/nextflow-studio"
 cd "$d" && rm -rf -- ${DATA_ENTRIES.join(" ")}
 `;
 
-/** Unpacks a package archive read from stdin (ssh) or from `$1` (wsl) and points `current` at it. */
+/**
+ * Unpacks a package archive read from stdin (ssh) or from `$1` (wsl) into a folder of its own build,
+ * `<package>-<BUILD>`, points `current` at it and removes the other installs. Each build starting from clean files
+ * matters: the Next.js server writes rendered pages into its own folder (`.next/server/route-cache`, keyed by
+ * route, not by build), so a build unpacked over another one would keep serving the old build's pages.
+ */
 export function installCommand(packageName: string, from: "stdin" | "arg"): string {
   if (!/^nextflow-studio-server-[A-Za-z0-9._-]+$/.test(packageName)) throw new ConnectionError("服务端包名无效");
   // A Windows path (the app's resources) is converted; a path already inside the distro is used as it is.
   const source = from === "stdin" ? "-" : '"$f"';
   const resolve = from === "stdin" ? "" : 'case "$1" in /*) f="$1" ;; *) f=$(wslpath -u "$1") ;; esac; ';
-  return `set -e; ${resolve}d=${SERVER_HOME}; mkdir -p "$d"; tar -xzf ${source} -C "$d"; ln -sfn "${packageName}" "$d/current"`;
+  return [
+    `set -e; ${resolve}d=${SERVER_HOME}; mkdir -p "$d"`,
+    `t="$d/.install-$$"; rm -rf "$t"; mkdir -p "$t"; tar -xzf ${source} -C "$t"`,
+    `b=$(cat "$t/${packageName}/BUILD" 2>/dev/null | tr -cd A-Za-z0-9._- || true); n="${packageName}\${b:+-$b}"`,
+    `rm -rf "$d/$n"; mv "$t/${packageName}" "$d/$n"; rm -rf "$t"; ln -sfn "$n" "$d/current"`,
+    `for old in "$d"/nextflow-studio-server-*; do [ "\${old##*/}" = "$n" ] || rm -rf "$old"; done`,
+  ].join("; ");
 }
 
 /** Runs `serve` in a login shell (for PATH, Java, conda) and waits in the foreground: the WSL launcher keeps it. */

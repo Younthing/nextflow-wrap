@@ -10,6 +10,7 @@ import { DEFAULT_COPILOT_HOSTS } from "@/features/assistant/request-guard";
 import {
   browserLink, clearServerState, guardHosts, parseServeArgs, probeHost, processAlive, readServerState, readyLine,
   SERVE_USAGE, ServeUsageError, serverToken, writeServerState, type ServeOptions,
+  clearRouteCache,
 } from "@/features/server/serve-config";
 import { API_VERSION } from "@/lib/api-types";
 import { dataDirectory } from "@/lib/server/paths";
@@ -70,6 +71,7 @@ async function main(options: ServeOptions) {
   const serverJs = join(root, "app-server", "server.js");
   const runnerJs = join(root, "runner", "runner.mjs");
   for (const file of [serverJs, runnerJs]) if (!existsSync(file)) throw new Error(`找不到 ${file}。先运行 node scripts/build-server.mjs。`);
+  clearRouteCache(join(root, "app-server"));
 
   const port = options.port || await freePort(options.host);
   const hosts = guardHosts(options);
