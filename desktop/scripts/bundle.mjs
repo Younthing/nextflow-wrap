@@ -27,6 +27,8 @@ if (!skipNext) {
   // app unpacks on first start of each version (see appServerDirectory in src/main.ts).
   rmSync(join(resources, "app-server.tar.gz"), { force: true });
   run("tar", ["-czf", join(resources, "app-server.tar.gz"), "-C", resources, "app-server"]);
+  // Every build gets its own id: the app unpacks the archive again when the id changes, even at the same version.
+  writeFileSync(join(resources, "app-server.build"), `${new Date().toISOString().replace(/[^0-9]/g, "")}-${process.pid}\n`);
 }
 
 // The runner runs in an Electron utility process (Node with node:sqlite).

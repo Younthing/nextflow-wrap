@@ -8,6 +8,8 @@ import { ConnectionError, readConnection, type Connection } from "../../src/feat
 import { readProjectMenuState } from "../../src/features/desktop/project-menu";
 import { SESSION_COOKIE } from "../../src/features/desktop/session-guard";
 import { parseEnvBlock, quitPrompt, RestartTracker, SHELL_ENV_KEYS } from "../../src/features/desktop/supervisor";
+import { dataDirectory } from "../../src/lib/server/paths";
+import { SCHEMA_VERSION } from "../../src/lib/server/schema";
 import type { DesktopMenuAction, DesktopNotification, ProjectMenuState } from "../../src/lib/desktop";
 import { freePort, installWsl, startBackend, waitForHealth, wslDistros, type BackendContext, type RunningBackend } from "./backends";
 import { connectionToken, loadConnections, rememberLast, removeConnection, saveConnection } from "./connection-store";
@@ -92,16 +94,21 @@ function serviceLog(name: string): WriteStream {
 }
 
 /**
- * The packaged app carries the Next.js server as `app-server.tar.gz` and unpacks it once per app version into
- * userData (a development build uses resources/app-server directly). Unpacking goes to a temporary folder that
- * is renamed into place, so an interrupted first start never leaves a half-extracted server behind.
+ * The packaged app carries the Next.js server as `app-server.tar.gz` and unpacks it once per build into userData
+ * (a development build uses resources/app-server directly). The folder is named by `app-server.build`, the id
+ * scripts/bundle.mjs writes beside the archive, so a rebuilt app at an unchanged version never serves the old
+ * server. Unpacking goes to a temporary folder that is renamed into place, so an interrupted first start never
+ * leaves a half-extracted server behind.
  */
 async function appServerDirectory(): Promise<string> {
   const archive = join(resources, "app-server.tar.gz");
   // Unpackaged runs keep the same app version across rebuilds, so a cached copy would serve a stale build.
   if (!app.isPackaged || !existsSync(archive)) return join(resources, "app-server");
   const root = join(app.getPath("userData"), "app-server");
-  const target = join(root, app.getVersion());
+  const buildFile = join(resources, "app-server.build");
+  const build = existsSync(buildFile) ? readFileSync(buildFile, "utf8").trim().replace(/[^\w.-]/g, "") : "";
+  const name = build ? `${app.getVersion()}-${build}` : app.getVersion();
+  const target = join(root, name);
   if (existsSync(join(target, "app-server", "server.js"))) return join(target, "app-server");
   const temporary = `${target}.${process.pid}.tmp`;
   rmSync(temporary, { recursive: true, force: true });
@@ -109,8 +116,8 @@ async function appServerDirectory(): Promise<string> {
   await new Promise<void>((resolve, reject) => execFile("tar", ["-xzf", archive, "-C", temporary], (error) => (error ? reject(error) : resolve())));
   rmSync(target, { recursive: true, force: true });
   renameSync(temporary, target);
-  // Older versions' copies are no longer needed.
-  for (const name of readdirSync(root)) if (name !== app.getVersion()) rmSync(join(root, name), { recursive: true, force: true });
+  // Other builds' copies are no longer needed.
+  for (const entry of readdirSync(root)) if (entry !== name) rmSync(join(root, entry), { recursive: true, force: true });
   return join(target, "app-server");
 }
 
@@ -142,6 +149,37 @@ function supervise(name: string, modulePath: string, args: string[], env: NodeJS
   start();
 }
 
+/**
+ * There are no migrations: a database written by another schema version is refused by the server, which leaves
+ * the app with pages that cannot load. Before the local server starts, such data (database, example project, run
+ * records, launch and work directories) is deleted so the server starts fresh. Settings, the toolchain, logs,
+ * the unpacked server and connections are kept; projects in their own folders are not touched.
+ */
+function clearStaleLocalData() {
+  const data = dataDirectory({ env: baseEnv });
+  const database = join(data, "studio.sqlite");
+  if (!existsSync(database)) return;
+  let version: number;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { DatabaseSync } = require("node:sqlite") as typeof import("node:sqlite");
+    const db = new DatabaseSync(database, { readOnly: true });
+    try {
+      version = Number(db.prepare("PRAGMA user_version").get()?.user_version ?? 0);
+    } finally {
+      db.close();
+    }
+  } catch (error) {
+    console.warn("Could not read the local database version", error);
+    return;
+  }
+  if (version === SCHEMA_VERSION) return;
+  console.warn(`Local data has schema version ${version}, this app uses ${SCHEMA_VERSION}: clearing it`);
+  for (const name of ["studio.sqlite", "studio.sqlite-wal", "studio.sqlite-shm", "workspaces", "executions", "pipelines", "work"]) {
+    rmSync(join(data, name), { recursive: true, force: true });
+  }
+}
+
 /** The bundled server and runner on this computer: the original desktop setup, now one kind of backend. */
 async function startLocal(context: BackendContext) {
   localGeneration++;
@@ -152,6 +190,7 @@ async function startLocal(context: BackendContext) {
   const origin = `http://127.0.0.1:${port}`;
   context.status("启动本机服务端…");
   const serverDir = await appServerDirectory();
+  clearStaleLocalData();
   const env = serviceEnv({ PORT: String(port), HOSTNAME: "127.0.0.1", NEXTFLOW_STUDIO_SESSION_TOKEN: token });
   supervise("web", join(serverDir, "server.js"), [], env, serverDir);
   supervise("runner", join(resources, "runner", "runner.mjs"), [], serviceEnv(), join(resources, "runner"), true);

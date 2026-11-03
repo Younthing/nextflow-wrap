@@ -37,11 +37,14 @@ macOS 上的 GUI 应用拿不到 shell 的 `PATH`，启动时会从登录 shell 
 pnpm install                         # 仓库根目录：web 应用依赖
 pnpm --dir desktop install           # 桌面外壳依赖（Electron 只装在这里）
 pnpm --dir desktop bundle            # standalone 服务、runner、Linux 服务端包、main/preload、连接页，预取 nf-weblog
-pnpm --dir desktop dev               # 用本地 Electron 打开（不打包）
+pnpm --dir desktop start             # mac / Linux：用当前代码重建本机服务端，再用本地 Electron 打开
+pnpm --dir desktop dev               # 用本地 Electron 打开（不重建，沿用 resources/ 里上次 bundle 的服务端）
 pnpm --dir desktop dist:mac          # 未签名的 .dmg / .zip（arm64 + x64）
 pnpm --dir desktop dist:linux        # AppImage
 pnpm --dir desktop exec electron-builder --win   # Windows NSIS 安装包（只含连接 WSL / SSH / 地址所需的部分）
 ```
+
+打包的应用每次构建都有自己的构建号（`resources/app-server.build`），版本号不变也会重新解压服务端，不会继续用 userData 里上一次解压的旧服务端。本机数据库的格式版本和当前代码不同时（没有迁移），启动本机服务端前会清掉数据库、示例项目、运行记录和工作目录；设置、工具链和放在自己文件夹里的项目保留。
 
 ### Windows 开发
 

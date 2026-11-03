@@ -26,6 +26,8 @@ mac:
     # folders from extra resources.
     - from: resources/app-server.tar.gz
       to: app-server.tar.gz
+    - from: resources/app-server.build
+      to: app-server.build
     - from: resources/runner
       to: runner
     - from: resources/plugins
@@ -48,6 +50,8 @@ linux:
     # folders from extra resources.
     - from: resources/app-server.tar.gz
       to: app-server.tar.gz
+    - from: resources/app-server.build
+      to: app-server.build
     - from: resources/runner
       to: runner
     - from: resources/plugins
