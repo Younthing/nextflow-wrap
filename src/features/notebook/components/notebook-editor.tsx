@@ -646,21 +646,6 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
       ) : null}
       <div ref={scrollerRef} className="min-h-0 flex-1 overflow-auto">
         <div ref={cellListRef} className="mx-auto grid max-w-6xl px-4 pt-5 pb-24">
-          <div className="grid gap-0.5 pb-3 pl-12">
-            <input
-              value={live.name}
-              aria-label="笔记本名称"
-              onChange={(event) => update({ name: event.target.value })}
-              className="w-full rounded-md bg-transparent px-2 py-1 text-xl font-semibold outline-none placeholder:text-muted-foreground hover:bg-accent/60 focus-visible:bg-accent/60 disabled:opacity-100"
-            />
-            <input
-              value={live.description}
-              aria-label="笔记本说明"
-              placeholder="这本笔记本在做什么"
-              onChange={(event) => update({ description: event.target.value })}
-              className="w-full rounded-md bg-transparent px-2 py-0.5 text-sm text-muted-foreground outline-none placeholder:text-muted-foreground/70 hover:bg-accent/60 focus-visible:bg-accent/60"
-            />
-          </div>
           <InsertBar after={-1} onInsert={insertCell} />
           {live.cells.map((cell, index) => (
             <div
