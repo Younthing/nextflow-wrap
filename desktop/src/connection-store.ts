@@ -2,7 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { app, safeStorage } from "electron";
 
-import { type Connection, type ConnectionStore, readStore } from "../../src/features/desktop/connections";
+import { type Connection, connectionKey, type ConnectionStore, readStore } from "../../src/features/desktop/connections";
 
 /**
  * Saved connections in `<userData>/connections.json`; tokens of URL connections separately in
@@ -20,13 +20,18 @@ function saveStore(store: ConnectionStore) {
   writeFileSync(storeFile(), `${JSON.stringify(store, null, 2)}\n`, { mode: 0o600 });
 }
 
-export function saveConnection(connection: Connection, token?: string): ConnectionStore {
+/**
+ * Saves `connection` first in the list. A saved entry for the same backend (same distro, ssh target or address)
+ * keeps its id, so connecting again never adds a duplicate. Returns the connection as saved.
+ */
+export function saveConnection(connection: Connection, token?: string): Connection {
   const store = loadConnections();
-  const connections = [connection, ...store.connections.filter((item) => item.id !== connection.id)];
-  const next = { ...store, connections };
-  saveStore(next);
-  if (token !== undefined) setToken(connection.id, token);
-  return next;
+  const known = store.connections.find((item) => item.id === connection.id || connectionKey(item) === connectionKey(connection));
+  const saved = known ? { ...connection, id: known.id } : connection;
+  const connections = [saved, ...store.connections.filter((item) => item.id !== saved.id)];
+  saveStore({ ...store, connections });
+  if (token !== undefined) setToken(saved.id, token);
+  return saved;
 }
 
 export function removeConnection(id: string): ConnectionStore {

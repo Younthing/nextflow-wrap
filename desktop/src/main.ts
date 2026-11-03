@@ -4,14 +4,14 @@ import { createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, re
 import { join } from "node:path";
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, safeStorage, session, shell, Tray, utilityProcess, type MenuItemConstructorOptions, type UtilityProcess } from "electron";
 
-import { ConnectionError, readConnection, type Connection } from "../../src/features/desktop/connections";
+import { connectionDetail, ConnectionError, DATA_ENTRIES, LOCAL_CONNECTION, readConnection, wslConnection, type Connection } from "../../src/features/desktop/connections";
 import { readProjectMenuState } from "../../src/features/desktop/project-menu";
 import { SESSION_COOKIE } from "../../src/features/desktop/session-guard";
 import { parseEnvBlock, quitPrompt, RestartTracker, SHELL_ENV_KEYS } from "../../src/features/desktop/supervisor";
 import { dataDirectory } from "../../src/lib/server/paths";
 import { SCHEMA_VERSION } from "../../src/lib/server/schema";
-import type { DesktopMenuAction, DesktopNotification, ProjectMenuState } from "../../src/lib/desktop";
-import { freePort, installWsl, startBackend, waitForHealth, wslDistros, type BackendContext, type RunningBackend } from "./backends";
+import type { DesktopBackendAction, DesktopBackendInfo, DesktopMenuAction, DesktopNotification, ProjectMenuState } from "../../src/lib/desktop";
+import { clearServerData, freePort, installWsl, runLogged, startBackend, stopServer, waitForHealth, wslDistros, type BackendContext, type RunningBackend } from "./backends";
 import { connectionToken, loadConnections, rememberLast, removeConnection, saveConnection } from "./connection-store";
 import { setupUpdates } from "./updates";
 
@@ -21,18 +21,27 @@ import { setupUpdates } from "./updates";
  * - The server (web UI + `/api` + notebook kernels, and the Nextflow runner) comes from a saved connection
  *   (backends.ts). A local one is the Next.js standalone server and runner.mjs hosted here, on 127.0.0.1 at a
  *   random port, guarded by a per-launch session token (see src/proxy.ts), and restarted when they crash.
- * - Before a backend answers, the window shows the bundled connect page (connect/index.html).
+ * - At start the window shows the bundled start page (connect/index.html) while the last backend (or the default:
+ *   WSL on Windows, this computer elsewhere) starts, then the server's welcome page, where the backend is managed
+ *   (restart, reinstall or rebuild, clear data, switch). The start page shows forms only when starting fails.
  * - The shell owns the window, the menu bar / tray item and native dialogs, mapping paths for WSL.
  *
  * Nextflow heads run in their own process groups, so closing the app can leave them running ("后台继续"); the
  * next runner adopts them.
  */
 const dev = process.argv.includes("--dev");
+/** The checkout a development shell runs from (desktop/dist/main.js → repository root). */
+const repoRoot = join(__dirname, "..", "..");
 const resources = app.isPackaged ? process.resourcesPath : join(__dirname, "..", "resources");
 let backend: RunningBackend | undefined;
 /** Bumped on every start and stop of the local server, so its old processes are not restarted. */
 let localGeneration = 0;
 let connectError: string | undefined;
+/** What the start page shows: the start-up screen, the recovery view for `target`, or the connection form. */
+let startView: { view: "splash" | "recover" | "pick"; target?: Connection } = { view: "pick" };
+let lastStatus = "";
+/** Set while the backend is being started, stopped or rebuilt, so a second request waits its turn. */
+let busy = false;
 let mainWindow: BrowserWindow | undefined;
 let tray: Tray | undefined;
 let activeRuns = 0;
@@ -100,7 +109,7 @@ function serviceLog(name: string): WriteStream {
  * server. Unpacking goes to a temporary folder that is renamed into place, so an interrupted first start never
  * leaves a half-extracted server behind.
  */
-async function appServerDirectory(): Promise<string> {
+async function appServerDirectory(force = false): Promise<string> {
   const archive = join(resources, "app-server.tar.gz");
   // Unpackaged runs keep the same app version across rebuilds, so a cached copy would serve a stale build.
   if (!app.isPackaged || !existsSync(archive)) return join(resources, "app-server");
@@ -109,7 +118,7 @@ async function appServerDirectory(): Promise<string> {
   const build = existsSync(buildFile) ? readFileSync(buildFile, "utf8").trim().replace(/[^\w.-]/g, "") : "";
   const name = build ? `${app.getVersion()}-${build}` : app.getVersion();
   const target = join(root, name);
-  if (existsSync(join(target, "app-server", "server.js"))) return join(target, "app-server");
+  if (!force && existsSync(join(target, "app-server", "server.js"))) return join(target, "app-server");
   const temporary = `${target}.${process.pid}.tmp`;
   rmSync(temporary, { recursive: true, force: true });
   mkdirSync(temporary, { recursive: true });
@@ -175,9 +184,19 @@ function clearStaleLocalData() {
   }
   if (version === SCHEMA_VERSION) return;
   console.warn(`Local data has schema version ${version}, this app uses ${SCHEMA_VERSION}: clearing it`);
-  for (const name of ["studio.sqlite", "studio.sqlite-wal", "studio.sqlite-shm", "workspaces", "executions", "pipelines", "work"]) {
-    rmSync(join(data, name), { recursive: true, force: true });
-  }
+  clearLocalData();
+}
+
+/** "清除数据" for the local server (stopped first); the same entries as for WSL and SSH. */
+function clearLocalData() {
+  const data = dataDirectory({ env: baseEnv });
+  for (const name of DATA_ENTRIES) rmSync(join(data, name), { recursive: true, force: true });
+}
+
+/** Build id of the bundled local server, so the welcome page can show which build answers. */
+function localBuild(): string | undefined {
+  const file = app.isPackaged ? join(resources, "app-server.build") : join(resources, "BUILD");
+  try { return readFileSync(file, "utf8").trim() || undefined; } catch { return undefined; }
 }
 
 /** The bundled server and runner on this computer: the original desktop setup, now one kind of backend. */
@@ -189,15 +208,17 @@ async function startLocal(context: BackendContext) {
   const port = await freePort();
   const origin = `http://127.0.0.1:${port}`;
   context.status("启动本机服务端…");
-  const serverDir = await appServerDirectory();
+  const serverDir = await appServerDirectory(context.forceInstall);
   clearStaleLocalData();
-  const env = serviceEnv({ PORT: String(port), HOSTNAME: "127.0.0.1", NEXTFLOW_STUDIO_SESSION_TOKEN: token });
+  const build = localBuild();
+  const env = serviceEnv({ PORT: String(port), HOSTNAME: "127.0.0.1", NEXTFLOW_STUDIO_SESSION_TOKEN: token, ...(build ? { NEXTFLOW_STUDIO_BUILD: build } : {}) });
   supervise("web", join(serverDir, "server.js"), [], env, serverDir);
   supervise("runner", join(resources, "runner", "runner.mjs"), [], serviceEnv(), join(resources, "runner"), true);
-  await waitForHealth(origin, token);
+  const health = await waitForHealth(origin, token);
   return {
     origin,
     token,
+    server: { version: health.appVersion, build: health.build },
     // SIGTERM lets the runner leave started Nextflow heads running and the web server shut kernels down.
     stop: async () => {
       localGeneration++;
@@ -220,6 +241,10 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
 
 const connectPage = () => join(__dirname, "connect", "index.html");
 const fromConnectPage = (event: Electron.IpcMainInvokeEvent) => event.senderFrame?.url.startsWith("file:") === true;
+const fromBackendPage = (event: Electron.IpcMainInvokeEvent) => {
+  const url = event.senderFrame?.url;
+  return Boolean(backend && url && (url === backend.origin || url.startsWith(`${backend.origin}/`)));
+};
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -230,7 +255,7 @@ function createWindow() {
     title: "Nextflow Studio",
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
     backgroundColor: "#0b1020",
-    webPreferences: { preload: join(__dirname, "preload.js"), contextIsolation: true, sandbox: true, nodeIntegration: false },
+    webPreferences: { preload: join(__dirname, "preload.js"), contextIsolation: true, sandbox: true, nodeIntegration: false, additionalArguments: [`--studio-version=${app.getVersion()}`] },
   });
   const inApp = (url: string) => Boolean(backend && (url === backend.origin || url.startsWith(`${backend.origin}/`)));
   // Links to other sites open in the default browser; the window stays on the app.
@@ -255,16 +280,41 @@ function createWindow() {
 function openApp(path = "/") {
   const window = mainWindow ?? createWindow();
   if (backend) void window.loadURL(`${backend.origin}${path}`);
-  else void window.loadFile(connectPage());
+  else {
+    if (startView.view === "splash" && !busy) startView = { view: "pick" };
+    void window.loadFile(connectPage());
+  }
   window.show();
   window.focus();
 }
 
-/** The connect page; `auto` connects to that saved connection right away. */
-function showConnect(auto?: string) {
+/** The bundled start page in one of its views (see `startView`). */
+function showStart(view: typeof startView) {
+  startView = view;
+  if (view.view === "splash") lastStatus = "";
   const window = mainWindow ?? createWindow();
-  void window.loadFile(connectPage(), auto ? { query: { auto } } : undefined);
+  void window.loadFile(connectPage());
   window.show();
+}
+
+const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+/**
+ * Runs `task` (stop, rebuild, start…) for `target` behind the start-up screen. On failure the start page shows
+ * the error with retry, reinstall and "use another backend".
+ */
+async function withStartScreen(target: Connection, task: () => Promise<void>) {
+  if (busy) return;
+  busy = true;
+  showStart({ view: "splash", target });
+  try {
+    await task();
+  } catch (error) {
+    connectError = message(error);
+    showStart({ view: "recover", target });
+  } finally {
+    busy = false;
+  }
 }
 
 function showWindow() {
@@ -324,7 +374,7 @@ function buildAppMenu() {
     { type: "separator" },
     { label: "关闭项目", enabled: Boolean(current), click: () => sendMenu({ type: "close-project" }) },
     { type: "separator" },
-    { label: backend ? `切换后端…（当前：${backend.info.label}）` : "连接后端…", click: () => void switchBackend() },
+    { label: backend ? `后端环境…（当前：${backend.info.label}）` : "连接后端…", click: () => (backend ? sendMenu({ type: "manage-backend" }) : showStart({ view: "pick" })) },
     { type: "separator" },
     mac ? { role: "close", label: "关闭窗口" } : { role: "quit", label: "退出" },
   ];
@@ -371,57 +421,104 @@ function registerIpc() {
     updateTray();
   });
 
-  // The connect page (bundled file) only.
+  // The start page (bundled file) only.
   ipcMain.handle("connect:state", (event) => {
     if (!fromConnectPage(event)) return null;
-    const auto = new URL(event.senderFrame!.url).searchParams.get("auto") ?? undefined;
-    const error = connectError;
-    connectError = undefined;
-    return { ...loadConnections(), platform: process.platform, localAvailable: process.platform !== "win32", auto, error };
+    const error = startView.view === "recover" ? connectError : undefined;
+    return {
+      ...backendList(),
+      view: startView.view,
+      target: startView.target ? { ...startView.target, detail: connectionDetail(startView.target) } : undefined,
+      status: lastStatus,
+      error,
+      dev,
+      version: app.getVersion(),
+    };
   });
   ipcMain.handle("connect:distros", (event) => (fromConnectPage(event) ? wslDistros() : []));
   ipcMain.handle("connect:install-wsl", (event) => (fromConnectPage(event) ? installWsl() : { ok: false, error: "不允许" }));
   ipcMain.handle("connect:remove", (event, id: unknown) => (fromConnectPage(event) && typeof id === "string" ? removeConnection(id) : loadConnections()));
-  ipcMain.handle("connect:start", async (event, input: unknown, token: unknown) => {
+  ipcMain.handle("connect:start", (event, input: unknown, token: unknown) => {
     if (!fromConnectPage(event)) return { ok: false, error: "不允许" };
     try {
       const connection = readConnection(input);
-      await connect(connection, typeof token === "string" && token ? token : undefined);
+      void withStartScreen(connection, () => connect(connection, typeof token === "string" && token ? token : undefined));
       return { ok: true };
     } catch (error) {
-      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+      return { ok: false, error: message(error) };
+    }
+  });
+  ipcMain.handle("connect:retry", (event, options: unknown) => {
+    const target = startView.target;
+    if (!fromConnectPage(event) || !target) return { ok: false, error: "没有可重试的后端" };
+    const reinstall = Boolean((options as { reinstall?: unknown } | null)?.reinstall);
+    void maintain(target, reinstall ? "reinstall" : "retry");
+    return { ok: true };
+  });
+
+  // The connected server's pages (welcome page: 后端环境).
+  ipcMain.handle("backend:info", (event) => (fromBackendPage(event) ? backendInfo() : null));
+  ipcMain.handle("backend:list", (event) => (fromBackendPage(event) ? backendList() : null));
+  ipcMain.handle("backend:distros", (event) => (fromBackendPage(event) ? wslDistros() : []));
+  ipcMain.handle("backend:install-wsl", (event) => (fromBackendPage(event) ? installWsl() : { ok: false, error: "不允许" }));
+  ipcMain.handle("backend:remove", (event, id: unknown) => {
+    if (!fromBackendPage(event) || typeof id !== "string" || id === backend?.connection.id) return backendList();
+    removeConnection(id);
+    return backendList();
+  });
+  ipcMain.handle("backend:run", async (event, action: unknown) => {
+    const current = backend;
+    if (!fromBackendPage(event) || !current || busy) return;
+    if (action !== "restart" && action !== "reinstall" && action !== "clear-data") return;
+    if (!(await confirmStop())) return;
+    void maintain(current.connection, action);
+  });
+  ipcMain.handle("backend:connect", (event, input: unknown, token: unknown) => {
+    if (!fromBackendPage(event) || busy) return { ok: false, error: "不允许" };
+    try {
+      const raw = (input ?? {}) as Record<string, unknown>;
+      const connection = readConnection({ ...raw, id: typeof raw.id === "string" && raw.id ? raw.id : `${String(raw.kind)}-${Date.now().toString(36)}` });
+      void switchTo(connection, typeof token === "string" && token ? token : undefined);
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: message(error) };
     }
   });
 }
 
-const context = (): BackendContext => ({
+const context = (options: { forceInstall?: boolean } = {}): BackendContext => ({
   appVersion: app.getVersion(),
   // `pnpm dev:win` builds the package in WSL and puts it here; NEXTFLOW_STUDIO_SERVER_PACKAGES points elsewhere.
   serverPackages: process.env.NEXTFLOW_STUDIO_SERVER_PACKAGES || join(resources, "server"),
-  requireServerPackage: !app.isPackaged,
+  dev: !app.isPackaged,
+  forceInstall: options.forceInstall,
   log: serviceLog,
-  status: (message) => mainWindow?.webContents.send("connect:status", message),
+  status: (text) => {
+    lastStatus = text;
+    mainWindow?.webContents.send("connect:status", text);
+  },
 });
 
 /** Starts or reaches the server of `connection`, then shows the app in the window. */
-async function connect(connection: Connection, token?: string) {
+async function connect(connection: Connection, token?: string, options: { forceInstall?: boolean } = {}) {
   if (backend) await disconnect();
-  const next = await startBackend(connection, context(), { token: token ?? connectionToken(connection.id), startLocal });
+  const next = await startBackend(connection, context(options), { token: token ?? connectionToken(connection.id), startLocal });
   // Another server build may answer at the same origin: drop cached pages and any service worker (the browser demo's
   // MSW) so the window loads what this server serves.
   await session.defaultSession.clearCache();
   await session.defaultSession.clearStorageData({ storages: ["serviceworkers", "cachestorage"] });
   await session.defaultSession.cookies.set({ url: next.origin, name: SESSION_COOKIE, value: next.token, httpOnly: true, sameSite: "strict", secure: next.origin.startsWith("https:") });
+  // One saved entry per backend: connecting again to the same distro, host or address keeps its id.
+  next.connection = saveConnection(connection, connection.kind === "url" ? token : undefined);
   backend = next;
-  saveConnection(connection, connection.kind === "url" ? token : undefined);
-  rememberLast(connection.id);
+  rememberLast(next.connection.id);
   next.onLost((reason) => {
     if (backend !== next) return;
     backend = undefined;
     connectError = reason;
     buildAppMenu();
     updateTray();
-    showConnect();
+    showStart({ view: "recover", target: next.connection });
   });
   buildAppMenu();
   updateTray();
@@ -440,10 +537,58 @@ async function disconnect() {
   updateTray();
 }
 
-async function switchBackend() {
+/** "切换": stops the current server (asking about active runs) and starts `connection` behind the start screen. */
+async function switchTo(connection: Connection, token?: string) {
   if (backend && !(await confirmStop())) return;
-  await disconnect();
-  showConnect();
+  await withStartScreen(connection, () => connect(connection, token));
+}
+
+/**
+ * Builds the server from this checkout (development shells only): in WSL with scripts/dev-win-build.sh on Windows,
+ * as `pnpm dev:win` does, and with desktop/scripts/bundle.mjs on macOS and Linux.
+ */
+async function rebuild(connection: Connection) {
+  const ctx = context();
+  if (process.platform === "win32") {
+    const script = readFileSync(join(repoRoot, "desktop", "scripts", "dev-win-build.sh"), "utf8").replace(/\r\n/g, "\n");
+    const distro = connection.kind === "wsl" ? connection.distro : process.env.NEXTFLOW_STUDIO_WSL_DISTRO;
+    ctx.status("在 WSL 里用当前代码构建服务端…");
+    await runLogged("wsl.exe", [...(distro ? ["-d", distro] : []), "--exec", "sh", "-l", "-s", "--", repoRoot, "0"], { input: script }, ctx);
+  } else {
+    ctx.status("用当前代码构建服务端…");
+    await runLogged("node", [join(repoRoot, "desktop", "scripts", "bundle.mjs")], { cwd: repoRoot }, ctx);
+  }
+}
+
+/**
+ * Restart, reinstall (rebuild first in a development shell) or clear the data of `connection`'s server, then
+ * connect again. The server is stopped for real (an SSH server otherwise keeps running when the app disconnects).
+ */
+async function maintain(connection: Connection, action: DesktopBackendAction | "retry") {
+  if (connection.kind === "url" && action !== "retry") return;
+  await withStartScreen(connection, async () => {
+    await disconnect();
+    if (action !== "retry") await stopServer(connection, context());
+    if (action === "clear-data") {
+      if (connection.kind === "local") clearLocalData(); else await clearServerData(connection, context());
+    }
+    if (action === "reinstall" && dev) await rebuild(connection);
+    await connect(connection, connectionToken(connection.id), { forceInstall: action === "reinstall" });
+  });
+}
+
+function backendInfo(): DesktopBackendInfo | null {
+  if (!backend) return null;
+  return { connection: backend.connection, detail: connectionDetail(backend.connection), dev, platform: process.platform, server: backend.server };
+}
+
+const backendList = () => ({ ...loadConnections(), currentId: backend?.connection.id, platform: process.platform, localAvailable: process.platform !== "win32" });
+
+/** The first WSL distro on Windows, this computer elsewhere; undefined on Windows without WSL. */
+async function defaultConnection(): Promise<Connection | undefined> {
+  if (process.platform !== "win32") return LOCAL_CONNECTION;
+  const [distro] = await wslDistros();
+  return distro ? wslConnection(distro) : undefined;
 }
 
 /** Before stopping a server that holds active runs (local, WSL): keep them going or cancel them. */
@@ -494,16 +639,12 @@ app.whenReady().then(async () => {
   buildAppMenu();
   updateTray();
   if (!dev) setupUpdates();
+  // No picking at start: the last backend, or the default one, starts behind the start-up screen and the window
+  // opens on the welcome page. Only a failure shows the recovery view (retry, reinstall, another backend).
   const store = loadConnections();
-  const last = store.connections.find((item) => item.id === store.last);
-  if (last) { showConnect(last.id); return; }
-  // First start on macOS and Linux: the bundled server, as before. Windows has no local server: pick one.
-  if (process.platform !== "win32" && !store.connections.length) {
-    const local: Connection = { id: "local", kind: "local", label: "本机" };
-    try { await connect(local); return; }
-    catch (error) { connectError = error instanceof Error ? error.message : String(error); }
-  }
-  showConnect();
+  const target = store.connections.find((item) => item.id === store.last) ?? store.connections[0] ?? await defaultConnection();
+  if (!target) { showStart({ view: "pick" }); return; }
+  await withStartScreen(target, () => connect(target));
 }).catch((error: unknown) => {
   dialog.showErrorBox("Nextflow Studio 无法启动", error instanceof ConnectionError || error instanceof Error ? error.message : String(error));
   app.exit(1);

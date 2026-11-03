@@ -13,7 +13,18 @@ Electron 外壳。服务端（界面、`/api`、笔记本内核和 Nextflow runn
 
 Windows 上没有 WSL 时，连接页的「安装 WSL」以管理员身份运行 `wsl --install`（弹出 UAC），之后按提示创建 Linux 用户，必要时重启。连上后缺少 Java 或 Nextflow 时，设置页自动依次安装，runner 每 30 秒重试，装好后自动就绪。
 
-连接页（`src/connect/index.html`）随应用打包，没有后端时显示；上次的连接在启动时自动连接。File 菜单的「切换后端…」回到连接页。连接保存在 userData 的 `connections.json`。
+启动时不用选后端：应用直接启动上次的后端（第一次是默认后端：Windows 上是第一个 WSL 发行版，macOS、Linux 上是本机），窗口先显示随应用打包的启动画面（`src/connect/index.html`），服务端就绪后进入首页。只有启动失败时，这一页才显示错误和「重试」「重新安装服务端」「换一个后端」。
+
+后端在首页左下角的「后端环境」里管理（File 菜单的「后端环境…」打开同一个窗口）：
+
+| 操作 | 做什么 |
+| ---- | ---- |
+| 重启 | 停掉服务端（SSH 的也真的停掉）再启动 |
+| 重新安装服务端 | 用应用自带的包覆盖安装后重启。开发版这里是「用当前代码重新构建」：Windows 上在 WSL 里跑 `scripts/dev-win-build.sh`（同 `pnpm dev:win`），macOS / Linux 跑 `scripts/bundle.mjs` |
+| 清除数据 | 停掉服务端，删掉数据库、示例项目、运行记录、启动目录和 `work/`，再启动。设置（`settings.json`、`secrets.json`）、工具链、日志和自己文件夹里的项目保留 |
+| 切换 | 已保存的后端和新建 WSL / SSH / 地址连接。同一个发行版、主机或地址只保存一条 |
+
+连接保存在 userData 的 `connections.json`。服务端包、`server.json`、启动时打印的 ready 行和 `/api/health` 都带构建号（`BUILD`）：已经在运行的服务端不是刚装好的那个构建时，会先停掉再启动，不会被直接复用；连上后的构建号和包不一致时报错，不会显示旧界面。
 
 文件只归服务端管，所有后端都一样（参考 ComfyUI 的 `input/`）：笔记本和流程用的文件放在当前工作区（项目文件夹），拖入、粘贴或点上传，文件进入工作区的 `data/`；数据输入的选择器只浏览工作区，配置路径（Python、Java、私钥、项目位置）浏览服务端。桌面端不读取本机路径，也不打开本机文件。
 
@@ -37,8 +48,8 @@ macOS 上的 GUI 应用拿不到 shell 的 `PATH`，启动时会从登录 shell 
 pnpm install                         # 仓库根目录：web 应用依赖
 pnpm --dir desktop install           # 桌面外壳依赖（Electron 只装在这里）
 pnpm --dir desktop bundle            # standalone 服务、runner、Linux 服务端包、main/preload、连接页，预取 nf-weblog
-pnpm --dir desktop start             # mac / Linux：用当前代码重建本机服务端，再用本地 Electron 打开
-pnpm --dir desktop dev               # 用本地 Electron 打开（不重建，沿用 resources/ 里上次 bundle 的服务端）
+pnpm --dir desktop start             # mac / Linux：用当前代码重建本机服务端和外壳，再打开；Windows 上等于 dev:win
+pnpm --dir desktop dev               # 先重新打包外壳（main / preload / 启动页）再打开，沿用 resources/ 里上次的服务端；Windows 上等于 dev:win
 pnpm --dir desktop dist:mac          # 未签名的 .dmg / .zip（arm64 + x64）
 pnpm --dir desktop dist:linux        # AppImage
 pnpm --dir desktop exec electron-builder --win   # Windows NSIS 安装包（只含连接 WSL / SSH / 地址所需的部分）

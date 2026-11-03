@@ -13,7 +13,56 @@ export type DesktopMenuAction =
   | { type: "open-folder" }
   | { type: "open-project"; id: string }
   | { type: "close-project" }
-  | { type: "toggle-panel"; panel: "nav" | "explorer" };
+  | { type: "toggle-panel"; panel: "nav" | "explorer" }
+  | { type: "manage-backend" };
+
+/** A saved backend, as the shell stores it (see src/features/desktop/connections.ts). */
+export interface DesktopConnection {
+  id: string;
+  kind: "local" | "wsl" | "ssh" | "url";
+  label: string;
+  distro?: string;
+  target?: string;
+  port?: number;
+  identityFile?: string;
+  url?: string;
+}
+
+/** The backend the window is connected to. */
+export interface DesktopBackendInfo {
+  connection: DesktopConnection;
+  /** Distro, ssh target or address. */
+  detail: string;
+  /** A development shell: "重新安装" rebuilds the server from the checkout first. */
+  dev: boolean;
+  platform: string;
+  server: { version?: string; build?: string };
+}
+
+/** Restart, reinstall (rebuild in a development shell) or clear the data of the connected server. */
+export type DesktopBackendAction = "restart" | "reinstall" | "clear-data";
+
+export interface DesktopBackendList {
+  connections: DesktopConnection[];
+  currentId?: string;
+  platform: string;
+  localAvailable: boolean;
+}
+
+/**
+ * Managing the backend from the welcome page. The shell carries the actions out: the window shows its start-up
+ * screen while the server stops and starts, then loads the app again, so the promises of `run` and `connect` may
+ * never settle in the page that called them.
+ */
+export interface DesktopBackendBridge {
+  info: () => Promise<DesktopBackendInfo | null>;
+  run: (action: DesktopBackendAction) => Promise<void>;
+  list: () => Promise<DesktopBackendList>;
+  distros: () => Promise<string[]>;
+  installWsl: () => Promise<{ ok: boolean; error?: string }>;
+  connect: (connection: Omit<DesktopConnection, "id" | "label"> & { id?: string; label?: string }, token?: string) => Promise<{ ok: boolean; error?: string }>;
+  remove: (id: string) => Promise<DesktopBackendList>;
+}
 
 /**
  * What the Electron preload script exposes as `window.studioDesktop`: the parts of the app that belong to the
@@ -30,6 +79,8 @@ export interface StudioDesktop {
   setProjectMenu?: (state: ProjectMenuState) => void;
   /** Listen for File and View menu commands; returns the unsubscribe function. */
   onMenuAction?: (listener: (action: DesktopMenuAction) => void) => () => void;
+  /** Missing in shells older than backend management, and in a browser. */
+  backend?: DesktopBackendBridge;
 }
 
 declare global {

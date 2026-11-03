@@ -5,6 +5,8 @@ export interface HealthStatus {
   status: "ok" | "degraded";
   /** Server build, so a desktop shell can offer to install a matching one. Absent in the browser demo. */
   appVersion?: string;
+  /** Id of this server build (`BUILD` in the package, `app-server.build` in the desktop app). */
+  build?: string;
   apiVersion?: number;
   nextflowVersion: string;
   mocked: boolean;

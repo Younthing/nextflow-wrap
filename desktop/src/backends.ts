@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 
 import {
-  type Connection, ConnectionError, installCommand, needsInstall, parseProbe, parseWslList, PROBE_SCRIPT, serverArch,
+  CLEAR_DATA_SCRIPT, type Connection, ConnectionError, installCommand, needsInstall, parseProbe, parseWslList, PROBE_SCRIPT, serverArch,
   serverPackageName, SSH_START_SCRIPT, sshArgs, STOP_SCRIPT, WSL_SERVE_COMMAND,
 } from "../../src/features/desktop/connections";
 import { SESSION_HEADER } from "../../src/features/desktop/session-guard";
@@ -21,6 +21,8 @@ export interface RunningBackend {
   origin: string;
   token: string;
   info: { kind: Connection["kind"]; label: string };
+  /** Version and build of the server that answered (from /api/health). */
+  server: { version?: string; build?: string };
   /** The server stops when the app quits (local, WSL); a remote one keeps running. */
   stopsWithApp: boolean;
   /** Called once if the backend goes away on its own (WSL exits, the tunnel cannot be restored). */
@@ -32,8 +34,10 @@ export interface BackendContext {
   appVersion: string;
   /** Folder holding `nextflow-studio-server-<version>-linux-<arch>.tar.gz`. */
   serverPackages: string;
-  /** A development shell: without a bundled package it would silently keep whatever server was installed before. */
-  requireServerPackage?: boolean;
+  /** A development shell (`pnpm dev:win`): the package must come from this checkout, never an older install. */
+  dev?: boolean;
+  /** Install the bundled package even when the target already has this build ("重新安装服务端"). */
+  forceInstall?: boolean;
   log: (name: string) => WriteStream;
   status: (message: string) => void;
 }
@@ -135,25 +139,40 @@ const wsl = (distro: string, script: string, args: string[] = [], timeoutMs?: nu
 
 /**
  * Installs the bundled server package when the target has another version or another build of it. A server still
- * running from the old files is stopped first, so the next start runs the new ones.
+ * running from the old files is stopped first, so the next start runs the new ones. Returns the version and build
+ * the started server must report.
  */
-async function ensureInstalled(context: BackendContext, probe: () => Promise<Run>, install: (pkg: ServerPackage) => Promise<Run>, stop: () => Promise<Run>, where: string) {
+async function ensureInstalled(context: BackendContext, probe: () => Promise<Run>, install: (pkg: ServerPackage) => Promise<Run>, stop: () => Promise<Run>, where: string): Promise<{ version: string; build?: string }> {
   context.status(`检查${where}上的服务端…`);
   const probed = await probe();
   if (probed.code !== 0) throw failure(`连接${where}`, probed);
   const installed = parseProbe(probed.stdout.toString());
   const packageArch = serverArch(installed.arch ?? "");
   const pkg = packageArch ? serverPackage(context, packageArch) : undefined;
-  if (!pkg && context.requireServerPackage) {
-    throw new ConnectionError(`开发版在 ${context.serverPackages} 里没有服务端包，${where}会继续用以前装的旧服务端。在 Windows 上用 pnpm dev:win 启动，它会先构建并装上当前代码的服务端`);
+  const wanted = { version: context.appVersion, build: pkg?.build };
+  // Without a package the shell cannot tell an old install from the current code. A development shell refuses;
+  // the released app only goes on when the installed server is its own version (one installed by hand, say on
+  // an architecture the app does not carry).
+  if (!pkg && (context.dev || installed.version !== context.appVersion)) {
+    throw new ConnectionError(context.dev
+      ? `开发版在 ${context.serverPackages} 里没有服务端包，${where}只有以前装的旧服务端。用 pnpm dev:win 启动（会先用当前代码构建服务端），或在首页的「后端环境」里点「重新构建」`
+      : `安装包里没有${where}可用的服务端（${packageArch ? serverPackageName(context.appVersion, packageArch) : `架构 ${installed.arch ?? "未知"} 不受支持`}），请按 docs/server.md 在目标机器上手动安装`);
   }
-  if (!needsInstall(installed, { version: context.appVersion, build: pkg?.build })) return;
+  if (!context.forceInstall && !needsInstall(installed, wanted)) return wanted;
   if (!packageArch) throw new ConnectionError(`${where}的架构 ${installed.arch ?? "未知"} 不受支持`);
   if (!pkg) throw new ConnectionError(`安装包里没有 ${serverPackageName(context.appVersion, packageArch)}，请按 docs/server.md 在目标机器上手动安装`);
   context.status(installed.version === context.appVersion ? `更新${where}上的服务端…` : installed.version ? `更新${where}上的服务端 ${installed.version} → ${context.appVersion}…` : `在${where}上安装服务端 ${context.appVersion}…`);
   if (installed.version) await stop();
   const result = await install(pkg);
   if (result.code !== 0) throw failure("安装服务端", result);
+  return wanted;
+}
+
+/** The server that answered must be the build just installed; anything else is a stale process or install. */
+function checkBuild(health: HealthStatus, wanted: { version: string; build?: string }, where: string) {
+  if (wanted.build && health.build !== wanted.build) {
+    throw new ConnectionError(`${where}上运行的服务端（构建 ${health.build ?? "未知"}）不是刚安装的构建 ${wanted.build}。请点「重新安装服务端」`);
+  }
 }
 
 /** Reads the launcher's stdout until its ready line; the process keeps running afterwards. */
@@ -181,7 +200,7 @@ function readyFrom(child: ChildProcessWithoutNullStreams, log: WriteStream, time
 
 async function startWsl(connection: Extract<Connection, { kind: "wsl" }>, context: BackendContext): Promise<RunningBackend> {
   const { distro } = connection;
-  await ensureInstalled(
+  const wanted = await ensureInstalled(
     context,
     () => wsl(distro, PROBE_SCRIPT, [], 60_000),
     (pkg) => wsl(distro, installCommand(pkg.name, "arg"), [pkg.file], 300_000),
@@ -195,14 +214,16 @@ async function startWsl(connection: Extract<Connection, { kind: "wsl" }>, contex
     return { child, ready: await readyFrom(child, context.log("wsl")) };
   };
   let { child, ready } = await launch();
-  // A server left over from an older app version is still answering: replace it.
-  if (ready.reused && ready.version !== context.appVersion) {
-    await wsl(distro, `kill -TERM ${Number(ready.pid)} 2>/dev/null; sleep 3`);
+  // A server started before the update (another version or build) is still answering: replace it.
+  if (ready.reused && needsInstall(ready, wanted)) {
+    context.status("停止旧的服务端…");
+    await wsl(distro, STOP_SCRIPT, [], 60_000);
     ({ child, ready } = await launch());
   }
   const origin = `http://127.0.0.1:${ready.port}`;
   context.status("等待服务端响应…");
-  await waitForHealth(origin, ready.token);
+  const health = await waitForHealth(origin, ready.token);
+  checkBuild(health, wanted, ` WSL（${distro}）`);
   const lost: ((reason: string) => void)[] = [];
   let stopping = false;
   child.on("exit", (code) => { if (!stopping) for (const listener of lost) listener(`WSL 里的服务端已退出（${code}）`); });
@@ -211,6 +232,7 @@ async function startWsl(connection: Extract<Connection, { kind: "wsl" }>, contex
     origin,
     token: ready.token,
     info: { kind: "wsl", label: connection.label },
+    server: { version: health.appVersion, build: health.build },
     stopsWithApp: true,
     onLost: (listener) => { lost.push(listener); },
     stop: async () => {
@@ -231,7 +253,7 @@ const ssh = () => process.env.NEXTFLOW_STUDIO_SSH?.trim() || "ssh";
 async function startSsh(connection: Extract<Connection, { kind: "ssh" }>, context: BackendContext): Promise<RunningBackend> {
   const args = sshArgs(connection);
   const where = ` ${connection.target} `;
-  await ensureInstalled(
+  const wanted = await ensureInstalled(
     context,
     () => run(ssh(), [...args, "sh -s"], PROBE_SCRIPT, 60_000),
     (pkg) => run(ssh(), [...args, `sh -c '${installCommand(pkg.name, "stdin")}'`], readFileSync(pkg.file), 600_000),
@@ -246,9 +268,9 @@ async function startSsh(connection: Extract<Connection, { kind: "ssh" }>, contex
     return ready;
   };
   let ready = await start();
-  if (ready.reused && ready.version !== context.appVersion) {
-    context.status("停止旧版本服务端…");
-    await run(ssh(), [...args, `kill -TERM ${Number(ready.pid)} 2>/dev/null; sleep 3`], undefined, 60_000);
+  if (ready.reused && needsInstall(ready, wanted)) {
+    context.status("停止旧的服务端…");
+    await run(ssh(), [...args, "sh -s"], STOP_SCRIPT, 60_000);
     ready = await start();
   }
 
@@ -273,13 +295,15 @@ async function startSsh(connection: Extract<Connection, { kind: "ssh" }>, contex
   };
   openTunnel();
   context.status("建立 SSH 隧道…");
-  await waitForHealth(origin, ready.token, 60_000);
+  const health = await waitForHealth(origin, ready.token, 60_000).catch((error: unknown) => { stopping = true; tunnel?.kill(); throw error; });
   failures = 0;
+  try { checkBuild(health, wanted, where); } catch (error) { stopping = true; tunnel?.kill(); throw error; }
   return {
     connection,
     origin,
     token: ready.token,
     info: { kind: "ssh", label: connection.label },
+    server: { version: health.appVersion, build: health.build },
     stopsWithApp: false,
     onLost: (listener) => { lost.push(listener); },
     // The server keeps running on the remote machine (kernels, runs); only the tunnel closes.
@@ -293,12 +317,13 @@ async function startSsh(connection: Extract<Connection, { kind: "ssh" }>, contex
 async function attachUrl(connection: Extract<Connection, { kind: "url" }>, token: string | undefined, context: BackendContext): Promise<RunningBackend> {
   if (!token) throw new ConnectionError("缺少令牌");
   context.status(`连接 ${connection.url}…`);
-  await waitForHealth(connection.url, token, 15_000);
+  const health = await waitForHealth(connection.url, token, 15_000);
   return {
     connection,
     origin: connection.url,
     token,
     info: { kind: "url", label: connection.label },
+    server: { version: health.appVersion, build: health.build },
     stopsWithApp: false,
     onLost: () => {},
     stop: async () => {},
@@ -306,7 +331,58 @@ async function attachUrl(connection: Extract<Connection, { kind: "url" }>, token
 }
 
 export interface LocalStarter {
-  (context: BackendContext): Promise<{ origin: string; token: string; stop: () => Promise<void> }>;
+  (context: BackendContext): Promise<{ origin: string; token: string; server: RunningBackend["server"]; stop: () => Promise<void> }>;
+}
+
+/**
+ * Stops the server of a WSL or SSH connection (a remote one keeps running when the app only disconnects), so a
+ * restart really starts it again. Local servers stop with `RunningBackend.stop`; a URL is not ours to stop.
+ */
+export async function stopServer(connection: Connection, context: BackendContext) {
+  if (connection.kind === "wsl") {
+    context.status(`停止 WSL（${connection.distro}）里的服务端…`);
+    const result = await wsl(connection.distro, STOP_SCRIPT, [], 60_000);
+    if (result.code !== 0) throw failure("停止服务端", result);
+  } else if (connection.kind === "ssh") {
+    context.status(`停止 ${connection.target} 上的服务端…`);
+    const result = await run(ssh(), [...sshArgs(connection), "sh -s"], STOP_SCRIPT, 60_000);
+    if (result.code !== 0) throw failure("停止服务端", result);
+  }
+}
+
+/** Clears the data directory of a stopped WSL or SSH server (see DATA_ENTRIES). */
+export async function clearServerData(connection: Connection, context: BackendContext) {
+  context.status("清除数据…");
+  const result = connection.kind === "wsl" ? await wsl(connection.distro, CLEAR_DATA_SCRIPT, [], 120_000)
+    : connection.kind === "ssh" ? await run(ssh(), [...sshArgs(connection), "sh -s"], CLEAR_DATA_SCRIPT, 120_000)
+      : undefined;
+  if (result && result.code !== 0) throw failure("清除数据", result);
+}
+
+/**
+ * Runs a build step from the window ("重新构建"): its output goes to `<logs>/rebuild.log` and, line by line, to the
+ * status line. Used for scripts/dev-win-build.sh in WSL (the server half of `pnpm dev:win`) and, on macOS and
+ * Linux, for desktop/scripts/bundle.mjs.
+ */
+export function runLogged(command: string, args: string[], options: { input?: string; cwd?: string }, context: BackendContext): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const log = context.log("rebuild");
+    log.write(`--- ${new Date().toISOString()} ${command} ${args.join(" ")}\n`);
+    const child = spawn(command, args, { cwd: options.cwd, stdio: ["pipe", "pipe", "pipe"], windowsHide: true, env: process.env });
+    let tail = "";
+    const onLine = (line: string) => {
+      log.write(`${line}\n`);
+      tail = `${tail}\n${line}`.slice(-2000);
+      const shown = line.replace(/^== /, "").trim();
+      if (shown) context.status(shown.length > 120 ? `${shown.slice(0, 117)}…` : shown);
+    };
+    createInterface({ input: child.stdout }).on("line", onLine);
+    createInterface({ input: child.stderr }).on("line", onLine);
+    child.on("error", (error: NodeJS.ErrnoException) => reject(error.code === "ENOENT" ? new ConnectionError(`找不到 ${command}`) : error));
+    child.on("close", (code) => (code === 0 ? resolve() : reject(new ConnectionError(`构建服务端失败（${code}）：${tail.trim().split("\n").slice(-3).join(" ")}`))));
+    child.stdin.on("error", () => { /* Exited before reading stdin. */ });
+    child.stdin.end(options.input);
+  });
 }
 
 export async function startBackend(connection: Connection, context: BackendContext, options: { token?: string; startLocal: LocalStarter }): Promise<RunningBackend> {

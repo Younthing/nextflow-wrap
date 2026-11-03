@@ -23,6 +23,7 @@ import { dataDirectory } from "@/lib/server/paths";
  */
 const root = resolve(process.env.NEXTFLOW_STUDIO_SERVER_ROOT || dirname(fileURLToPath(import.meta.url)));
 const version = process.env.NEXTFLOW_STUDIO_APP_VERSION || (existsSync(join(root, "VERSION")) ? readFileSync(join(root, "VERSION"), "utf8").trim() : "dev");
+const build = process.env.NEXTFLOW_STUDIO_BUILD || (existsSync(join(root, "BUILD")) ? readFileSync(join(root, "BUILD"), "utf8").trim() : "") || undefined;
 
 function freePort(host: string): Promise<number> {
   return new Promise((done, fail) => {
@@ -62,7 +63,7 @@ async function main(options: ServeOptions) {
   // Another serve for this data directory is still up: report it instead of starting a second web server and runner.
   const running = readServerState(dataDir);
   if (running && running.pid !== process.pid && processAlive(running.pid)) {
-    console.log(readyLine({ host: running.host, port: running.port, token, version: running.version, apiVersion: running.apiVersion, pid: running.pid, reused: true }));
+    console.log(readyLine({ host: running.host, port: running.port, token, version: running.version, build: running.build, apiVersion: running.apiVersion, pid: running.pid, reused: true }));
     return;
   }
 
@@ -77,6 +78,7 @@ async function main(options: ServeOptions) {
     ...process.env,
     NEXTFLOW_STUDIO_DATA_DIR: dataDir,
     NEXTFLOW_STUDIO_APP_VERSION: version,
+    ...(build ? { NEXTFLOW_STUDIO_BUILD: build } : {}),
     NEXTFLOW_STUDIO_BUNDLED_PLUGINS: join(root, "plugins"),
     NEXTFLOW_STUDIO_LOG_DIR: logs,
     NEXT_PUBLIC_API_MOCKING: "disabled",
@@ -154,9 +156,9 @@ async function main(options: ServeOptions) {
     stop(1);
     return;
   }
-  writeServerState(dataDir, { pid: process.pid, host: options.host, port, version, apiVersion: API_VERSION, startedAt: new Date().toISOString() });
+  writeServerState(dataDir, { pid: process.pid, host: options.host, port, version, build, apiVersion: API_VERSION, startedAt: new Date().toISOString() });
   // Logs go to stderr, so stdout carries only this line (launchers read it) and the link for people.
-  console.log(readyLine({ host: options.host, port, token, version, apiVersion: API_VERSION, pid: process.pid, reused: false }));
+  console.log(readyLine({ host: options.host, port, token, version, build, apiVersion: API_VERSION, pid: process.pid, reused: false }));
   console.log(`Nextflow Studio ${version} 已启动：${browserLink(options.host, port, token)}`);
   console.log(`数据目录 ${dataDir}`);
 }

@@ -55,13 +55,37 @@ export function readConnection(input: unknown): Connection {
   throw new ConnectionError("未知的连接类型");
 }
 
+/** What a connection points at: two entries with the same key are the same backend, whatever their ids. */
+export function connectionKey(connection: Connection): string {
+  switch (connection.kind) {
+    case "local": return "local";
+    case "wsl": return `wsl:${connection.distro.toLowerCase()}`;
+    case "ssh": return `ssh:${connection.target}:${connection.port ?? 22}`;
+    case "url": return `url:${connection.url}`;
+  }
+}
+
+/** One line under a connection's label: the distro, ssh target or address. */
+export function connectionDetail(connection: Connection): string {
+  switch (connection.kind) {
+    case "local": return "这台电脑";
+    case "wsl": return `WSL · ${connection.distro}`;
+    case "ssh": return `ssh ${connection.target}${connection.port ? `:${connection.port}` : ""}`;
+    case "url": return connection.url;
+  }
+}
+
+export const wslConnection = (distro: string): Connection => ({ id: `wsl-${distro.toLowerCase().replace(/[^a-z0-9_-]/g, "-").slice(0, 60)}`, kind: "wsl", distro, label: `WSL · ${distro}` });
+export const LOCAL_CONNECTION: Connection = { id: "local", kind: "local", label: "本机" };
+
 export function readStore(input: unknown): ConnectionStore {
   const value = (input ?? {}) as Record<string, unknown>;
   const connections: Connection[] = [];
   for (const item of Array.isArray(value.connections) ? value.connections : []) {
     try {
       const connection = readConnection(item);
-      if (!connections.some((known) => known.id === connection.id)) connections.push(connection);
+      // Older shells saved a new entry for every connect: keep the first (most recent) per backend.
+      if (!connections.some((known) => known.id === connection.id || connectionKey(known) === connectionKey(connection))) connections.push(connection);
     } catch { /* Dropped: an entry from a newer or hand-edited file. */ }
   }
   const last = typeof value.last === "string" && connections.some((item) => item.id === value.last) ? value.last : undefined;
@@ -119,7 +143,10 @@ export function parseProbe(output: string): { version?: string; build?: string; 
   return { version: values.version || undefined, build: values.build || undefined, arch: values.arch || undefined };
 }
 
-/** Whether the installed server must be replaced: another version, or the same version from another build. */
+/**
+ * Whether a server must be replaced: another version, or the same version from another build. Used for the installed
+ * package and for a server that is already running (started before the update).
+ */
 export function needsInstall(installed: { version?: string; build?: string }, wanted: { version: string; build?: string }): boolean {
   if (installed.version !== wanted.version) return true;
   return Boolean(wanted.build && installed.build !== wanted.build);
@@ -133,6 +160,20 @@ if [ -n "$p" ] && kill -0 "$p" 2>/dev/null; then
   i=0
   while kill -0 "$p" 2>/dev/null && [ $i -lt 20 ]; do sleep 1; i=$((i + 1)); done
 fi
+`;
+
+/**
+ * What "清除数据" removes from a data directory, and what the desktop app removes before starting a local server
+ * on data from another schema version: the database, the example project, run records, launch and work
+ * directories. Settings (settings.json, secrets.json), the toolchain, logs, installed servers and projects in
+ * their own folders stay.
+ */
+export const DATA_ENTRIES = ["studio.sqlite", "studio.sqlite-wal", "studio.sqlite-shm", "workspaces", "executions", "pipelines", "work"] as const;
+
+/** Removes DATA_ENTRIES from the server's data directory (run after STOP_SCRIPT). */
+export const CLEAR_DATA_SCRIPT = `d="$HOME/.local/share/nextflow-studio"
+[ -d "$d" ] || exit 0
+cd "$d" && rm -rf -- ${DATA_ENTRIES.join(" ")}
 `;
 
 /** Unpacks a package archive read from stdin (ssh) or from `$1` (wsl) and points `current` at it. */

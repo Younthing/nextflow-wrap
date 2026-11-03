@@ -96,6 +96,8 @@ export interface ServerState {
   host: string;
   port: number;
   version: string;
+  /** Build id of the running package; absent in servers from before it was recorded. */
+  build?: string;
   apiVersion: number;
   startedAt: string;
 }
@@ -136,6 +138,8 @@ export interface ReadyLine {
   port: number;
   token: string;
   version: string;
+  /** Build id of the server that answers; launchers replace a reused server from another build. */
+  build?: string;
   apiVersion: number;
   pid: number;
   /** An already running server was found and reused; this process exits right away. */

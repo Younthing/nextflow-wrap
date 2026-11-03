@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
-  installCommand, needsInstall, parseProbe, STOP_SCRIPT, parseWslList, PROBE_SCRIPT, readConnection, readStore, serverArch, serverPackageName,
+  CLEAR_DATA_SCRIPT, connectionKey, installCommand, needsInstall, parseProbe, STOP_SCRIPT, parseWslList, PROBE_SCRIPT, readConnection, readStore, serverArch, serverPackageName,
   SSH_START_SCRIPT, sshArgs,
 } from "./connections";
 import { parseReadyLine } from "@/features/server/serve-config";
@@ -27,6 +27,18 @@ describe("connections", () => {
   });
   it("keeps valid entries of a stored file and a last id that still exists", () => {
     expect(readStore({ last: "gone", connections: [{ id: "a", kind: "local" }, { id: "a", kind: "local" }, { kind: "bogus" }] })).toEqual({ connections: [{ id: "a", kind: "local", label: "本机" }] });
+  });
+  it("keeps one entry per backend, the first (most recent) one", () => {
+    const store = readStore({ last: "wsl-b", connections: [
+      { id: "wsl-a", kind: "wsl", distro: "Ubuntu-24.04" },
+      { id: "wsl-b", kind: "wsl", distro: "ubuntu-24.04" },
+      { id: "s1", kind: "ssh", target: "gpu01" },
+      { id: "s2", kind: "ssh", target: "gpu01", port: 22 },
+      { id: "s3", kind: "ssh", target: "gpu01", port: 2222 },
+    ] });
+    expect(store.connections.map((item) => item.id)).toEqual(["wsl-a", "s1", "s3"]);
+    expect(store.last).toBeUndefined();
+    expect(connectionKey({ id: "u", kind: "url", label: "", url: "http://127.0.0.1:3000" })).toBe("url:http://127.0.0.1:3000");
   });
   it("builds ssh arguments with the destination last", () => {
     const args = sshArgs({ id: "c", kind: "ssh", label: "", target: "gpu01", port: 2222, identityFile: "/k" });
@@ -87,6 +99,16 @@ describe("remote scripts", () => {
     expect(parseProbe(execFileSync("sh", ["-s"], { input: PROBE_SCRIPT, env }).toString()).version).toBe("0.3.0");
     const started = execFileSync("sh", ["-s"], { input: SSH_START_SCRIPT, env, timeout: 20_000 }).toString().trim();
     expect(parseReadyLine(started)).toMatchObject({ port: 4321, version: "0.3.0" });
+  });
+
+  it("clears data but keeps settings, the toolchain and installed servers", () => {
+    home = mkdtempSync(join(tmpdir(), "nfs-home-"));
+    const data = join(home, ".local/share/nextflow-studio");
+    for (const dir of ["workspaces/default", "executions/x", "work/ab", "toolchain/jre", "server/current", "logs"]) mkdirSync(join(data, dir), { recursive: true });
+    for (const file of ["studio.sqlite", "studio.sqlite-wal", "settings.json", "secrets.json", "server-token"]) writeFileSync(join(data, file), "x");
+    execFileSync("sh", ["-s"], { input: CLEAR_DATA_SCRIPT, env: { ...process.env, HOME: home } });
+    const left = execFileSync("ls", ["-A", data]).toString().split("\n").filter(Boolean).sort();
+    expect(left).toEqual(["logs", "secrets.json", "server", "server-token", "settings.json", "toolchain"]);
   });
 
   it("stops the server recorded in server.json", () => {

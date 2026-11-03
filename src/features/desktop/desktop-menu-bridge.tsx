@@ -6,18 +6,20 @@ import { useRouter } from "next/navigation";
 import { useLayoutStore } from "@/components/layout/layout-store";
 import { PathBrowserDialog } from "@/features/files/components/path-input";
 import { useFsListing } from "@/features/files/queries";
+import { BackendManagerDialog } from "@/features/workspace/components/backend-manager-dialog";
 import { NewProjectDialog } from "@/features/workspace/components/new-project-dialog";
 import { useCloseProject, useCreateProject, useOpenProject, useProjects, useReopenProject } from "@/features/workspace/queries";
 import type { CreateProjectRequest } from "@/features/workspace/types";
 import { desktop, type DesktopMenuAction } from "@/lib/desktop";
 import { toast } from "@/lib/toast";
 import { useIsDesktop } from "@/lib/use-desktop";
+import { useBackendManager } from "./backend-queries";
 import { projectMenuState } from "./project-menu";
 
 /**
  * The page side of the desktop app's File and View menus: keeps the menu's project items in step with the
  * project list and carries out its commands with the same mutations the welcome page uses. Renders only the
- * new-project dialog, and nothing at all in a browser.
+ * new-project and backend dialogs, and nothing at all in a browser.
  */
 export function DesktopMenuBridge() {
   const isDesktop = useIsDesktop();
@@ -32,6 +34,7 @@ function MenuBridge() {
   const reopen = useReopenProject();
   const close = useCloseProject();
   const togglePanel = useLayoutStore((state) => state.togglePanel);
+  const openBackendManager = useBackendManager((state) => state.setOpen);
   const [creating, setCreating] = React.useState(false);
   const [browsing, setBrowsing] = React.useState(false);
   const home = useFsListing(undefined, creating || browsing).data?.home;
@@ -63,6 +66,9 @@ function MenuBridge() {
       case "toggle-panel":
         togglePanel(action.panel);
         return;
+      case "manage-backend":
+        openBackendManager(true);
+        return;
     }
   });
 
@@ -70,6 +76,7 @@ function MenuBridge() {
 
   return (
     <>
+      <BackendManagerDialog />
       <NewProjectDialog
         open={creating}
         onOpenChange={setCreating}
