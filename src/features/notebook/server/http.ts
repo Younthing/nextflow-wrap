@@ -17,8 +17,8 @@ import { referenceCounts, scriptModuleViews, summarizeNotebook } from "@/feature
 import { languageForKernel, type NotebookDoc } from "@/features/notebook/types";
 import { HttpError } from "@/features/runs/server/service";
 import type { StudioStore } from "@/lib/server/database";
-import { store } from "@/lib/server/database";
-import { EXAMPLE_PROJECT_ID, notebookProjectId } from "@/features/workspace/projects";
+import { dataDirectory, store } from "@/lib/server/database";
+import { EXAMPLE_PROJECT_ID } from "@/features/workspace/projects";
 import { currentProjectId } from "@/features/workspace/server/projects";
 
 const json = (value: unknown, status = 200) => Response.json(value, { status, headers: { "cache-control": "no-store" } });
@@ -85,37 +85,45 @@ const editSchema = z.object({
 });
 
 /**
- * A fresh data directory gets the example project: four analysis notebooks, the modules exported from them, a
- * workflow that chains them, and the example data in the project's `data/`. Once: an empty database only.
+ * The example project is always there: a project row whose folder is the database's default workspace. A new
+ * data directory also gets its content once: four analysis notebooks, the modules exported from them, a workflow
+ * that chains them, and the example data in `data/`. Deleting them later does not bring them back.
  */
 export function ensureExampleProject(db: StudioStore = store()) {
-  if (db.notebookCount() > 0) return;
+  const folder = db.workspace ?? join(dataDirectory(), "projects", "example");
+  if (!db.project(EXAMPLE_PROJECT_ID)) {
+    mkdirSync(folder, { recursive: true });
+    // Older than anything the user opens, so it sits at the bottom of the recent list until it is used.
+    db.saveProject({ id: EXAMPLE_PROJECT_ID, name: "示例项目", path: folder, createdAt: new Date().toISOString(), openedAt: "1970-01-01T00:00:00.000Z", example: true });
+  }
+  if (db.meta(EXAMPLE_SEEDED)) return;
   const notebooks = exampleNotebooks(EXAMPLE_PROJECT_ID);
   const modules = exampleModules(notebooks);
   const copies = exampleLibraryCopies(notebooks, modules);
   db.transaction(() => {
-    if (db.notebookCount() > 0) return;
+    if (db.meta(EXAMPLE_SEEDED)) return;
     for (const doc of notebooks) {
       db.insertNotebookSnapshot(doc);
       db.saveRevision({ notebookId: doc.id, rev: doc.rev, cells: doc.cells, savedAt: doc.updatedAt });
     }
     for (const mod of modules) db.saveScriptModule(mod);
     for (const copy of copies) db.saveLibraryCopy(copy);
-    if (!db.workflow(exampleWorkflow().id)) db.saveWorkflow(exampleWorkflow(EXAMPLE_PROJECT_ID));
+    db.saveWorkflow(exampleWorkflow(EXAMPLE_PROJECT_ID));
+    db.setMeta(EXAMPLE_SEEDED, new Date().toISOString());
   });
-  // The data the notebooks and the workflow read, next to them in the example project. Existing files are kept.
-  if (db.workspace) {
-    for (const file of exampleData()) {
-      const path = join(db.workspace, file.path);
-      try {
-        mkdirSync(dirname(path), { recursive: true });
-        writeFileSync(path, file.content, { flag: "wx" });
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-      }
+  // The data the notebooks and the workflow read. Existing files are kept.
+  for (const file of exampleData()) {
+    const path = join(folder, file.path);
+    try {
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, file.content, { flag: "wx" });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
     }
   }
 }
+
+const EXAMPLE_SEEDED = "exampleSeeded";
 
 function requireNotebook(db: StudioStore, id: string): NotebookDoc {
   const doc = db.notebook(id);
@@ -125,8 +133,8 @@ function requireNotebook(db: StudioStore, id: string): NotebookDoc {
 
 /** The project folder a notebook's cells run in, so they read workspace paths such as `data/reads.fq`. */
 function workspaceOf(db: StudioStore, doc: NotebookDoc): string | undefined {
-  const projectId = notebookProjectId(doc);
-  return db.project(projectId)?.path ?? (projectId === EXAMPLE_PROJECT_ID ? db.workspace : undefined);
+  const projectId = doc.projectId;
+  return db.project(projectId)?.path;
 }
 
 function newNotebookId(db: StudioStore): string {
@@ -142,13 +150,13 @@ export async function handleNotebookApi(method: string, path: string[], request:
   const [resource, id, action, extra] = path;
   // Each project's notebooks live as `.ipynb` files in its folder. Pick up edits made outside the app before
   // anything reads them; a save checks instead.
-  const filesOf = (doc: NotebookDoc) => notebookFiles(db, notebookProjectId(doc));
+  const filesOf = (doc: NotebookDoc) => notebookFiles(db, doc.projectId);
   if (resource === "notebooks" && id && !(method === "PUT" && !action)) {
     const doc = db.notebook(id);
     if (doc) await (await filesOf(doc))?.refresh(db, id);
   } else if (resource === "notebooks" && !id && method === "GET") {
     const project = new URL(request.url).searchParams.get("project");
-    const ids = project ? [project] : [...new Set(db.notebooks().map(notebookProjectId))];
+    const ids = project ? [project] : [...new Set(db.notebooks().map((doc) => doc.projectId))];
     for (const projectId of ids) await (await notebookFiles(db, projectId))?.refresh(db);
   }
   /** Save a notebook to the database and, unless it is temporary, to the file in its project folder. */
@@ -197,11 +205,11 @@ export async function handleNotebookApi(method: string, path: string[], request:
     const body = editSchema.parse(await request.json());
     const copy = db.libraryCopy(body.moduleId);
     if (!copy) throw new HttpError(404, "这个模块没有可编辑的笔记本副本");
+    const projectId = currentProjectId(db);
+    if (!projectId) throw new HttpError(400, "先打开一个项目");
     let doc: NotebookDoc;
     try {
-      doc = notebookFromLibrary(copy, newNotebookId(db));
-      const projectId = currentProjectId(db);
-      if (projectId) doc = { ...doc, projectId };
+      doc = notebookFromLibrary(copy, newNotebookId(db), projectId);
     } catch (error) {
       if (error instanceof PercentError) throw new HttpError(400, error.message);
       throw error;
@@ -213,14 +221,18 @@ export async function handleNotebookApi(method: string, path: string[], request:
 
   if (!id && method === "GET") {
     const project = new URL(request.url).searchParams.get("project");
-    return json(db.notebooks().filter((doc) => !doc.temporary && (!project || notebookProjectId(doc) === project)).map(summarizeNotebook));
+    return json(db.notebooks().filter((doc) => !doc.temporary && (!project || doc.projectId === project)).map(summarizeNotebook));
   }
 
   if (!id && method === "POST") {
     const body = writeSchema.parse(await request.json());
+    // Notebooks belong to a project, as workflows do: their cells run in its folder.
+    const projectId = body.projectId ?? currentProjectId(db);
+    if (!projectId || !db.project(projectId)) throw new HttpError(400, "先打开一个项目");
     const now = new Date().toISOString();
     const doc: NotebookDoc = {
       id: `nb_${randomUUID().slice(0, 8)}`,
+      projectId,
       name: body.name,
       description: body.description?.trim() ?? "",
       kernel: body.kernel,
@@ -230,8 +242,7 @@ export async function handleNotebookApi(method: string, path: string[], request:
       createdAt: now,
       updatedAt: now,
     };
-    const projectId = body.projectId ?? currentProjectId(db);
-    return json(await saveNotebook(projectId ? { ...doc, projectId } : doc), 201);
+    return json(await saveNotebook(doc), 201);
   }
 
   if (!id) throw new HttpError(404, "接口不存在");

@@ -23,6 +23,7 @@ function notebook(): NotebookDoc {
   const now = "2026-11-01T00:00:00.000Z";
   return {
     id: "nb_env",
+    projectId: "example",
     name: "round_trip",
     description: "说明",
     kernel: "py311-pandas",

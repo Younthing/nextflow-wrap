@@ -118,8 +118,9 @@ async function handle(request: Request, context: Context): Promise<Response> {
           applyStoredSettings();
           return json({ text: await remoteTaskLog(new SshSession(host), run.detail.remote, task.workdir) });
         }
-        // The runner records the absolute work directory it used; runs from before that kept it beside the project.
-        const workRoot = isAbsolute(run.detail.launch.workDir) ? run.detail.launch.workDir : join(run.projectDir, "../work");
+        // The runner records the absolute work directory it used.
+        const workRoot = run.detail.launch.workDir;
+        if (!isAbsolute(workRoot)) throw new HttpError(404, "这次运行还没有工作目录");
         let text = "";
         for (const name of [".command.log", ".command.err", ".command.out", ".command.sh"]) {
           try { text += `\n--- ${name} ---\n${await readTail(await containedFile(workRoot, join(/* turbopackIgnore: true */ task.workdir, name)), 64_000)}`; }

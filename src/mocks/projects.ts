@@ -66,6 +66,7 @@ export const projectHandlers = [
   http.delete("/api/projects/:id", ({ params }) => {
     const id = params.id as string;
     if (!readDb().projects[id]) return fail("项目不在最近列表里", 404);
+    if (readDb().projects[id]?.example) return fail("示例项目不能移除", 400);
     writeDb((db) => {
       delete db.projects[id];
       if (db.currentProject === id) db.currentProject = undefined;

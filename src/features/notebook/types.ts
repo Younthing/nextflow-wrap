@@ -21,8 +21,8 @@ export interface NotebookDoc {
   rev: number;
   createdAt: string;
   updatedAt: string;
-  /** Project (workspace folder) the notebook belongs to. Unset on notebooks from before projects: see `notebookProjectId`. */
-  projectId?: string;
+  /** Project (workspace folder) the notebook belongs to. Its cells run in that folder. */
+  projectId: string;
   /**
    * Opened to edit a module (from the module library or a canvas node): kept out of the project's notebooks and
    * files until it is saved there.

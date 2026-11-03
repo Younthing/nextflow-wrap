@@ -34,7 +34,7 @@ describe("example project", () => {
 
   it("opens each module's saved notebook copy for editing", () => {
     const copies = exampleLibraryCopies();
-    const notebook = notebookFromLibrary(copies[0]!, "nb_edit");
+    const notebook = notebookFromLibrary(copies[0]!, "nb_edit", "example");
     expect(notebook.cells).toEqual(exampleNotebooks()[0]!.cells);
     expect(notebook.fromModuleId).toBe("script/count_qc");
   });

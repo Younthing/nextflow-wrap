@@ -2,25 +2,18 @@ import { describe, expect, it } from "vitest";
 
 import { cacheDirectory, dataDirectory, nextflowCacheEnv, pipelineDirectory, workDirectory, workspaceDirectory } from "./paths";
 
-const none = () => false;
-
 describe("dataDirectory", () => {
   it("honours NEXTFLOW_STUDIO_DATA_DIR", () => {
-    expect(dataDirectory({ platform: "darwin", home: "/Users/a", env: { NEXTFLOW_STUDIO_DATA_DIR: "/data/studio" }, exists: none })).toBe("/data/studio");
+    expect(dataDirectory({ platform: "darwin", home: "/Users/a", env: { NEXTFLOW_STUDIO_DATA_DIR: "/data/studio" } })).toBe("/data/studio");
   });
 
   it("uses Application Support on macOS", () => {
-    expect(dataDirectory({ platform: "darwin", home: "/Users/a", env: {}, exists: none })).toBe("/Users/a/Library/Application Support/Nextflow Studio");
-  });
-
-  it("keeps an existing macOS database in the earlier location", () => {
-    const exists = (path: string) => path === "/Users/a/.local/share/nextflow-studio/studio.sqlite";
-    expect(dataDirectory({ platform: "darwin", home: "/Users/a", env: {}, exists })).toBe("/Users/a/.local/share/nextflow-studio");
+    expect(dataDirectory({ platform: "darwin", home: "/Users/a", env: {} })).toBe("/Users/a/Library/Application Support/Nextflow Studio");
   });
 
   it("follows XDG on Linux", () => {
-    expect(dataDirectory({ platform: "linux", home: "/home/a", env: {}, exists: none })).toBe("/home/a/.local/share/nextflow-studio");
-    expect(dataDirectory({ platform: "linux", home: "/home/a", env: { XDG_DATA_HOME: "/xdg" }, exists: none })).toBe("/xdg/nextflow-studio");
+    expect(dataDirectory({ platform: "linux", home: "/home/a", env: {} })).toBe("/home/a/.local/share/nextflow-studio");
+    expect(dataDirectory({ platform: "linux", home: "/home/a", env: { XDG_DATA_HOME: "/xdg" } })).toBe("/xdg/nextflow-studio");
   });
 });
 
@@ -34,7 +27,7 @@ describe("cacheDirectory", () => {
 });
 
 describe("run directories", () => {
-  const input = { platform: "linux" as const, home: "/home/a", env: {}, exists: none };
+  const input = { platform: "linux" as const, home: "/home/a", env: {} };
 
   it("gives each workflow one stable project directory and all runs one work directory", () => {
     expect(pipelineDirectory("hostchain", input)).toBe("/home/a/.local/share/nextflow-studio/pipelines/hostchain");

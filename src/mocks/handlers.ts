@@ -24,7 +24,6 @@ import { storageHandlers } from "./storage";
 import { diagnosticsHandlers } from "./diagnostics";
 import { remoteHandlers } from "./remotes";
 import { projectHandlers } from "./projects";
-import { notebookProjectId } from "@/features/workspace/projects";
 
 const summarize = (w: WorkflowDoc): WorkflowSummary => ({
   id: w.id,
@@ -60,9 +59,9 @@ export const handlers = [
     const copy = readDb().libraryCopies[body.moduleId ?? ""];
     if (!copy) return HttpResponse.json({ message: "这个模块没有可编辑的笔记本副本" }, { status: 404 });
     try {
-      const built = notebookFromLibrary(copy, newId("nb"));
       const current = readDb().currentProject;
-      const doc = current ? { ...built, projectId: current } : built;
+      if (!current) return HttpResponse.json({ message: "先打开一个项目" }, { status: 400 });
+      const doc = notebookFromLibrary(copy, newId("nb"), current);
       writeDb((next) => {
         next.notebooks[doc.id] = doc;
         next.revisions[`${doc.id}:1`] = { notebookId: doc.id, rev: 1, cells: doc.cells, savedAt: doc.updatedAt };
@@ -100,7 +99,7 @@ export const handlers = [
     const db = readDb();
     const project = new URL(request.url).searchParams.get("project");
     const list = Object.values(db.notebooks)
-      .filter((doc) => !doc.temporary && (!project || notebookProjectId(doc) === project))
+      .filter((doc) => !doc.temporary && (!project || doc.projectId === project))
       .map(summarizeNotebook)
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
     return HttpResponse.json(list);
@@ -108,18 +107,20 @@ export const handlers = [
 
   http.post("/api/notebooks", async ({ request }) => {
     const body = (await request.json()) as Partial<NotebookDoc>;
+    const projectId = body.projectId ?? readDb().currentProject;
+    if (!projectId) return HttpResponse.json({ message: "先打开一个项目" }, { status: 400 });
     const now = new Date().toISOString();
     const doc: NotebookDoc = {
       id: newId("nb"),
+      projectId,
       name: String(body.name || "未命名笔记本").slice(0, 80),
       description: String(body.description ?? ""),
-      kernel: String(body.kernel || "py311-pandas"),
-      language: languageForKernel(String(body.kernel || "py311-pandas")),
+      kernel: String(body.kernel || "python3"),
+      language: languageForKernel(String(body.kernel || "python3")),
       cells: body.cells?.length ? body.cells : [{ id: newId("c"), role: "code", source: "" }],
       rev: 1,
       createdAt: now,
       updatedAt: now,
-      ...((body.projectId ?? readDb().currentProject) ? { projectId: body.projectId ?? readDb().currentProject } : {}),
     };
     writeDb((db) => {
       db.notebooks[doc.id] = doc;

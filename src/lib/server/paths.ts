@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -14,30 +13,20 @@ export interface PathEnv {
   platform?: NodeJS.Platform;
   home?: string;
   env?: Partial<Record<string, string>>;
-  exists?: (path: string) => boolean;
 }
 
 const context = (input: PathEnv = {}) => ({
   platform: input.platform ?? process.platform,
   home: input.home ?? homedir(),
   env: input.env ?? process.env,
-  exists: input.exists ?? existsSync,
 });
 
-/** Linux and older installs on macOS used this location. */
-const legacyDataDirectory = (home: string) => join(home, ".local/share/nextflow-studio");
 
 export function dataDirectory(input?: PathEnv): string {
-  const { platform, home, env, exists } = context(input);
+  const { platform, home, env } = context(input);
   if (env.NEXTFLOW_STUDIO_DATA_DIR) return resolve(/* turbopackIgnore: true */ env.NEXTFLOW_STUDIO_DATA_DIR);
-  if (platform === "darwin") {
-    const legacy = legacyDataDirectory(home);
-    // Keep using a database that an earlier version already wrote; moving it is a separate migration.
-    if (exists(join(legacy, "studio.sqlite"))) return legacy;
-    return join(home, "Library/Application Support/Nextflow Studio");
-  }
-  if (env.XDG_DATA_HOME) return join(resolve(env.XDG_DATA_HOME), "nextflow-studio");
-  return legacyDataDirectory(home);
+  if (platform === "darwin") return join(home, "Library/Application Support/Nextflow Studio");
+  return join(env.XDG_DATA_HOME ? resolve(env.XDG_DATA_HOME) : join(home, ".local/share"), "nextflow-studio");
 }
 
 export function cacheDirectory(input?: PathEnv): string {

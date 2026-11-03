@@ -4,8 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { StudioStore } from "@/lib/server/database";
-import type { NotebookDoc } from "@/features/notebook/types";
-import { EXAMPLE_PROJECT_ID, projectIdForPath } from "../projects";
+import { projectIdForPath } from "../projects";
 import { closeProject, createProject, forgetProject, listProjects, openProject, reopenProject, type ProjectContext } from "./projects";
 
 let root: string;
@@ -13,10 +12,6 @@ let db: StudioStore;
 let context: ProjectContext;
 let tick = 0;
 
-const notebook = (id: string, projectId?: string): NotebookDoc => ({
-  id, name: id, description: "", kernel: "py311-pandas", language: "python", cells: [], rev: 1,
-  createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z", ...(projectId ? { projectId } : {}),
-});
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "projects-"));
@@ -80,19 +75,11 @@ describe("projects", () => {
     db.saveProject({ ...project, path: join(root, "moved-away") });
     await expect(reopenProject(context, project.id)).rejects.toMatchObject({ status: 404 });
   });
+});
 
-  it("keep notebooks from before projects in an example project", async () => {
-    expect((await listProjects(context)).projects).toEqual([]);
-    db.insertNotebookSnapshot(notebook("nb_old"));
-    const list = await listProjects(context);
-    expect(list.projects).toMatchObject([{ id: EXAMPLE_PROJECT_ID, example: true, path: context.exampleDir }]);
-    expect(existsSync(context.exampleDir)).toBe(true);
-    const created = await createProject(context, { name: "new", parent: root });
-    expect((await listProjects(context)).projects.map((p) => p.id)).toEqual([created.id, EXAMPLE_PROJECT_ID]);
-  });
-
-  it("skip the example project when every notebook has a project", async () => {
-    db.insertNotebookSnapshot(notebook("nb_new", "p_1"));
-    expect((await listProjects(context)).projects).toEqual([]);
+describe("example project", () => {
+  it("cannot be removed from the list", () => {
+    db.saveProject({ id: "example", name: "示例项目", path: root, createdAt: "2026-01-01T00:00:00.000Z", openedAt: "1970-01-01T00:00:00.000Z", example: true });
+    expect(() => forgetProject(context, "example")).toThrow(/示例项目不能移除/);
   });
 });

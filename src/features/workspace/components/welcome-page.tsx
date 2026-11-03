@@ -106,7 +106,8 @@ export function WelcomeView({ projects, home, environment, busyId, onNew, onOpen
                     {busyId === project.id ? <Loader2 className="size-4 animate-spin" aria-label="正在打开" /> : project.example && project.openedAt.startsWith("1970") ? "未打开过" : openedLabel(project.openedAt)}
                   </span>
                 </button>
-                <DropdownMenu>
+                {/* The example project is always on the list. */}
+                {project.example ? null : <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button
                       type="button"
@@ -124,7 +125,7 @@ export function WelcomeView({ projects, home, environment, busyId, onNew, onOpen
                       从列表移除
                     </DropdownMenuItem>
                   </DropdownMenuContent>
-                </DropdownMenu>
+                </DropdownMenu>}
               </li>
             ))}
             {visible.length === 0 ? <li className="px-3 py-6 text-sm text-muted-foreground">没有匹配「{query}」的项目</li> : null}

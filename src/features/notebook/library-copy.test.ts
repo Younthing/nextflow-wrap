@@ -11,6 +11,7 @@ const now = "2026-11-01T00:00:00.000Z";
 function sample(cells = sampleCells()): NotebookDoc {
   return {
     id: "nb_round",
+    projectId: "example",
     name: "round_trip",
     description: "说明",
     kernel: "py311-pandas",

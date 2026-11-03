@@ -19,6 +19,7 @@ afterAll(() => kernels.shutdownAllKernels());
 
 const doc = (cells: NotebookDoc["cells"], id = "nb_kernel"): NotebookDoc => ({
   id,
+  projectId: "example",
   name: "kernel",
   description: "",
   kernel: "py311-pandas",

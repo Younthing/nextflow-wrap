@@ -30,7 +30,7 @@ async function setup() {
 
 function notebook(id: string, name: string, source = "print(1)\n"): NotebookDoc {
   const now = "2026-11-01T00:00:00.000Z";
-  return { id, name, description: "", kernel: "py311-pandas", language: "python", rev: 1, createdAt: now, updatedAt: now, cells: [{ id: "c1", role: "code", source }] };
+  return { id, projectId: "example", name, description: "", kernel: "py311-pandas", language: "python", rev: 1, createdAt: now, updatedAt: now, cells: [{ id: "c1", role: "code", source }] };
 }
 
 /** Bump a file's time so a rewrite within the same millisecond still counts as a change. */
@@ -117,7 +117,7 @@ describe("notebook files", () => {
       headers: { "content-type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
-    const created = await (await handleNotebookApi("POST", ["notebooks"], request("POST", { name: "api qc", kernel: "py311-pandas", cells: [{ id: "c1", role: "code", source: "a = 1\n" }] }), db)).json() as NotebookDoc;
+    const created = await (await handleNotebookApi("POST", ["notebooks"], request("POST", { name: "api qc", projectId: "example", kernel: "py311-pandas", cells: [{ id: "c1", role: "code", source: "a = 1\n" }] }), db)).json() as NotebookDoc;
     const path = join(folder, "api qc.ipynb");
     expect(notebookFromIpynb(readFileSync(path, "utf8"), "x").id).toBe(created.id);
 

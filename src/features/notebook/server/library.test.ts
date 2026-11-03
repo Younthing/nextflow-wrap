@@ -20,6 +20,7 @@ function notebook(): NotebookDoc {
   const now = "2026-11-01T00:00:00.000Z";
   return {
     id: "nb_round",
+    projectId: "example",
     name: "round_trip",
     description: "说明",
     kernel: "py311-pandas",
@@ -84,6 +85,7 @@ describe("module library persistence", () => {
       expect(edited.rev).toBe(saved.rev + 1);
       const sourceAfterEdit = db.notebookJson(saved.id);
 
+      db.setMeta("currentProject", "example");
       const reopened = await handleNotebookApi("POST", ["script-modules", "edit"], post("/api/script-modules/edit", {
         moduleId: view.id,
       }), db);

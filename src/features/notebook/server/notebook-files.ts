@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { IpynbError, notebookFromIpynb, serializeIpynb, type IpynbNotebook } from "@/features/notebook/ipynb";
 import type { NotebookDoc } from "@/features/notebook/types";
-import { EXAMPLE_PROJECT_ID, notebookProjectId } from "@/features/workspace/projects";
+import { EXAMPLE_PROJECT_ID } from "@/features/workspace/projects";
 import { ensureWorkspace, writeFileAtomic } from "@/features/workspace/server/workspace";
 import type { StudioStore } from "@/lib/server/database";
 
@@ -53,7 +53,7 @@ export class NotebookFiles {
 
   /** Temporary notebooks (opened to edit a module) get a file only once they are saved to the project. */
   private owns(doc: NotebookDoc): boolean {
-    return !doc.temporary && notebookProjectId(doc) === this.projectId;
+    return !doc.temporary && doc.projectId === this.projectId;
   }
 
   /** Path of a notebook's file relative to the workspace, for display. */
@@ -208,10 +208,10 @@ export function notebookFiles(db: StudioStore, projectId: string = EXAMPLE_PROJE
   let pending = cache.get(projectId);
   if (!pending) {
     const project = db.project(projectId);
-    const root = project?.path ?? (projectId === EXAMPLE_PROJECT_ID ? db.workspace : undefined);
+    const root = project?.path;
     if (!root) return Promise.resolve(undefined);
     pending = (async () => {
-      if (!project?.example && projectId !== EXAMPLE_PROJECT_ID && !(await stat(root).then((info) => info.isDirectory(), () => false))) {
+      if (!project?.example && !(await stat(root).then((info) => info.isDirectory(), () => false))) {
         cache.delete(projectId);
         return undefined;
       }

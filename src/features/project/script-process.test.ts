@@ -9,6 +9,7 @@ import { generateProject } from "./generate";
 
 const notebook: NotebookDoc = {
   id: "nb_hello",
+  projectId: "example",
   name: "hello_note",
   description: "问候",
   kernel: "python3.11",

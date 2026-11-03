@@ -12,7 +12,7 @@ describe("example project on a fresh install", () => {
   let dir: string;
   afterEach(() => { if (dir) rmSync(dir, { recursive: true, force: true }); });
 
-  it("lists the example project with its notebooks, modules, workflow and data", async () => {
+  it("is always listed, with its notebooks, modules, workflow and data", async () => {
     dir = mkdtempSync(join(tmpdir(), "nfs-example-"));
     const db = new StudioStore(join(dir, "studio.sqlite"));
     try {
@@ -25,6 +25,11 @@ describe("example project on a fresh install", () => {
       expect(db.workflows().map((doc) => doc.projectId)).toEqual([EXAMPLE_PROJECT_ID]);
       expect(readFileSync(join(example!.path, "data", "samples.csv"), "utf8")).toContain("ctrl_1,control,A");
       expect(existsSync(join(example!.path, "data", "counts.tsv"))).toBe(true);
+      // Deleting the example workflow does not bring it back; the project stays.
+      db.deleteWorkflow("example_expression");
+      await handleProjectsApi("GET", ["projects"], new Request("http://studio.local/api/projects"), db);
+      expect(db.workflow("example_expression")).toBeUndefined();
+      expect(db.project(EXAMPLE_PROJECT_ID)).toBeDefined();
     } finally {
       db.close();
     }

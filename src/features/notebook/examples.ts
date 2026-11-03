@@ -1,6 +1,7 @@
 import type { ModuleDef, WorkflowDoc, WorkflowEdge, WorkflowNode } from "@/features/workflow/types";
 import { FILE_ID } from "@/features/workflow/builtins";
 import { inHandle, outHandle } from "@/features/workflow/ports";
+import { EXAMPLE_PROJECT_ID } from "@/features/workspace/projects";
 import { convertNotebook, inputPorts, outputPorts } from "./convert";
 import { buildLibraryCopy, type ModuleLibraryCopy } from "./library-copy";
 import { processName } from "./publish";
@@ -233,7 +234,7 @@ const STEPS: ExampleStep[] = [
 export const EXAMPLE_MODULE_IDS = STEPS.map((step) => `script/${step.id}`);
 
 /** The example project's notebooks. */
-export function exampleNotebooks(projectId?: string): NotebookDoc[] {
+export function exampleNotebooks(projectId = EXAMPLE_PROJECT_ID): NotebookDoc[] {
   return STEPS.map((step) => ({
     id: step.id,
     name: step.name,
@@ -244,7 +245,7 @@ export function exampleNotebooks(projectId?: string): NotebookDoc[] {
     rev: 1,
     createdAt: EXAMPLE_TIME,
     updatedAt: EXAMPLE_TIME,
-    ...(projectId ? { projectId } : {}),
+    projectId,
   }));
 }
 
@@ -295,14 +296,14 @@ const edge = (source: string, out: string, target: string, input: string): Workf
 });
 
 /** The four example modules chained on the example data. Paths are workspace paths. */
-export function exampleWorkflow(projectId?: string): WorkflowDoc {
+export function exampleWorkflow(projectId = EXAMPLE_PROJECT_ID): WorkflowDoc {
   return {
     id: "example_expression",
     name: "表达分析示例",
     description: "质控 → 标准化与 PCA → 分组差异 → 报告",
     version: 1,
     params: { outdir: "results" },
-    ...(projectId ? { projectId } : {}),
+    projectId,
     nodes: [
       node("counts", FILE_ID, "COUNTS", 0, 80, { config: {}, settings: { path: "data/counts.tsv" } }),
       node("samples", FILE_ID, "SAMPLES", 0, 320, { config: {}, settings: { path: "data/samples.csv" } }),

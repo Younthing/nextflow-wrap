@@ -7,7 +7,7 @@ import type { RunDetail, TaskRecord } from "@/features/runs/types";
 import type { Project } from "@/features/workspace/types";
 import { commitWorkflowPut, type WorkflowPutResult } from "@/features/workflow/revision";
 import type { ModuleDef, WorkflowDoc } from "@/features/workflow/types";
-import { migrateDataLayout, migrateDatabase, type MigrationResult } from "./migrations";
+import { openSchema } from "./schema";
 import { dataDirectory, workspaceDirectory } from "./paths";
 
 // Runtime data is intentionally outside the deployable Next.js source tree.
@@ -34,8 +34,6 @@ export class StudioStore {
   readonly db: DatabaseSync;
   /** Example project folder (the default workspace). An in-memory database has none. */
   readonly workspace?: string;
-  /** What opening this database upgraded, for the setup page and diagnostics. */
-  readonly migration: MigrationResult;
   constructor(path = join(dataDirectory(), "studio.sqlite")) {
     if (path !== ":memory:") {
       mkdirSync(dirname(path), { recursive: true });
@@ -45,24 +43,14 @@ export class StudioStore {
     this.db.exec("PRAGMA busy_timeout=5000;");
     try {
       if (path !== ":memory:") this.db.exec("PRAGMA journal_mode=WAL;");
+      openSchema(this.db, path);
       const appVersion = process.env.NEXTFLOW_STUDIO_APP_VERSION;
-      this.migration = migrateDatabase(this.db, path === ":memory:" ? {} : { backupDir: join(dirname(path), "backups") });
-      if (path !== ":memory:") {
-        migrateDataLayout(dirname(path), appVersion);
-      }
       if (appVersion) this.setMeta("appVersion", appVersion);
-      // The web server and the runner open the same file; whichever starts first upgrades it. Keep the result so
-      // the other process can still tell the user about it.
-      if (this.migration.applied.length) this.setMeta("lastMigration", JSON.stringify({ ...this.migration, at: new Date().toISOString() }));
     } catch (error) { this.db.close(); throw error; }
   }
   meta(key: string): string | undefined {
     const row = this.db.prepare("SELECT value FROM meta WHERE key=?").get(key);
     return row ? String(row.value) : undefined;
-  }
-  /** The most recent schema upgrade of this file, by any process. */
-  lastMigration(): (MigrationResult & { at: string }) | undefined {
-    try { return JSON.parse(this.meta("lastMigration") ?? "null") ?? undefined; } catch { return undefined; }
   }
   setMeta(key: string, value: string) { this.db.prepare("INSERT INTO meta(key, value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(key, value); }
   transaction<T>(fn: () => T): T {

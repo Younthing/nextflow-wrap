@@ -47,12 +47,6 @@ export function SetupWizardView({
             <span>·</span>
             <span>{status.platform}</span>
           </div>
-          {status.migration && (
-            <p className="text-xs text-muted-foreground" role="status">
-              本地数据已从版本 {status.migration.from} 升级到 {status.migration.to}
-              {status.migration.backup ? `，升级前的备份在 ${status.migration.backup}` : ""}。
-            </p>
-          )}
         </CardContent>
       </Card>
 

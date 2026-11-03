@@ -1,4 +1,3 @@
-import { notebookProjectId } from "@/features/workspace/projects";
 import type { NotebookDoc, NotebookSummary } from "./types";
 import type { ModuleDef } from "@/features/workflow/types";
 
@@ -11,7 +10,7 @@ export function summarizeNotebook(doc: NotebookDoc): NotebookSummary {
     language: doc.language,
     rev: doc.rev,
     updatedAt: doc.updatedAt,
-    projectId: notebookProjectId(doc),
+    projectId: doc.projectId,
   };
 }
 

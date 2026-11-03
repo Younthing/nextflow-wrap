@@ -69,8 +69,6 @@ export function touchProject(projects: readonly Project[], project: Project, now
   return sortRecent([...rest, { ...(existing ?? project), name: existing?.name ?? project.name, openedAt: now }]);
 }
 
-/** The project a notebook belongs to; notebooks written before projects existed live in the example project. */
-export const notebookProjectId = (doc: { projectId?: string }) => doc.projectId ?? EXAMPLE_PROJECT_ID;
 
 /** Show `~` for the home folder, as file managers do. */
 export function displayPath(path: string, home?: string): string {

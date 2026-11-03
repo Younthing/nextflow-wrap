@@ -13,8 +13,8 @@ const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 
-function notebook(partial: Omit<NotebookDoc, "createdAt"> & { createdAt?: string }): NotebookDoc {
-  return { createdAt: partial.updatedAt, ...partial };
+function notebook(partial: Omit<NotebookDoc, "createdAt" | "projectId"> & { createdAt?: string; projectId?: string }): NotebookDoc {
+  return { createdAt: partial.updatedAt, projectId: "example", ...partial };
 }
 
 const qcCurrent: NotebookCell[] = [

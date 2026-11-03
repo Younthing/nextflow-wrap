@@ -2,11 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   displayPath,
-  EXAMPLE_PROJECT_ID,
   filterProjects,
   folderName,
   joinProjectPath,
-  notebookProjectId,
   openedLabel,
   projectBadge,
   projectIdForPath,
@@ -79,11 +77,6 @@ describe("recent projects", () => {
 });
 
 describe("helpers", () => {
-  it("put notebooks without a project into the example project", () => {
-    expect(notebookProjectId({})).toBe(EXAMPLE_PROJECT_ID);
-    expect(notebookProjectId({ projectId: "p_1" })).toBe("p_1");
-  });
-
   it("shorten the home folder", () => {
     expect(displayPath("/home/demo/Projects/a", "/home/demo")).toBe("~/Projects/a");
     expect(displayPath("/home/demo", "/home/demo/")).toBe("~");

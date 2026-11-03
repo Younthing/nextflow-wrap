@@ -29,7 +29,5 @@ export interface SetupStatus {
   dataDirectory: string;
   /** Conda environments found on this machine, offered to the notebook as kernels. */
   condaEnvironments: CondaEnvironment[];
-  /** Database and layout upgrades done when this server opened the data directory. */
-  migration?: { from: number; to: number; backup?: string };
   desktop: boolean;
 }

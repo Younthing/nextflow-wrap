@@ -5,7 +5,7 @@ import { runCommand } from "@/features/project/server/command";
 import { setupStatus } from "@/features/setup/server/setup";
 import { HttpError } from "@/features/runs/server/service";
 import { store, type StudioStore } from "@/lib/server/database";
-import { SCHEMA_VERSION } from "@/lib/server/migrations";
+import { SCHEMA_VERSION } from "@/lib/server/schema";
 import { dataDirectory } from "@/lib/server/paths";
 import { readSecrets, settingsView } from "@/lib/server/settings";
 import { managedPaths } from "@/lib/server/toolchain";
@@ -65,7 +65,6 @@ export async function bundleEntries(options: BundleOptions = {}): Promise<Bundle
     node: process.version,
     dataDirectory: dataDirectory({ env }),
     schemaVersion: SCHEMA_VERSION,
-    migration: db.migration,
     runner: db.runtime() ?? null,
     runs: db.runs().slice(0, 20).map(({ detail: run }) => ({ id: run.id, status: run.status, submittedAt: run.submittedAt, executor: run.executor, profile: run.profile, errorMessage: run.errorMessage })),
   });

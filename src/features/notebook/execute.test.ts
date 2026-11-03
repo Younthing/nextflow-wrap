@@ -209,6 +209,7 @@ const JPEG = "/9j/4AAQSkZJRgABAgAAAQABAAD//gAQTGF2YzYwLjMxLjEwMgD/2wBDAAgEBAQEBA
 function pythonDoc(cells: NotebookCell[]): NotebookDoc {
   return {
     id: "rich",
+    projectId: "example",
     name: "rich",
     description: "",
     kernel: "python3.11",

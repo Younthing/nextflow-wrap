@@ -1,28 +1,12 @@
 import { mkdtempSync, rmSync } from "node:fs";
-import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { fixtureNotebooks, fixtureScriptModules } from "@/features/notebook/test-fixtures";
 import { fixtureReadsWorkflow } from "@/features/workflow/fixture-workflows";
 import { StudioStore } from "./database";
-import { SCHEMA_VERSION } from "./migrations";
 
 describe("StudioStore", () => {
-  it("remembers an upgrade for the process that opens the file second", () => {
-    const dir = mkdtempSync(join(tmpdir(), "studio-upgrade-"));
-    try {
-      const legacy = new DatabaseSync(join(dir, "studio.sqlite"));
-      legacy.exec("CREATE TABLE workflows (id TEXT PRIMARY KEY, data TEXT NOT NULL); PRAGMA user_version=2;");
-      legacy.close();
-      const runner = new StudioStore(join(dir, "studio.sqlite"));
-      expect(runner.migration).toMatchObject({ from: 2, to: SCHEMA_VERSION });
-      const web = new StudioStore(join(dir, "studio.sqlite"));
-      expect(web.migration.applied).toEqual([]);
-      expect(web.lastMigration()).toMatchObject({ from: 2, to: SCHEMA_VERSION, applied: [3, 4, 5] });
-    } finally { rmSync(dir, { recursive: true, force: true }); }
-  });
-
   it("persists workflow edits across connections and rolls back failed transactions", () => {
     const directory = mkdtempSync(join(tmpdir(), "studio-db-"));
     try {
@@ -91,21 +75,15 @@ describe("StudioStore", () => {
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
-  it("opens a version 2 database, adds the module library table, and keeps the notebook row", () => {
+  it("keeps notebook rows and module copies byte for byte across connections", () => {
     const directory = mkdtempSync(join(tmpdir(), "studio-db-"));
     try {
       const path = join(directory, "studio.sqlite");
-      const legacy = new DatabaseSync(path);
-      const doc = fixtureNotebooks().find((item) => item.id === "sample_clean")!;
-      legacy.exec("PRAGMA user_version=2; CREATE TABLE notebooks (id TEXT PRIMARY KEY, updated TEXT NOT NULL, data TEXT NOT NULL);");
-      legacy.prepare("INSERT INTO notebooks(id, updated, data) VALUES (?,?,?)").run(doc.id, doc.updatedAt, JSON.stringify(doc));
-      legacy.close();
       const db = new StudioStore(path);
-      expect(Number(db.db.prepare("PRAGMA user_version").get()?.user_version)).toBe(SCHEMA_VERSION);
-      expect(db.notebook(doc.id)?.name).toBe(doc.name);
-      expect(db.notebookJson(doc.id)).toBe(JSON.stringify(doc));
+      const doc = fixtureNotebooks().find((item) => item.id === "sample_clean")!;
+      db.insertNotebookSnapshot(doc);
       db.saveLibraryCopy({
-        moduleId: "script/sample_clean/v1",
+        moduleId: "script/sample_clean",
         version: "v1",
         format: "jupytext-percent",
         formatVersion: "1.3",
@@ -117,7 +95,7 @@ describe("StudioStore", () => {
       expect(db.notebookJson(doc.id)).toBe(JSON.stringify(doc));
       db.close();
       const again = new StudioStore(path);
-      expect(again.libraryCopy("script/sample_clean/v1")?.command).toBe("bin/sample_clean_v1.py");
+      expect(again.libraryCopy("script/sample_clean")?.command).toBe("bin/sample_clean_v1.py");
       expect(again.notebookJson(doc.id)).toBe(JSON.stringify(doc));
       again.close();
     } finally { rmSync(directory, { recursive: true, force: true }); }

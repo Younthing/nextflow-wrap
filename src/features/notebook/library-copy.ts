@@ -40,13 +40,14 @@ export function buildLibraryCopy(input: {
 }
 
 /** A temporary notebook to edit the module in. Saving it to the project and exporting it again are both up to the user. */
-export function notebookFromLibrary(copy: ModuleLibraryCopy, id: string, now = new Date().toISOString()): NotebookDoc {
+export function notebookFromLibrary(copy: ModuleLibraryCopy, id: string, projectId: string, now = new Date().toISOString()): NotebookDoc {
   if (copy.format !== "jupytext-percent") throw new PercentError("不认识的库副本格式");
   const parsed = readPercent(copy.percent);
   if (parsed.cells.length === 0 || parsed.cells.length > CELL_MAX) throw new PercentError("单元格数量无效");
   if (parsed.cells.some((cell) => cell.source.length > SOURCE_MAX)) throw new PercentError("单元格过长");
   return {
     id,
+    projectId,
     name: parsed.name.trim().slice(0, NAME_MAX) || "未命名笔记本",
     description: parsed.description.slice(0, DESCRIPTION_MAX),
     kernel: parsed.kernel,
