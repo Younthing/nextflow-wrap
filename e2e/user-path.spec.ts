@@ -2,13 +2,13 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { ensureProject, exportModule, flowNav, markCell } from "./helpers";
+import { ensureProject, exportModule, flowNav, markCell, onScreen, openSection, renameOpenNotebook, uploadToWorkspace } from "./helpers";
 
 /**
  * Real user path, once for Python and once for R:
  * new notebook → plot → mark I/O → publish with a hand-filled conda yaml and
  * container → try-run → canvas → real Nextflow → results show the figure and
- * table → source-changed hint → publish v2 → resume hits the cache.
+ * table → edit the notebook → export over the module as v2 → resume hits the cache.
  *
  * Try-run uses the hand-filled conda yaml and container, the same fields saved on the module.
  * This job has no container daemon. TRY_RUN_CONTAINER_BIN is a docker-compatible shim that
@@ -163,21 +163,31 @@ function tryRunLog(page: Page) {
   return page.locator("section").filter({ has: page.getByRole("heading", { name: /^日志/ }) }).locator("pre");
 }
 
-async function publish(page: Page, version: "v1" | "v2", condaYaml: string, image: string, shotName: string) {
+/** Exports the open notebook: v1 as a new module, v2 over the module named `moduleName` (overwritten in place). */
+async function publish(page: Page, version: "v1" | "v2", moduleName: string, condaYaml: string, image: string, shotName: string) {
+  const view = onScreen(page);
   await exportModule(page);
   await page.waitForURL(/\/publish$/);
-  await page.getByText("试跑输入", { exact: true }).click();
-  await expect(page.locator("#arg-title")).toHaveValue("S1");
-  await page.locator("#publish-env-conda").fill(condaYaml);
-  await page.locator("#publish-env-container").fill(image);
+  if (version === "v2") {
+    // A notebook is not tied to the module it made; overwriting is chosen under 导出到.
+    await page.getByRole("combobox", { name: "导出到" }).click();
+    await page.getByRole("option", { name: new RegExp(`^覆盖 ${moduleName} v1`) }).click();
+  }
+  await openSection(page, "试跑输入");
+  await expect(view.locator("#arg-title")).toHaveValue("S1");
+  await view.locator("#publish-env-conda").fill(condaYaml);
+  await view.locator("#publish-env-container").fill(image);
   await page.getByRole("button", { name: "只试跑" }).click();
   const tryLog = tryRunLog(page);
   await expect
     .poll(
       async () => {
-        const alert = page.locator("section").filter({ has: page.getByRole("heading", { name: "模块信息" }) }).getByRole("alert");
+        const alert = view.locator("section").filter({ has: page.getByRole("heading", { name: "模块信息" }) }).getByRole("alert");
         if (await alert.count()) throw new Error(await alert.first().innerText());
-        const heading = await page.getByRole("heading", { name: /^日志/ }).innerText();
+        // The log heading appears with the first result; a try-run can take longer than one action timeout.
+        const log = page.getByRole("heading", { name: /^日志/ });
+        if (!(await log.count())) return "";
+        const heading = await log.innerText();
         if (heading.includes("失败")) throw new Error(`${heading}\n${await tryLog.innerText()}`);
         return heading;
       },
@@ -190,13 +200,13 @@ async function publish(page: Page, version: "v1" | "v2", condaYaml: string, imag
   await expect(tryLog).toContainText(`e2e docker shim: image ${image}`);
   await expect(tryLog).not.toContainText("选用本机");
   await expect(page.getByRole("cell", { name: "符合" }).first()).toBeVisible();
-  await expect(page.locator("#publish-env-conda")).toHaveValue(condaYaml);
-  await expect(page.locator("#publish-env-container")).toHaveValue(image);
-  await expect(page.locator("#module-version")).toHaveValue(new RegExp(`^${version}`));
+  await expect(view.locator("#publish-env-conda")).toHaveValue(condaYaml);
+  await expect(view.locator("#publish-env-container")).toHaveValue(image);
+  await expect(view.locator("#module-version")).toHaveValue(version === "v1" ? "v1" : "v1 → v2");
   const condaLine = `conda '${condaYaml}'`;
-  await expect(page.getByText(condaLine).first()).toBeVisible();
-  await expect(page.getByText(`container '${image}'`).first()).toBeVisible();
-  if (version === "v2") await page.locator("#module-changelog").fill("第二次发布，画布上的 v1 复跑应命中缓存");
+  await expect(view.getByText(condaLine).first()).toBeVisible();
+  await expect(view.getByText(`container '${image}'`).first()).toBeVisible();
+  if (version === "v2") await view.locator("#module-changelog").fill("第二次发布，画布上的 v1 复跑应命中缓存");
   await shot(page, shotName);
   await page.getByRole("button", { name: version === "v1" ? "新建模块" : new RegExp(`^覆盖 .* → ${version}$`) }).click();
   await page.waitForURL("**/modules");
@@ -224,17 +234,13 @@ async function runLanguage(page: Page, language: "python" | "r") {
   await expect(page.getByText(/Nextflow \d/)).not.toContainText("模拟");
 
   await nav.getByRole("link", { name: "工作台" }).click();
-  await page.getByRole("button", { name: "新建笔记本", exact: true }).click();
+  // Local runs only read workspace paths, so the samplesheet goes into the project's data/ first.
+  const sheet = await uploadToWorkspace(page, samplesheet, `${moduleName}-samplesheet.csv`);
+  // The workbench start page picks the language: its R starter uses the standard IRkernel name.
+  await page.getByRole("button", { name: language === "python" ? "空白 Python 笔记本" : "空白 R 笔记本" }).click();
   await page.waitForURL(/\/workbench\/nb_/);
   const notebookUrl = page.url().split("?")[0];
-  await page.getByRole("textbox", { name: "笔记本名称" }).fill(moduleName);
-  await page.getByRole("textbox", { name: "笔记本说明" }).fill(
-    language === "python" ? "Python 出图并发布" : "R 出图并发布",
-  );
-  if (language === "r") {
-    await page.getByRole("button", { name: /^内核/ }).click();
-    await page.getByRole("option", { name: "R 4.3 · r-deseq2" }).click();
-  }
+  await renameOpenNotebook(page, moduleName);
   await fillCell(page, language === "python" ? PYTHON_PLOT : R_PLOT);
   await waitForNotebookSaved(page);
   await page.getByRole("button", { name: "运行单元格 1" }).click();
@@ -244,7 +250,7 @@ async function runLanguage(page: Page, language: "python" | "r") {
     await expect(page.getByText(/Rscript/)).toBeVisible({ timeout: 30_000 });
   }
   await shot(page, `e2e-${language}-plot.png`);
-  await page.getByLabel("单元格 1 类型").click();
+  await page.getByRole("combobox", { name: "单元格 1 类型" }).click();
   await page.getByRole("option", { name: "自由探索" }).click();
 
   await page.getByRole("button", { name: "+ 代码" }).click();
@@ -259,7 +265,7 @@ async function runLanguage(page: Page, language: "python" | "r") {
   await page.keyboard.press("Escape");
   await shot(page, `e2e-${language}-io.png`);
 
-  await publish(page, "v1", condaYaml, image, `e2e-${language}-publish-v1.png`);
+  await publish(page, "v1", moduleName, condaYaml, image, `e2e-${language}-publish-v1.png`);
 
   await flowNav(page, "流程编排");
   await page.waitForURL(/\/workflows$/);
@@ -276,7 +282,7 @@ async function runLanguage(page: Page, language: "python" | "r") {
 
   const samplesheetNode = page.locator(".react-flow__node").filter({ hasText: "SAMPLESHEET" });
   await samplesheetNode.evaluate((el) => (el as HTMLElement).click());
-  await page.locator("#samplesheet-path").fill(samplesheet);
+  await page.locator("#samplesheet-path").fill(sheet);
   const scriptNode = page.locator(".react-flow__node").filter({ hasText: alias });
   await scriptNode.evaluate((el) => (el as HTMLElement).click());
   await scriptNode.getByRole("textbox").fill("S1", { force: true });
@@ -297,7 +303,7 @@ async function runLanguage(page: Page, language: "python" | "r") {
   const dialog = page.getByRole("dialog", { name: "运行设置" });
   await dialog.getByLabel("容器 / 环境（-profile）").click();
   await page.getByRole("option", { name: /^Shell/ }).click();
-  await expect(dialog.getByText("不使用 -profile，进程在本机 shell 里直接执行")).toBeVisible();
+  await expect(dialog.getByText("不使用 -profile，进程在本机的 shell（/bin/bash） 里直接执行")).toBeVisible();
   const start = dialog.getByRole("button", { name: "启动运行" });
   if (!(await start.isEnabled())) {
     throw new Error((await dialog.locator("li").allInnerTexts()).join("\n") || "启动运行不可用");
@@ -323,17 +329,13 @@ async function runLanguage(page: Page, language: "python" | "r") {
 
   await page.goto(notebookUrl);
   await page.getByRole("button", { name: "+ 说明" }).click();
-  const noteSource = "源修订：这一段说明不进命令行，但会让已发布的 v1 显示源已改动。";
-  await page.getByRole("textbox", { name: /单元格 \d+ 源码/ }).last().fill(noteSource);
-  await expect(page.getByText(noteSource)).toBeVisible();
+  const noteSource = "源修订：这一段说明不进命令行，覆盖成 v2 后复跑仍命中缓存。";
+  // The new cell goes in after the selected one and opens in edit mode, focused.
+  const noteBox = page.getByRole("textbox", { name: /单元格 \d+ 源码/ }).and(page.locator(":focus"));
+  await noteBox.fill(noteSource);
+  await expect(noteBox).toHaveValue(noteSource);
   await waitForNotebookSaved(page);
-  await page.goto(workflowUrl);
-  await page.locator(".react-flow__node").filter({ hasText: alias }).evaluate((el) => (el as HTMLElement).click());
-  await expect(page.getByText(/源笔记本已更新/)).toBeVisible();
-  await shot(page, `e2e-${language}-drift.png`);
-  await page.getByRole("link", { name: /打开最新/ }).click();
-  await page.waitForURL(new RegExp(`/workbench/`));
-  await publish(page, "v2", condaYaml, image, `e2e-${language}-publish-v2.png`);
+  await publish(page, "v2", moduleName, condaYaml, image, `e2e-${language}-publish-v2.png`);
 
   await page.goto(runUrl);
   await expect(page.getByRole("button", { name: "从此运行恢复" })).toBeVisible();
@@ -359,7 +361,7 @@ async function runLanguage(page: Page, language: "python" | "r") {
       "- try-run: container image via TRY_RUN_CONTAINER_BIN; log names that image and the conda yaml",
       "- engine: Shell (real Nextflow local executor; conda and container directives are in the process)",
       `- results: report.html shows ${figure} and ${table}; table.csv renders S1 and ${count}`,
-      "- v2 is published after the source-changed hint; the canvas stays on v1, and resume reports 缓存",
+      "- v2 overwrites the module in place with a markdown-only edit; resume reports 缓存",
       "",
     ].join("\n"),
   );

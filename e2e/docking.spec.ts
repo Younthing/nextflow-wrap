@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
-import { addFileInput, artifactDirs, connect, extend, notebookModule, runWithShell, shot } from "./helpers";
+import { addFileInput, artifactDirs, connect, extend, notebookModule, runWithShell, shot, uploadToWorkspace } from "./helpers";
 
 /**
  * Docking acceptance on the real stack, the second built-in example: an RDKit notebook turns SMILES into 3D
@@ -117,11 +117,14 @@ test.describe("docking user path", () => {
       { source: DOCK_OUTPUT, role: "output" },
     ], [{ cell: 1 }, { cell: 2, text: /best \w+ -?\d+\.\d+ kcal\/mol/ }], [{ port: "ligands", path: preparedLigands }, { port: "receptor", path: receptor }], "e2e-dock");
 
+    // The canvas run reads its data from the workspace, so both inputs go into data/ first.
+    const smilesInWorkspace = await uploadToWorkspace(page, smiles, `ligands_${stamp}.csv`);
+    const receptorInWorkspace = await uploadToWorkspace(page, receptor, `receptor_${stamp}.pdbqt`);
     await page.goto("/workflows");
     await page.getByRole("button", { name: "新建", exact: true }).click();
     await page.waitForURL(/\/workflows\/(?!modules$)[^/]+$/);
     await page.getByRole("textbox", { name: "流程名称" }).fill(`分子对接 ${stamp}`);
-    const ligandsRef = await addFileInput(page, smiles);
+    const ligandsRef = await addFileInput(page, smilesInWorkspace);
     await page.getByRole("button", { name: /zoom out/i }).click();
     await page.getByRole("button", { name: /zoom out/i }).click();
     const pane = await page.locator(".react-flow__pane").boundingBox();
@@ -139,7 +142,7 @@ test.describe("docking user path", () => {
     const dock = page.locator(".react-flow__node").filter({ hasText: dockName.toUpperCase() });
     await expect(dock).toBeVisible();
 
-    const receptorRef = await addFileInput(page, receptor);
+    const receptorRef = await addFileInput(page, receptorInWorkspace);
     const receptorHeader = await receptorRef.boundingBox();
     if (!receptorHeader) throw new Error("受体节点没有渲染");
     await page.mouse.move(receptorHeader.x + 30, receptorHeader.y + 12);

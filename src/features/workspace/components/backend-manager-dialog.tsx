@@ -117,7 +117,7 @@ export function BackendManagerView({ list, distros, pendingId, error, installing
             distros.length ? (
               <FormField label="发行版">
                 <Select value={distro} onValueChange={(value) => set({ distro: value })}>
-                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="w-full" aria-label="发行版"><SelectValue /></SelectTrigger>
                   <SelectContent>{distros.map((name) => <SelectItem key={name} value={name}>{name}</SelectItem>)}</SelectContent>
                 </Select>
               </FormField>

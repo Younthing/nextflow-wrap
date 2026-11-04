@@ -107,7 +107,7 @@ export const Results: Story = {
     await userEvent.click(await canvas.findByRole("tab", { name: "结果" }));
     await expect(canvas.findByRole("heading", { name: "备注" })).resolves.toBeInTheDocument();
     expect(canvas.getByText(/results\/qc\/notes\.md/)).toBeInTheDocument();
-    expect(canvas.queryByText(/^二进制文件 · /)).toBeNull();
+    expect(canvas.queryByText(/^无法预览的文件 · /)).toBeNull();
 
     await userEvent.click(canvas.getByRole("button", { name: /reads\.csv/ }));
     await expect(canvas.findByRole("cell", { name: "S1" })).resolves.toBeInTheDocument();
@@ -133,7 +133,7 @@ export const ResultsDirectory: Story = {
     await userEvent.click(await canvas.findByRole("tab", { name: "结果" }));
     await expect(canvas.findByText("无可预览的文件")).resolves.toBeInTheDocument();
     await userEvent.click(canvas.getByRole("button", { name: /S1\.bam/ }));
-    await expect(canvas.findByText(/二进制文件 · /)).resolves.toBeInTheDocument();
+    await expect(canvas.findByText(/无法预览的文件 · /)).resolves.toBeInTheDocument();
   },
 };
 export const Missing: Story = {

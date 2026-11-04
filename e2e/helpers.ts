@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Locator, type Page } from "@playwright/test";
 
@@ -54,6 +54,22 @@ export async function runCell(page: Page, number: number, expected?: RegExp) {
   await expect(page.getByRole("button", { name: `运行单元格 ${number}` })).toBeEnabled({ timeout: 60_000 });
 }
 
+/**
+ * The route on screen. With cacheComponents, Next keeps recently visited routes mounted but hidden (display: none)
+ * inside <main>, so text and id locators would also match those copies; role locators already skip them.
+ */
+export function onScreen(page: Page) {
+  return page.locator("main > div").filter({ visible: true });
+}
+
+/** Opens a folded section (a <details>) of the route on screen; a no-op when the page already opened it. */
+export async function openSection(page: Page, title: string) {
+  const details = onScreen(page).locator("details").filter({ has: page.locator("summary").getByText(title, { exact: true }) });
+  const summary = details.locator("summary");
+  if (!(await details.evaluate((el) => (el as HTMLDetailsElement).open))) await summary.click();
+  await expect(details).toHaveAttribute("open", "");
+}
+
 /** Opens the example project from the welcome page unless a project is already open; the workbench needs one. */
 export async function ensureProject(page: Page) {
   await go(page, "/");
@@ -61,6 +77,17 @@ export async function ensureProject(page: Page) {
   if (open) return;
   await page.getByRole("button", { name: /从示例开始/ }).click();
   await page.waitForURL(/\/workbench/);
+}
+
+/**
+ * Uploads a local file into the open project's data/ through the workbench sidebar, as a user does, and returns its
+ * workspace path. Local runs only read workspace paths (data/…), not absolute paths outside the project.
+ */
+export async function uploadToWorkspace(page: Page, path: string, name: string) {
+  await go(page, "/workbench");
+  await onScreen(page).getByLabel("选择要上传的文件").setInputFiles({ name, mimeType: "application/octet-stream", buffer: readFileSync(path) });
+  await expect(page.getByText(`已上传：data/${name}`)).toBeVisible({ timeout: 60_000 });
+  return `data/${name}`;
 }
 
 /** Opens one item of the sidebar's 流程 group, expanding the group first when it is collapsed. */
@@ -83,13 +110,33 @@ export async function exportModule(page: Page) {
   await page.getByRole("menuitem", { name: /导出为模块/ }).click();
 }
 
+/**
+ * Names the open notebook the way a user does now that the editor has no title field: right-click its row in the
+ * workbench sidebar, 重命名, type the name. The notebook's .ipynb file is renamed with it.
+ */
+export async function renameOpenNotebook(page: Page, name: string) {
+  const row = page.getByRole("list", { name: "项目里的笔记本" }).locator('a[aria-current="page"]');
+  await row.click({ button: "right" });
+  await page.getByRole("menuitem", { name: /重命名/ }).click();
+  const dialog = page.getByRole("dialog", { name: "重命名笔记本" });
+  await dialog.getByRole("textbox", { name: "名称" }).fill(name);
+  await dialog.getByRole("button", { name: "重命名", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect(row).toHaveText(name);
+}
+
+/** Creates a notebook from the workbench sidebar, opens it and gives it a name. */
+export async function newNotebook(page: Page, name: string) {
+  await page.getByRole("button", { name: "新建笔记本", exact: true }).click();
+  await page.waitForURL(/\/workbench\/nb_/);
+  await renameOpenNotebook(page, name);
+}
+
 /** Writes a notebook from cells, runs the probe cells in the kernel, and publishes it with path bindings for its file inputs. */
 export async function notebookModule(page: Page, name: string, cells: { source: string; role?: "input" | "output" }[], probe: { cell: number; text?: RegExp }[], bindings: { port: string; path: string } | { port: string; path: string }[], shotPrefix = "e2e-sc") {
   await ensureProject(page);
   await go(page, "/workbench");
-  await page.getByRole("button", { name: "新建笔记本", exact: true }).click();
-  await page.waitForURL(/\/workbench\/nb_/);
-  await page.getByRole("textbox", { name: "笔记本名称" }).fill(name);
+  await newNotebook(page, name);
   for (const [index, cell] of cells.entries()) {
     if (index > 0) await page.getByRole("button", { name: "+ 代码" }).click();
     await fillCell(page, cell.source);
@@ -105,7 +152,8 @@ export async function notebookModule(page: Page, name: string, cells: { source: 
   await waitForNotebookSaved(page);
   await exportModule(page);
   await page.waitForURL(/\/publish$/);
-  await page.getByText("试跑输入", { exact: true }).click();
+  // The page opens 试跑输入 by itself when a required input has nothing to fill it in.
+  await openSection(page, "试跑输入");
   for (const binding of [bindings].flat()) {
     const group = page.getByRole("group", { name: binding.port, exact: true });
     await group.getByRole("radio", { name: "路径" }).click();
@@ -114,7 +162,10 @@ export async function notebookModule(page: Page, name: string, cells: { source: 
   await page.getByRole("button", { name: "只试跑" }).click();
   await expect
     .poll(async () => {
-      const heading = await page.getByRole("heading", { name: /^日志/ }).innerText();
+      // The log heading appears with the first result; a try-run can take longer than one action timeout.
+      const log = page.getByRole("heading", { name: /^日志/ });
+      if (!(await log.count())) return "";
+      const heading = await log.innerText();
       if (heading.includes("失败")) throw new Error(`${heading}\n${await page.locator("pre").last().innerText()}`);
       return heading;
     }, { timeout: 600_000, intervals: [1_000, 2_000, 5_000] })
@@ -125,6 +176,10 @@ export async function notebookModule(page: Page, name: string, cells: { source: 
 
 /** Drags a wire from an output handle to empty canvas on its right and picks the module the search offers. */
 export async function extend(page: Page, from: Locator, port: string, module: string) {
+  // A node added from the search opens the inspector, which can cover the handle; close it and fit the view first.
+  await page.keyboard.press("Escape");
+  await page.locator(".react-flow__controls-fitview").click();
+  await page.waitForTimeout(400);
   const handle = from.locator(`.react-flow__handle[data-handleid="out:${port}"]`);
   const box = await handle.boundingBox();
   if (!box) throw new Error(`找不到输出端口 ${port}`);
