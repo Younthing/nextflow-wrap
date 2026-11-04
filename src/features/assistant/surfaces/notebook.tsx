@@ -5,59 +5,30 @@ import {
   useAgentContext,
   useConfigureSuggestions,
   useFrontendTool,
-  type FrontendToolHandlerContext,
   type JsonSerializable,
 } from "@copilotkit/react-core/v2";
 import { z } from "zod";
 
-import type { CellRunResult, NotebookDoc } from "@/features/notebook/types";
-import {
-  NOTEBOOK_CELL_KINDS,
-  createNotebookActions,
-  notebookSummary,
-  runCellBlockers,
-  runCellConfirmView,
-  type NotebookCommands,
-  type RanNotebookCell,
-} from "@/features/notebook/assistant-actions";
-import { useAssistantPanel, useAssistantStatus } from "../assistant-provider";
+import { NOTEBOOK_CELL_KINDS, createNotebookActions, notebookSummary } from "@/features/notebook/assistant-actions";
+import { useNotebookSession, useNotebookSessionState } from "@/features/notebook/session-provider";
+import { useAssistantStatus } from "../assistant-provider";
 import { attempt } from "./attempt";
-import { clipReason, confirmThenRun, createConfirmQueue, declinedResult, type ConfirmedResult } from "../confirm";
-import { ConfirmDialog, subscribeAbort, useConfirmDialog } from "../confirm-dialog";
+import { clipReason } from "../confirm";
+import { useConfirmedTool } from "../confirmed-tool";
 import { ConfirmToolCard } from "../confirm-tool-card";
 import { useAssistantModule } from "../modules/activation";
 import { moduleTool } from "../modules/contract";
 import { notebookModule } from "../modules/notebook";
 
-type Live = React.RefObject<{
-  commands: NotebookCommands;
-  confirm: ReturnType<typeof useConfirmDialog>;
-  setOpen: (open: boolean) => void;
-}>;
-
-interface NotebookAssistantProps {
-  /** Draft, outputs, and busy flag as rendered, for the chat context. Tools read through `commands`. */
-  doc: NotebookDoc;
-  outputs: Readonly<Record<string, CellRunResult>>;
-  busy: boolean;
-  commands: NotebookCommands;
-}
-
-/** Tool handlers build actions over the latest editor commands, read at call time. */
-function actionsOf(live: Live) {
-  return createNotebookActions(live.current.commands);
-}
-
-function NotebookTools({ doc, outputs, busy, commands }: NotebookAssistantProps) {
-  const confirm = useConfirmDialog();
-  const { setOpen } = useAssistantPanel();
-  const live: Live = React.useRef({ commands, confirm, setOpen });
-  const queue = React.useRef(createConfirmQueue());
-  React.useLayoutEffect(() => {
-    live.current = { commands, confirm, setOpen };
-  });
+function NotebookTools() {
+  const session = useNotebookSession();
+  const actions = React.useMemo(() => createNotebookActions(session), [session]);
+  const { invoke, dialog } = useConfirmedTool();
+  const doc = useNotebookSessionState((state) => state.draft ?? state.saved);
+  const outputs = useNotebookSessionState((state) => state.outputs);
+  const busy = useNotebookSessionState((state) => state.running !== null);
   // Recomputed on every draft edit or new output, so each chat turn sees the notebook as it is.
-  const summary = React.useMemo(() => notebookSummary({ doc, outputs, busy }), [doc, outputs, busy]);
+  const summary = React.useMemo(() => (doc ? notebookSummary({ doc, outputs, busy }) : null), [doc, outputs, busy]);
 
   useAgentContext({
     description: "用户正在编辑的笔记本：单元格 id、类型、内容预览和输出状态",
@@ -76,8 +47,8 @@ function NotebookTools({ doc, outputs, busy, commands }: NotebookAssistantProps)
     name: moduleTool(notebookModule, "get_notebook_summary").name,
     description: moduleTool(notebookModule, "get_notebook_summary").description,
     parameters: z.object({}),
-    handler: async () => attempt(() => actionsOf(live).summary()),
-  });
+    handler: async () => attempt(() => actions.summary()),
+  }, [actions]);
 
   useFrontendTool({
     name: moduleTool(notebookModule, "edit_notebook_cell").name,
@@ -91,8 +62,8 @@ function NotebookTools({ doc, outputs, busy, commands }: NotebookAssistantProps)
       kind: z.enum(NOTEBOOK_CELL_KINDS).optional().describe("单元格类型。insert 默认 code"),
       source: z.string().optional().describe("单元格完整内容"),
     }),
-    handler: async (args) => attempt(() => actionsOf(live).editCell(args)),
-  });
+    handler: async (args) => attempt(() => actions.editCell(args)),
+  }, [actions]);
 
   useFrontendTool({
     name: moduleTool(notebookModule, "run_notebook_cell").name,
@@ -101,71 +72,31 @@ function NotebookTools({ doc, outputs, busy, commands }: NotebookAssistantProps)
       cellId: z.string().describe("要运行的代码单元格 id"),
       reason: z.string().optional().describe("展示在确认对话框里的一句话。不能代替用户确认。"),
     }),
-    handler: (args, context) => queue.current(() => runCell(args.cellId, args.reason, context, live)),
+    handler: (args, context) =>
+      invoke(context, {
+        interruptedMessage: "确认被中断，没有运行。",
+        prepare: () => actions.prepareRunCell(args.cellId, clipReason(args.reason)),
+      }),
     render: ConfirmToolCard,
-  });
+  }, [actions, invoke]);
 
   useFrontendTool({
     name: moduleTool(notebookModule, "read_cell_output").name,
     description: moduleTool(notebookModule, "read_cell_output").description,
     parameters: z.object({ cellId: z.string().describe("单元格 id") }),
-    handler: async ({ cellId }) => attempt(() => actionsOf(live).readOutput(cellId)),
-  });
+    handler: async ({ cellId }) => attempt(() => actions.readOutput(cellId)),
+  }, [actions]);
 
-  return (
-    <ConfirmDialog
-      open={confirm.view !== null}
-      view={confirm.view}
-      busy={confirm.busy}
-      onConfirm={confirm.confirm}
-      onDismiss={confirm.dismiss}
-    />
-  );
-}
-
-async function runCell(
-  cellId: string,
-  reason: unknown,
-  context: FrontendToolHandlerContext | undefined,
-  live: Live,
-): Promise<ConfirmedResult<RanNotebookCell>> {
-  if (context?.isReplay) return declinedResult("页面恢复了未完成的确认，没有再次执行。请再说一次。");
-  const current = live.current;
-  if (context?.signal?.aborted) return declinedResult("确认被中断，没有运行。");
-  current.setOpen(true);
-  const opened = current.commands.read();
-  const problems = runCellBlockers(opened, cellId);
-  const stopAbort = subscribeAbort(context?.signal, () => current.confirm.dismiss());
-  try {
-    return await confirmThenRun({
-      isReplay: false,
-      aborted: () => context?.signal?.aborted === true,
-      ask: (view) => current.confirm.ask(view),
-      close: () => current.confirm.close(),
-      view: runCellConfirmView(opened.doc, cellId, problems, clipReason(reason)),
-      problems: () => {
-        const latest = live.current.commands.read();
-        if (latest.doc.id !== opened.doc.id) return ["当前页面已经不是这本笔记本，没有运行。"];
-        const before = opened.doc.cells.find((cell) => cell.id === cellId)?.source;
-        const now = latest.doc.cells.find((cell) => cell.id === cellId)?.source;
-        if (before !== now) return ["确认时单元格内容已变化，没有运行。请再试一次。"];
-        return runCellBlockers(latest, cellId);
-      },
-      execute: () => actionsOf(live).runCell(cellId),
-      interruptedMessage: "确认被中断，没有运行。",
-    });
-  } finally {
-    stopAbort();
-  }
+  return dialog;
 }
 
 /**
- * Notebook module surface: mounts the module and registers its tools on top of
- * the editor's command API, the way vscode-jupyter registers tools that call
- * its kernel provider rather than reaching into the editor.
+ * Notebook module surface: mounts the module and registers its tools over the
+ * open notebook session, the way vscode-jupyter tools call the notebook
+ * document and kernel provider rather than reaching into an editor.
  */
-export function NotebookAssistant(props: NotebookAssistantProps) {
+export function NotebookAssistant() {
   useAssistantModule(notebookModule.id);
   if (!useAssistantStatus().enabled) return null;
-  return <NotebookTools {...props} />;
+  return <NotebookTools />;
 }

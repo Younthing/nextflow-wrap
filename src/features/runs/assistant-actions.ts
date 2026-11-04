@@ -3,12 +3,14 @@ import {
   type AcceptedResult,
   type ConfirmView,
   type ConfirmedResult,
+  type PreparedInvocation,
 } from "@/features/assistant/confirm";
 import type { RunDetail, RunStatus, TaskRecord } from "./types";
 
 /*
  * What the run-diagnostics assistant reads and the checks behind its stop and
- * resume tools. The surface registers the tools; the run API stays in queries.
+ * resume tools. {@link prepareRunControl} builds each tool's confirm and call;
+ * the surface registers the tools; the run API stays in queries.
  */
 
 /** A launched, stopped, or resumed run, as the model hears it. */
@@ -127,3 +129,60 @@ export function resumeConfirmView(
   };
 }
 
+
+/** The run APIs `cancel_run` and `resume_run` call, and the run on screen at call time. */
+export interface RunControlServices {
+  current(): RunDetail | undefined;
+  cancel(runId: string): Promise<RunDetail>;
+  resume(runId: string): Promise<RunDetail>;
+  openRun(runId: string): void;
+}
+
+export type RunControl = "cancel" | "resume";
+
+/**
+ * prepareInvocation for `cancel_run` / `resume_run` on the run shown now. The
+ * accept-time check refuses if the page moved to another run or the run's
+ * state no longer allows the action.
+ */
+export function prepareRunControl(
+  services: RunControlServices,
+  action: RunControl,
+  reason?: string,
+): PreparedInvocation<AcceptedRun> {
+  const opened = services.current();
+  if (!opened) throw new Error("当前页面没有打开运行，没有执行。");
+  const blockers = action === "cancel" ? cancelBlockers : resumeBlockers;
+  const view = action === "cancel" ? cancelConfirmView : resumeConfirmView;
+  const moved = "当前页面已经不是这次运行，没有执行。";
+  const latest = () => {
+    const run = services.current();
+    return run && run.id === opened.id ? run : undefined;
+  };
+  return {
+    view: view(opened.runName, blockers(opened), reason),
+    problems: () => {
+      const run = latest();
+      return run ? blockers(run) : [moved];
+    },
+    invoke: async () => {
+      const run = latest();
+      if (!run) throw new Error(moved);
+      if (action === "cancel") {
+        const next = await services.cancel(run.id);
+        const message = next.status === "cancelled" ? `已停止 ${next.runName}` : `正在停止 ${next.runName}`;
+        return { accepted: true, runId: next.id, runName: next.runName, status: next.status, ...(next.phase ? { phase: next.phase } : {}), message };
+      }
+      const next = await services.resume(run.id);
+      services.openRun(next.id);
+      return {
+        accepted: true,
+        runId: next.id,
+        runName: next.runName,
+        status: next.status,
+        resumedFrom: run.id,
+        message: `已恢复，新运行是 ${next.runName}`,
+      };
+    },
+  };
+}

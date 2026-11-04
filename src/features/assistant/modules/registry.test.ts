@@ -172,7 +172,16 @@ describe("assistant module registry", () => {
 
     // Surfaces register tools; the domain owns what they do.
     for (const surface of [canvas, run, notebook]) expect(surface).not.toMatch(/getState\(\)\.(add|remove|connect|set)/);
-    expect(source("../../notebook/components/notebook-editor.tsx")).toContain("<NotebookAssistant ");
+    // Surfaces only register tools: services behind them own the save, launch, and run APIs.
+    for (const surface of [canvas, run, notebook]) {
+      expect(surface).not.toMatch(/useLaunchRun|useSaveWorkflow|saved-launch|useCancelRun|useResumeRun|useRunNotebook|useSaveNotebook|next\/navigation|useQueryClient/);
+    }
+    // The open notebook is a session both the editor and the assistant consume; the editor does not hand out commands.
+    const workbench = source("../../workbench/components/workbench-route.tsx");
+    expect(workbench).toMatch(/<NotebookSessionProvider[\s\S]*<NotebookAssistant \/>[\s\S]*<NotebookEditor /);
+    const editor = source("../../notebook/components/notebook-editor.tsx");
+    expect(editor).not.toMatch(/NotebookAssistant|NotebookCommands|useRunNotebook|useSaveNotebook/);
+    expect(notebook).toContain("useNotebookSession()");
     expect(source("../../notebook/components/publish-wizard.tsx")).toContain("<PublishAssistant />");
     expect(source("../../notebook/components/publish-wizard.tsx")).toContain("<EnvConfigAssistant />");
     expect(source("../../workflow/components/module-catalog.tsx")).toContain("<EnvConfigAssistant />");
