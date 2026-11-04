@@ -34,9 +34,12 @@ export class StudioStore {
   readonly db: DatabaseSync;
   /** Example project folder (the default workspace). An in-memory database has none. */
   readonly workspace?: string;
+  /** Folder of the database file. An in-memory database has none. */
+  readonly dataDir?: string;
   constructor(path = join(dataDirectory(), "studio.sqlite")) {
     if (path !== ":memory:") {
       mkdirSync(dirname(path), { recursive: true });
+      this.dataDir = dirname(path);
       this.workspace = workspaceDirectory(undefined, dirname(path));
     }
     this.db = new DatabaseSync(path);

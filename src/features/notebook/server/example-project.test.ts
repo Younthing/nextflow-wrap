@@ -5,9 +5,10 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { handleNotebookApi } from "@/features/notebook/server/http";
 import { handleProjectsApi } from "@/features/workspace/server/http";
-import { EXAMPLE_PROJECT_ID } from "@/features/workspace/projects";
+import { EXAMPLE_PROJECT_ID, IF_EXAMPLE_PROJECT_ID } from "@/features/workspace/projects";
 import { StudioStore } from "@/lib/server/database";
 import { EXAMPLE_MODULE_IDS } from "../examples";
+import { IF_EXAMPLE_MODULE_IDS } from "../examples-if";
 
 describe("example project on a fresh install", () => {
   let dir: string;
@@ -21,9 +22,9 @@ describe("example project on a fresh install", () => {
       const example = list.projects.find((project) => project.id === EXAMPLE_PROJECT_ID);
       expect(example).toBeDefined();
       expect(db.notebooks().filter((doc) => doc.projectId === EXAMPLE_PROJECT_ID).map((doc) => doc.id)).toEqual(["count_qc", "normalize_pca", "group_compare", "summary_report"]);
-      expect(db.scriptModules().map((mod) => mod.id).sort()).toEqual([...EXAMPLE_MODULE_IDS].sort());
+      expect(db.scriptModules().map((mod) => mod.id).sort()).toEqual([...EXAMPLE_MODULE_IDS, ...IF_EXAMPLE_MODULE_IDS].sort());
       expect(EXAMPLE_MODULE_IDS.every((id) => db.libraryCopy(id))).toBe(true);
-      expect(db.workflows().map((doc) => doc.projectId)).toEqual([EXAMPLE_PROJECT_ID]);
+      expect(db.workflows().map((doc) => doc.projectId).sort()).toEqual([EXAMPLE_PROJECT_ID, IF_EXAMPLE_PROJECT_ID].sort());
       expect(readFileSync(join(example!.path, "data", "samples.csv"), "utf8")).toContain("ctrl_1,control,A");
       expect(existsSync(join(example!.path, "data", "counts.tsv"))).toBe(true);
       // Deleting the example workflow does not bring it back; the project stays.
@@ -47,6 +48,31 @@ describe("example project on a fresh install", () => {
       expect(removed.status).toBe(204);
       const after = await (await handleProjectsApi("GET", ["projects"], new Request("http://studio.local/api/projects"), db)).json() as { projects: { id: string }[] };
       expect(after.projects.map((project) => project.id)).not.toContain(EXAMPLE_PROJECT_ID);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("includes the immunofluorescence example, seeded once with its image", async () => {
+    dir = mkdtempSync(join(tmpdir(), "nfs-example-if-"));
+    const db = new StudioStore(join(dir, "studio.sqlite"));
+    try {
+      const list = await (await handleProjectsApi("GET", ["projects"], new Request("http://studio.local/api/projects"), db)).json() as { projects: { id: string; name: string; path: string }[] };
+      const project = list.projects.find((item) => item.id === IF_EXAMPLE_PROJECT_ID);
+      expect(project?.name).toBe("免疫荧光分析示例");
+      expect(project!.path).toBe(join(dir, "projects", IF_EXAMPLE_PROJECT_ID));
+      expect(db.notebooks().filter((doc) => doc.projectId === IF_EXAMPLE_PROJECT_ID).map((doc) => doc.id)).toEqual(["if_preprocess", "if_segment", "if_postprocess", "if_measure", "if_summarize"]);
+      expect(IF_EXAMPLE_MODULE_IDS.every((id) => db.libraryCopy(id))).toBe(true);
+      expect(db.scriptModule("script/if_postprocess")?.outputs.map((port) => port.name)).toEqual(["nuclei", "cells"]);
+      const workflow = db.workflow("example_if")!;
+      expect(workflow.projectId).toBe(IF_EXAMPLE_PROJECT_ID);
+      expect(workflow.edges.filter((item) => item.source === "image").map((item) => item.target).sort()).toEqual(["measure", "pre", "summary"]);
+      const image = readFileSync(join(project!.path, "data", "image.tif"));
+      expect(image.length).toBe(readFileSync(join(process.cwd(), "public", "examples", "if", "IXMtest_A02_s9.tif")).length);
+      // Removed from the list, it stays gone.
+      await handleProjectsApi("DELETE", ["projects", IF_EXAMPLE_PROJECT_ID], new Request(`http://studio.local/api/projects/${IF_EXAMPLE_PROJECT_ID}`, { method: "DELETE" }), db);
+      const after = await (await handleProjectsApi("GET", ["projects"], new Request("http://studio.local/api/projects"), db)).json() as { projects: { id: string }[] };
+      expect(after.projects.map((item) => item.id)).not.toContain(IF_EXAMPLE_PROJECT_ID);
     } finally {
       db.close();
     }

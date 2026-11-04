@@ -15,9 +15,9 @@ import type { NotebookCell, NotebookDoc } from "./types";
  * Cells read workspace paths (`data/counts.tsv`), so every notebook runs as is in the example project; run them in
  * order and each one finds the files the previous one wrote.
  */
-const EXAMPLE_TIME = "2026-01-01T00:00:00.000Z";
+export const EXAMPLE_TIME = "2026-01-01T00:00:00.000Z";
 
-const cells = (...list: [NotebookCell["role"], string][]): NotebookCell[] =>
+export const cells = (...list: [NotebookCell["role"], string][]): NotebookCell[] =>
   list.map(([role, source], index) => ({ id: `c${index + 1}`, role, source }));
 
 const PLOT_SETUP = `import matplotlib
@@ -216,7 +216,7 @@ with open("report.html", "w", encoding="utf-8") as handle:
 `],
 );
 
-interface ExampleStep {
+export interface ExampleStep {
   /** Notebook id; the module is `script/<id>`. */
   id: string;
   name: string;
@@ -235,7 +235,12 @@ export const EXAMPLE_MODULE_IDS = STEPS.map((step) => `script/${step.id}`);
 
 /** The example project's notebooks. */
 export function exampleNotebooks(projectId = EXAMPLE_PROJECT_ID): NotebookDoc[] {
-  return STEPS.map((step) => ({
+  return stepNotebooks(STEPS, projectId);
+}
+
+/** Notebooks for a list of example steps, all in one project. */
+export function stepNotebooks(steps: ExampleStep[], projectId: string): NotebookDoc[] {
+  return steps.map((step) => ({
     id: step.id,
     name: step.name,
     description: step.description,
@@ -250,7 +255,7 @@ export function exampleNotebooks(projectId = EXAMPLE_PROJECT_ID): NotebookDoc[] 
 }
 
 /** Each example notebook exported as a module, as the export wizard would after a passing try-run. */
-export function exampleModules(notebooks = exampleNotebooks()): ModuleDef[] {
+export function exampleModules(notebooks = exampleNotebooks(), keywords = ["notebook", "pandas"]): ModuleDef[] {
   return notebooks.map((notebook) => {
     const entry = `bin/${notebook.id}_v1.py`;
     const converted = convertNotebook(notebook, entry);
@@ -261,7 +266,7 @@ export function exampleModules(notebooks = exampleNotebooks()): ModuleDef[] {
       process: processName(notebook.name),
       category: "自定义",
       description: notebook.description,
-      keywords: ["notebook", "pandas", notebook.id],
+      keywords: [...keywords, notebook.id],
       tools: [],
       origin: "script",
       inputs: inputPorts(converted.inputs),
@@ -281,13 +286,13 @@ export function exampleLibraryCopies(notebooks = exampleNotebooks(), modules = e
   return modules.map((def, index) => buildLibraryCopy({ notebook: notebooks[index]!, module: def, savedAt: EXAMPLE_TIME }));
 }
 
-const node = (id: string, moduleId: string, alias: string, x: number, y: number, extra: Partial<WorkflowNode["data"]> = {}): WorkflowNode => ({
+export const node = (id: string, moduleId: string, alias: string, x: number, y: number, extra: Partial<WorkflowNode["data"]> = {}): WorkflowNode => ({
   id,
   position: { x, y },
   data: { moduleId, alias, widgets: {}, config: { publish: true }, ...extra },
 });
 
-const edge = (source: string, out: string, target: string, input: string): WorkflowEdge => ({
+export const edge = (source: string, out: string, target: string, input: string): WorkflowEdge => ({
   id: `e_${source}_${out}_${target}_${input}`,
   source,
   sourceHandle: outHandle(out),
