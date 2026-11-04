@@ -4,6 +4,7 @@ import * as React from "react";
 
 import { PanelLoading, PanelNotice } from "@/components/ui/panel-notice";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useAssistantStatusQuery } from "@/features/assistant/queries";
 import { ToolChecklist } from "@/features/setup/components/tool-checklist";
 import { useInstallTool, useSetupStatus } from "@/features/setup/queries";
 import { toast } from "@/lib/toast";
@@ -32,6 +33,7 @@ function EnvironmentTab() {
 function PreferencesTab() {
   const view = useSettings();
   const save = useSaveSettings();
+  const status = useAssistantStatusQuery();
   if (view.isPending) return <PanelLoading className="h-40" />;
   if (view.isError) return <PanelNotice tone="danger" message={view.error.message} className="h-40" />;
   return (
@@ -40,6 +42,7 @@ function PreferencesTab() {
       key={JSON.stringify(view.data)}
       view={view.data}
       saving={save.isPending}
+      assistantStatus={{ status: status.data, loading: status.isFetching, refresh: () => void status.refetch() }}
       onSave={(update) => save.mutate(update, { onSuccess: () => toast.success("设置已保存"), onError: (error) => toast.error(error.message) })}
     />
   );

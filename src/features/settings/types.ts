@@ -1,7 +1,7 @@
 import type { ContainerEngine } from "@/features/project/launch";
 import type { RemoteHost } from "@/features/remote/types";
 
-export type AssistantBackend = "auto" | "codex" | "builtin";
+export type AssistantBackend = "auto" | "codex" | "grok" | "builtin";
 export const ASSISTANT_SECRET_KEYS = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GOOGLE_API_KEY"] as const;
 /** Cloud keys Nextflow reads from the environment for AWS Batch / S3 and Azure Batch / Blob. */
 export const CLOUD_SECRET_KEYS = ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AZURE_BATCH_ACCOUNT_KEY", "AZURE_STORAGE_ACCOUNT_KEY"] as const;
@@ -31,6 +31,7 @@ export interface StudioSettings {
     /** `<provider>/<model>` for the built-in backend. */
     model?: string;
     codexModel?: string;
+    grokModel?: string;
   };
   /** Cluster login nodes runs can go to over SSH. */
   remotes: RemoteHost[];
