@@ -1,5 +1,5 @@
 import { app, dialog } from "electron";
-import electronUpdater from "electron-updater";
+import { autoUpdater } from "electron-updater";
 import { getProductTheme } from "../../src/lib/product-theme";
 
 /**
@@ -9,7 +9,6 @@ import { getProductTheme } from "../../src/lib/product-theme";
  */
 export function setupUpdates() {
   if (!app.isPackaged || process.env.NEXTFLOW_STUDIO_DISABLE_UPDATES === "1") return;
-  const { autoUpdater } = electronUpdater;
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
   autoUpdater.on("error", (error) => console.error("update:", error));
