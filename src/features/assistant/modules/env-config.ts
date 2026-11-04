@@ -4,7 +4,6 @@ import type { AssistantModule } from "./contract";
 export const envConfigModule = {
   id: "env-config",
   title: "环境配置",
-  defaultActive: false,
   prompt: `## 环境配置
 - 脚本模块的运行环境是手填的 conda yaml 路径和容器地址，写进 process 的 conda / container。空白表示不设置。路径和地址不能包含换行或控制字符。
 - 发布第②步试跑使用同一份 conda yaml 和容器地址，日志写明实际选用的环境。两项都空着时试跑用本机解释器。

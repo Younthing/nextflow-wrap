@@ -9,13 +9,14 @@ import { AsyncPlaceholder } from "@/components/ui/async-placeholder";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { NotebookAssistant } from "@/features/assistant/modules/surfaces";
+import { NotebookAssistant } from "@/features/assistant/surfaces/notebook";
+import { newNotebookCell, type NotebookCommands } from "@/features/notebook/assistant-actions";
 import { applyCanvasValues, readCanvasValues, type AppliedValue } from "@/features/notebook/canvas-values";
 import { convertNotebook } from "@/features/notebook/convert";
 import { dispatchNotebookKey, dragOffsets, gapAtPointer, moveCellToGap, notebookDraftKey } from "@/features/notebook/edit";
 import { COMMAND_HINT, EDIT_HINT, interpretNotebookKey, toNotebookKeyEvent, type NotebookMode } from "@/features/notebook/keyboard";
 import { useKeepNotebook, useNotebook, useRunNotebook, useSaveNotebook } from "@/features/notebook/queries";
-import { languageForKernel, type CellRunResult, type NotebookCell, type NotebookCellRole, type NotebookDoc, type NotebookRunKernel } from "@/features/notebook/types";
+import { languageForKernel, type CellRunResult, type NotebookCell, type NotebookCellRole, type NotebookDoc, type NotebookRunKernel, type NotebookRunResult } from "@/features/notebook/types";
 import { ExportMenu } from "@/features/workbench/components/export-menu";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
@@ -30,10 +31,6 @@ function omit<T>(record: Record<string, T>, key: string): Record<string, T> {
   const next = { ...record };
   delete next[key];
   return next;
-}
-
-function newCell(role: NotebookCellRole): NotebookCell {
-  return { id: `c_${Math.random().toString(36).slice(2, 8)}`, role, source: "" };
 }
 
 /**
@@ -118,15 +115,6 @@ function InsertBar({
 }
 
 export function NotebookEditor({ notebookId }: { notebookId: string }) {
-  return (
-    <>
-      <NotebookAssistant />
-      <NotebookEditorScreen notebookId={notebookId} />
-    </>
-  );
-}
-
-function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
   const router = useRouter();
   const search = useSearchParams();
   const notebook = useNotebook(notebookId);
@@ -351,8 +339,8 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
     );
   };
 
-  const persistThenRun = async (doc: NotebookDoc, needsSave: boolean, cellId: string | null) => {
-    if (runningRef.current) return;
+  /** Saves `doc` when asked, then runs `cellId`. Rejects with the save or run error, which also renders under the editor. */
+  const saveThenRun = async (doc: NotebookDoc, needsSave: boolean, cellId: string | null): Promise<NotebookRunResult | undefined> => {
     runningRef.current = cellId ?? "save";
     if (cellId) setRunningTarget(cellId);
     try {
@@ -367,7 +355,7 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
           return current;
         });
       }
-      if (!cellId) return;
+      if (!cellId) return undefined;
       const started = clock();
       const result = await run.mutateAsync({ id: notebookId, cellId });
       setDurations((current) => ({ ...current, [cellId]: clock() - started }));
@@ -377,12 +365,37 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
         for (const cell of result.cells) next[cell.id] = cell;
         return next;
       });
-    } catch {
-      // save.error / run.error render under the editor.
+      return result;
     } finally {
       runningRef.current = null;
       setRunningTarget(null);
     }
+  };
+
+  const persistThenRun = async (doc: NotebookDoc, needsSave: boolean, cellId: string | null) => {
+    if (runningRef.current) return;
+    try {
+      await saveThenRun(doc, needsSave, cellId);
+    } catch {
+      // save.error / run.error render under the editor.
+    }
+  };
+
+  /** The editor's command API for the notebook assistant: the same draft, autosave, and Shift+Enter run path. */
+  const assistantCommands: NotebookCommands = {
+    read: () => ({ doc: keyboardRef.current.doc ?? live, outputs, busy: runningRef.current !== null }),
+    setCells: (cells, select) => {
+      update({ cells });
+      if (select) setSelected(select);
+      setDeleteArmed(false);
+    },
+    runCell: async (cellId) => {
+      if (runningRef.current) throw new Error("笔记本正在运行，等它结束再试");
+      const snap = keyboardRef.current;
+      const result = await saveThenRun(snap.doc ?? live, snap.dirty, cellId);
+      if (!result) throw new Error("单元格没有运行");
+      return result;
+    },
   };
 
   const requestFocus = (id: string, nextMode: NotebookMode) => {
@@ -402,7 +415,7 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
       cellId,
       origin,
       keyEvent,
-      () => newCell("code"),
+      () => newNotebookCell("code"),
       false,
     );
     const nextDoc = { ...doc, cells: result.surface.cells };
@@ -432,7 +445,7 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
 
   /** Inserts after `position` (a cell index, -1 for the top) or after the selected cell. */
   const insertCell = (role: NotebookCellRole, position?: number) => {
-    const cell = newCell(role);
+    const cell = newNotebookCell(role);
     const anchor = position ?? (selected ? live.cells.findIndex((item) => item.id === selected) : live.cells.length - 1);
     const cells = [...live.cells];
     cells.splice(anchor < 0 && position === undefined ? cells.length : anchor + 1, 0, cell);
@@ -525,6 +538,7 @@ function NotebookEditorScreen({ notebookId }: { notebookId: string }) {
 
   return (
     <div className="flex size-full min-h-0 flex-col">
+      <NotebookAssistant doc={live} outputs={outputs} busy={runningTarget !== null} commands={assistantCommands} />
       {/* Single row: never wrap. Narrow widths hide lower-priority actions via @container. */}
       <div
         role="toolbar"

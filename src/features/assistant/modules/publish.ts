@@ -4,7 +4,6 @@ import type { AssistantModule } from "./contract";
 export const publishModule = {
   id: "publish",
   title: "发布",
-  defaultActive: false,
   prompt: `## 发布
 - 把笔记本发布成脚本模块前，需要模块名、说明、至少一个输出端口，以及一次通过的试跑。
 - 试跑时每个输入端口单独绑定：上传文件、本地路径，或该端口已有的样例。日志会写明每个端口的来源。

@@ -18,7 +18,6 @@ const prompt = `## 运行诊断
 export const runDiagnosticsModule = {
   id: "run-diagnostics",
   title: "运行诊断",
-  defaultActive: true,
   prompt,
   tools: [
     {

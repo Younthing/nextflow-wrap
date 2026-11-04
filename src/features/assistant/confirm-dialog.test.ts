@@ -2,8 +2,8 @@ import { act, createElement, useEffect, useRef, type ReactNode } from "react";
 import { createRoot, type RootOptions } from "react-dom/client";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
-import { useRunConfirm, type RunConfirmApi } from "./run-confirm";
-import type { RunConfirmView } from "./run-actions";
+import { useConfirmDialog, type ConfirmDialogApi } from "./confirm-dialog";
+import type { ConfirmView } from "./confirm";
 
 // react-dom reads window.event while scheduling an update. Document stays
 // unset so this remains a node test rather than a browser environment.
@@ -20,7 +20,7 @@ afterAll(() => {
   Reflect.deleteProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT");
 });
 
-const view: RunConfirmView = {
+const view: ConfirmView = {
   title: "启动运行",
   message: "将启动。",
   type: "default",
@@ -29,8 +29,8 @@ const view: RunConfirmView = {
   declinedMessage: "用户取消了确认，没有启动运行。",
 };
 
-function Probe({ publish }: { publish: (api: RunConfirmApi, setups: number) => void }): ReactNode {
-  const api = useRunConfirm();
+function Probe({ publish }: { publish: (api: ConfirmDialogApi, setups: number) => void }): ReactNode {
+  const api = useConfirmDialog();
   const setups = useRef(0);
   useEffect(() => {
     setups.current += 1;
@@ -89,7 +89,7 @@ interface HostNode {
 }
 
 async function mount(strict = false) {
-  let api: RunConfirmApi | null = null;
+  let api: ConfirmDialogApi | null = null;
   let setups = 0;
   const root = createRoot(host(), strict ? { unstable_strictMode: true } as RootOptions : undefined);
   await act(async () => {
@@ -101,7 +101,7 @@ async function mount(strict = false) {
     }));
   });
   if (!api) throw new Error("confirmation hook did not mount");
-  const current: RunConfirmApi = api;
+  const current: ConfirmDialogApi = api;
   return {
     api: current,
     setups,
@@ -123,7 +123,7 @@ function settled(promise: Promise<true | null>) {
   ]);
 }
 
-describe("useRunConfirm", () => {
+describe("useConfirmDialog", () => {
   let unmount: (() => Promise<void>) | null = null;
 
   afterEach(async () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createEditorActions } from "@/features/assistant/editor-actions";
+import { createEditorActions } from "./assistant-actions";
 import { BUILTIN_MODULES, SAMPLESHEET_ID } from "@/features/workflow/builtins";
 import { indexModules } from "@/features/workflow/catalog";
 import { emptyWorkflow } from "@/features/workflow/document";

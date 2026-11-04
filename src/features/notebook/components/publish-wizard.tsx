@@ -9,7 +9,7 @@ import { AsyncPlaceholder } from "@/components/ui/async-placeholder";
 import { Button } from "@/components/ui/button";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
-import { EnvConfigAssistant, PublishAssistant } from "@/features/assistant/modules/surfaces";
+import { EnvConfigAssistant, PublishAssistant } from "@/features/assistant/surfaces/prompt-only";
 import { convertNotebook, ConvertError, inputPorts, outputPorts } from "@/features/notebook/convert";
 import { missingEnvLabels, sameModuleEnv, stageModuleEnv, tryRunEnvSummary } from "@/features/notebook/env";
 import { defaultInputDraft, SOURCE_LABEL, type InputDraft } from "@/features/notebook/input-bindings";

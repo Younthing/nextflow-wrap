@@ -23,7 +23,6 @@ const prompt = `## 搭建流程
 export const canvasEditModule = {
   id: "canvas-edit",
   title: "画布编辑",
-  defaultActive: true,
   prompt,
   tools: [
     {

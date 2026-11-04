@@ -109,7 +109,7 @@ ANTHROPIC_API_KEY=sk-ant-...
 COPILOT_MODEL=anthropic/claude-sonnet-5-5
 ```
 
-没有 Codex 登录、也没有对应 key 时，按钮会变灰并提示原因，应用的其他功能不受影响。代码在 `src/features/assistant`。宿主只负责会话和确认；每个能力模块在 `src/features/assistant/modules/` 注册自己的工具和提示词。`modules/compose.ts` 拼出提示词，没有点名模块时用 `defaultActive` 的模块。浏览器里的工具仍在浏览器执行。
+没有 Codex 登录、也没有对应 key 时，按钮会变灰并提示原因，应用的其他功能不受影响。代码在 `src/features/assistant`，按 VS Code Copilot + Jupyter 的 Language Model Tools 拆法分四层：宿主（`copilot-route.ts`、`assistant-provider.tsx`）只管会话、后端选择、并发和确认对话框；场景模块（`modules/`）声明提示词片段和工具名、说明；页面挂载的 surface（`surfaces/`）用 `useFrontendTool` 注册工具；工具真正做的事放在各领域的 `assistant-actions.ts`（`features/editor`、`features/runs`、`features/notebook`）。每轮请求只带页面上挂着的模块，没有挂载就只有宿主提示词。会改动运行或执行代码的工具（`start_run`、`cancel_run`、`resume_run`、`run_notebook_cell`）先弹确认对话框。浏览器里的工具仍在浏览器执行。
 
 ## 开发
 

@@ -4,8 +4,10 @@ import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { Button } from "@/components/ui/button";
 import { defaultLaunchConfig } from "@/features/project/launch";
 import { fixtureWorkflow } from "@/features/workflow/fixture-workflows";
-import { RunConfirmDialog } from "../run-confirm";
-import { cancelConfirmView, resumeConfirmView, startConfirmView, type RunConfirmView, type StartRunPlan } from "../run-actions";
+import { startConfirmView, type StartRunPlan } from "@/features/editor/assistant-start-run";
+import { cancelConfirmView, resumeConfirmView } from "@/features/runs/assistant-actions";
+import { ConfirmDialog } from "../confirm-dialog";
+import type { ConfirmView } from "../confirm";
 
 const workflow = fixtureWorkflow("wf_story");
 const readyPlan: StartRunPlan = {
@@ -23,16 +25,16 @@ const views = {
   stop: cancelConfirmView("tender_curie", []),
   resume: resumeConfirmView("tender_curie", []),
   blocked: startConfirmView({ ...readyPlan, problems: ["请先保存流程（Ctrl+S）", "SCANPY_QC：主输入 adata 未连接"], request: null }),
-} satisfies Record<string, RunConfirmView>;
+} satisfies Record<string, ConfirmView>;
 
-function Demo({ view }: { view: RunConfirmView }) {
+function Demo({ view }: { view: ConfirmView }) {
   const [open, setOpen] = useState(true);
   const [choice, setChoice] = useState("等待选择");
   return (
     <div className="grid gap-3 p-6 text-sm">
       <p>{choice}</p>
       <Button variant="outline" onClick={() => { setChoice("等待选择"); setOpen(true); }}>再次打开</Button>
-      <RunConfirmDialog
+      <ConfirmDialog
         open={open}
         view={view}
         busy={false}

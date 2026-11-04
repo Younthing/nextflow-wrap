@@ -6,23 +6,19 @@ import { useFrontendTool, type FrontendToolHandlerContext } from "@copilotkit/re
 
 import { useCancelRun, useResumeRun } from "@/features/runs/queries";
 import type { RunDetail } from "@/features/runs/types";
-import { useAssistantPanel } from "./assistant-provider";
-import { moduleTool } from "./modules/contract";
-import { runDiagnosticsModule } from "./modules/run-diagnostics";
-import { RunConfirmDialog, subscribeAbort, useRunConfirm } from "./run-confirm";
-import { RunToolCard } from "./run-tool-card";
 import {
   cancelBlockers,
   cancelConfirmView,
-  clipReason,
-  confirmThenRun,
-  createConfirmQueue,
-  declinedResult,
   resumeBlockers,
   resumeConfirmView,
-  runToolParameters,
   type AcceptedRun,
-} from "./run-actions";
+} from "@/features/runs/assistant-actions";
+import { useAssistantPanel } from "../assistant-provider";
+import { clipReason, confirmReasonParameters, confirmThenRun, createConfirmQueue, declinedResult } from "../confirm";
+import { ConfirmDialog, subscribeAbort, useConfirmDialog } from "../confirm-dialog";
+import { ConfirmToolCard } from "../confirm-tool-card";
+import { moduleTool } from "../modules/contract";
+import { runDiagnosticsModule } from "../modules/run-diagnostics";
 
 /**
  * `cancel_run` and `resume_run` for the run on screen. Both wait on one
@@ -33,7 +29,7 @@ export function RunControlTools({ run }: { run: RunDetail }) {
   const resume = useResumeRun();
   const router = useRouter();
   const { setOpen } = useAssistantPanel();
-  const confirm = useRunConfirm();
+  const confirm = useConfirmDialog();
   const live = React.useRef({ run, cancel, resume, router, setOpen, confirm });
   const queue = React.useRef(createConfirmQueue());
   React.useLayoutEffect(() => {
@@ -43,21 +39,21 @@ export function RunControlTools({ run }: { run: RunDetail }) {
   useFrontendTool({
     name: moduleTool(runDiagnosticsModule, "cancel_run").name,
     description: moduleTool(runDiagnosticsModule, "cancel_run").description,
-    parameters: runToolParameters,
+    parameters: confirmReasonParameters,
     handler: (args, context) => queue.current(() => cancelRun(args.reason, context, live)),
-    render: RunToolCard,
+    render: ConfirmToolCard,
   });
 
   useFrontendTool({
     name: moduleTool(runDiagnosticsModule, "resume_run").name,
     description: moduleTool(runDiagnosticsModule, "resume_run").description,
-    parameters: runToolParameters,
+    parameters: confirmReasonParameters,
     handler: (args, context) => queue.current(() => resumeRun(args.reason, context, live)),
-    render: RunToolCard,
+    render: ConfirmToolCard,
   });
 
   return (
-    <RunConfirmDialog
+    <ConfirmDialog
       open={confirm.view !== null}
       view={confirm.view}
       busy={confirm.busy}
@@ -73,7 +69,7 @@ type Live = React.RefObject<{
   resume: ReturnType<typeof useResumeRun>;
   router: ReturnType<typeof useRouter>;
   setOpen: (open: boolean) => void;
-  confirm: ReturnType<typeof useRunConfirm>;
+  confirm: ReturnType<typeof useConfirmDialog>;
 }>;
 
 async function cancelRun(reason: unknown, context: FrontendToolHandlerContext | undefined, live: Live) {

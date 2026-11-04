@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { SearchField } from "@/components/ui/search-field";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AsyncPlaceholder } from "@/components/ui/async-placeholder";
-import { EnvConfigAssistant } from "@/features/assistant/modules/surfaces";
+import { EnvConfigAssistant } from "@/features/assistant/surfaces/prompt-only";
 import { ModuleEnvEditor } from "@/features/notebook/components/module-env-form";
 import { useEditModule, useScriptModules } from "@/features/notebook/queries";
 import type { ScriptModuleView } from "@/features/notebook/library";
