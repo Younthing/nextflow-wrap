@@ -38,9 +38,10 @@ export const settingsSchema = z.object({
   }),
   notifications: z.object({ runFinished: z.boolean() }),
   assistant: z.object({
-    backend: z.enum(["auto", "codex", "builtin"]),
+    backend: z.enum(["auto", "codex", "grok", "builtin"]),
     model: optionalText(200).refine((value) => !value || /^(anthropic|openai|google)\/[\w.:-]+$/.test(value), "写成 provider/model，例如 anthropic/claude-sonnet-5-5"),
     codexModel: optionalText(200),
+    grokModel: optionalText(200),
   }),
   remotes: z.array(remoteHostSchema).max(50).refine((hosts) => new Set(hosts.map((host) => host.id)).size === hosts.length, "远程主机 id 重复").default([]),
   cloud: z.object({
@@ -139,6 +140,7 @@ export function settingsEnv(settings: StudioSettings, secrets: Partial<Record<Se
   set("COPILOT_BACKEND", settings.assistant.backend === "auto" ? undefined : settings.assistant.backend);
   set("COPILOT_MODEL", settings.assistant.model);
   set("CODEX_MODEL", settings.assistant.codexModel);
+  set("GROK_MODEL", settings.assistant.grokModel);
   set("AWS_PROFILE", settings.cloud.awsProfile);
   set("AWS_REGION", settings.cloud.awsRegion);
   set("AWS_DEFAULT_REGION", settings.cloud.awsRegion);
@@ -179,7 +181,7 @@ export function settingsView(dir?: string, env: EnvMap = process.env): SettingsV
   const mapped = Object.keys(settingsEnv({
     ...settings,
     runtime: { ...settings.runtime, javaHome: "x", nextflowBin: "x", jupyterPython: "x", httpProxy: "x" },
-    assistant: { backend: "codex", model: "x", codexModel: "x" },
+    assistant: { backend: "codex", model: "x", codexModel: "x", grokModel: "x" },
     cloud: { awsProfile: "x", awsRegion: "x", googleCredentials: "x", azureBatchAccount: "x", azureStorageAccount: "x" },
   }, Object.fromEntries(SECRET_KEYS.map((key) => [key, "x"]))));
   return {
