@@ -21,7 +21,11 @@ async function fetchStatus(): Promise<AssistantStatus> {
         ? body.model
           ? `本机 Codex（${body.model}）`
           : "本机 Codex"
-        : (body.model ?? "API");
+        : body.backend === "grok"
+          ? body.model
+            ? `本机 Grok Build（${body.model}）`
+            : "本机 Grok Build"
+          : (body.model ?? "API");
     return { enabled: true, detail };
   } catch {
     return { enabled: false, message: "AI 助手不可用：连不上服务端" };

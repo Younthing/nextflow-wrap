@@ -1,12 +1,15 @@
 import { BuiltInAgent, CopilotRuntime, createCopilotRuntimeHandler } from "@copilotkit/runtime/v2";
 
 import type { CodexHarness, ProbeResult } from "@/features/codex-harness";
+import type { GrokHarness } from "@/features/grok-harness";
 import { createAssistantResolver, type AssistantChoice, type EnvLike } from "./backend";
 import { createCodexAgent } from "./codex-agent";
 import { ASSISTANT_MAX_STEPS } from "./codex-turn";
+import { createGrokAgent } from "./grok-agent";
 import { requestAssistantPrompt } from "./modules/request";
 import { allowedCopilotHosts, copilotAccessResponse } from "./request-guard";
 import {
+  busyResponse,
   codexBusyResponse,
   createSessionLimiter,
   createSessionPermit,
@@ -24,8 +27,10 @@ export const CODEX_PROBE_TIMEOUT_MS = 8_000;
 export interface CopilotRouteDeps {
   env: EnvLike;
   harness: CodexHarness;
+  /** Local Grok Build (`grok agent stdio`). Omitted: `grok` is never selected. */
+  grokHarness?: GrokHarness;
   /**
-   * Working directory for Codex threads. Production omits this, so each run
+   * Working directory for Codex and Grok sessions. Production omits this, so each run
    * gets an empty temp directory. Route tests pass a fixed path.
    */
   cwd?: string;
@@ -47,15 +52,17 @@ export interface CopilotRouteHandlers {
  * This route does not register tools or contain a scenario's instructions.
  *
  * COPILOT_BACKEND=auto (default) uses a local `codex` CLI when `codex login`
- * has already succeeded, and otherwise the BuiltInAgent selected by
- * COPILOT_MODEL plus its API key. `codex` and `builtin` force one path.
- * Codex auth stays in ~/.codex; this route never reads it and does not need
- * OPENAI_API_KEY for that path. GET /api/copilotkit/status reports which
- * backend is active before the UI opens the assistant.
+ * has already succeeded, then a local Grok Build CLI when `grok login` has,
+ * and otherwise the BuiltInAgent selected by COPILOT_MODEL plus its API key.
+ * `codex`, `grok` and `builtin` force one path. CLI auth stays in ~/.codex
+ * and ~/.grok; this route never reads either and needs no API key for those
+ * paths. GET /api/copilotkit/status reports which backend is active before
+ * the UI opens the assistant.
  *
  * Localhost and single-user only. The host must be on the loopback allowlist,
  * and a POST must be same-origin. Codex chat runs share a small concurrency
- * cap, held until that process exits.
+ * cap (CODEX_MAX_SESSIONS), and Grok runs have their own (GROK_MAX_SESSIONS),
+ * each held until that process exits.
  *
  * Production wires the real CLI harness in the Next route module. Tests pass
  * a fake harness and a private env object so the Codex path does not spawn `codex`.
@@ -65,8 +72,10 @@ export function createCopilotRoute(deps: CopilotRouteDeps): CopilotRouteHandlers
   const resolveAssistant = createAssistantResolver({
     env: deps.env,
     probe: () => probeWithDeadline(deps.harness, probeTimeoutMs),
+    ...(deps.grokHarness ? { probeGrok: () => probeWithDeadline(deps.grokHarness!, probeTimeoutMs) } : {}),
   });
   const codexSessions = createSessionLimiter(readCodexSessionLimit(deps.env.CODEX_MAX_SESSIONS));
+  const grokSessions = createSessionLimiter(readCodexSessionLimit(deps.env.GROK_MAX_SESSIONS));
   const builtinHandlers = new Map<string, (request: Request) => Promise<Response>>();
 
   function denied(request: Request) {
@@ -108,6 +117,44 @@ export function createCopilotRoute(deps: CopilotRouteDeps): CopilotRouteHandlers
     });
   }
 
+  function grokCopilotHandler(
+    harness: GrokHarness,
+    choice: Extract<AssistantChoice, { enabled: true; backend: "grok" }>,
+    permit: SessionPermit,
+    prompt: string,
+  ) {
+    const agent = createGrokAgent({
+      harness,
+      prompt,
+      model: choice.model,
+      maxSteps: ASSISTANT_MAX_STEPS,
+      permit,
+      cwd: deps.cwd,
+    });
+    return createCopilotRuntimeHandler({
+      runtime: new CopilotRuntime({ agents: { default: agent } }),
+      basePath: "/api/copilotkit",
+    });
+  }
+
+  async function runCli(
+    limiter: typeof codexSessions,
+    busy: () => Response,
+    handler: (permit: SessionPermit) => (request: Request) => Promise<Response>,
+    request: Request,
+  ) {
+    const release = limiter.tryAcquire();
+    if (!release) return busy();
+    const permit = createSessionPermit(release);
+    try {
+      const response = await handler(permit)(request);
+      return holdSession(response, () => permit.releaseIfUnclaimed());
+    } catch (error) {
+      permit.releaseIfUnclaimed();
+      throw error;
+    }
+  }
+
   function head(request: Request) {
     const rejection = denied(request);
     if (rejection) return rejection;
@@ -130,24 +177,31 @@ export function createCopilotRoute(deps: CopilotRouteDeps): CopilotRouteHandlers
       );
     }
     const prepared = await requestAssistantPrompt(request);
-    if (choice.backend !== "codex") return builtinCopilotHandler(choice, prepared.prompt)(prepared.request);
-
-    const release = codexSessions.tryAcquire();
-    if (!release) return codexBusyResponse();
-    const permit = createSessionPermit(release);
-    try {
-      const response = await codexCopilotHandler(choice, permit, prepared.prompt)(prepared.request);
-      return holdSession(response, () => permit.releaseIfUnclaimed());
-    } catch (error) {
-      permit.releaseIfUnclaimed();
-      throw error;
+    if (choice.backend === "codex") {
+      return runCli(
+        codexSessions,
+        codexBusyResponse,
+        (permit) => codexCopilotHandler(choice, permit, prepared.prompt),
+        prepared.request,
+      );
     }
+    if (choice.backend === "grok") {
+      const grok = deps.grokHarness;
+      if (!grok) return Response.json({ message: "AI 助手未启用：服务端没有接入 Grok Build", reason: "grok-not-installed" }, { status: 503 });
+      return runCli(
+        grokSessions,
+        () => busyResponse("Grok"),
+        (permit) => grokCopilotHandler(grok, choice, permit, prepared.prompt),
+        prepared.request,
+      );
+    }
+    return builtinCopilotHandler(choice, prepared.prompt)(prepared.request);
   }
 
   return { GET: handle, POST: handle, DELETE: handle, HEAD: head };
 }
 
-async function probeWithDeadline(harness: CodexHarness, ms: number): Promise<ProbeResult> {
+async function probeWithDeadline(harness: { probe(): Promise<ProbeResult> }, ms: number): Promise<ProbeResult> {
   try {
     return await withDeadline(harness.probe(), ms);
   } catch {
@@ -158,7 +212,7 @@ async function probeWithDeadline(harness: CodexHarness, ms: number): Promise<Pro
 
 function withDeadline<T>(promise: Promise<T>, ms: number): Promise<T> {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("codex probe timed out")), ms);
+    const timer = setTimeout(() => reject(new Error("CLI probe timed out")), ms);
     promise.then(resolve, reject).finally(() => clearTimeout(timer));
   });
 }

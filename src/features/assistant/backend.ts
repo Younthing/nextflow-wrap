@@ -1,6 +1,6 @@
 import type { ProbeResult } from "@/features/codex-harness";
 
-/** Default BuiltInAgent model. Codex does not use this id. */
+/** Default BuiltInAgent model. Codex and Grok do not use this id. */
 export const DEFAULT_COPILOT_MODEL = "anthropic/claude-sonnet-5-5";
 
 const KEY_ENV: Record<string, string> = {
@@ -10,7 +10,10 @@ const KEY_ENV: Record<string, string> = {
   gemini: "GOOGLE_API_KEY",
 };
 
-export type BackendMode = "auto" | "codex" | "builtin";
+export type BackendMode = "auto" | "codex" | "grok" | "builtin";
+
+/** Why a local CLI backend (Codex or Grok) was not selected. */
+export type CliBlocker = "not-installed" | "unauthenticated" | "unavailable";
 
 export type EnvLike = Record<string, string | undefined>;
 
@@ -23,10 +26,20 @@ export type AssistantChoice =
     }
   | {
       enabled: true;
+      backend: "grok";
+      /** Set only when `GROK_MODEL` is set. Otherwise Grok Build uses its own default. */
+      model?: string;
+      /** Why Codex was not selected, when `COPILOT_BACKEND=auto` fell through to Grok. */
+      codex?: CliBlocker;
+    }
+  | {
+      enabled: true;
       backend: "builtin";
       model: string;
       /** Why Codex was not selected, when `COPILOT_BACKEND=auto` fell back. */
-      codex?: "not-installed" | "unauthenticated" | "unavailable";
+      codex?: CliBlocker;
+      /** Why Grok was not selected, when `COPILOT_BACKEND=auto` probed it and fell back. */
+      grok?: CliBlocker;
     }
   | {
       enabled: false;
@@ -38,7 +51,7 @@ export type AssistantChoice =
 
 export function readBackendMode(value: string | undefined): BackendMode | "invalid" {
   const mode = value?.trim().toLowerCase() || "auto";
-  if (mode === "auto" || mode === "codex" || mode === "builtin") return mode;
+  if (mode === "auto" || mode === "codex" || mode === "grok" || mode === "builtin") return mode;
   return "invalid";
 }
 
@@ -50,12 +63,15 @@ export function missingBuiltinKey(model: string, env: EnvLike): string | null {
 }
 
 /**
- * Prefer an authenticated local Codex CLI. `auto` falls back to the API-key
- * agent. `codex` never reads API keys. `builtin` never probes Codex.
+ * `auto` order: an authenticated local Codex CLI, then an authenticated local
+ * Grok Build CLI, then the API-key agent. `codex` and `grok` force one CLI and
+ * never read API keys. `builtin` never probes either CLI.
  */
 export function selectAssistantBackend(input: {
   mode: BackendMode | "invalid";
   probe?: ProbeResult;
+  /** Grok Build probe. Omitted when it was not run (e.g. Codex was ready). */
+  grokProbe?: ProbeResult;
   model: string;
   env: EnvLike;
 }): AssistantChoice {
@@ -64,8 +80,14 @@ export function selectAssistantBackend(input: {
       enabled: false,
       backend: "auto",
       reason: "invalid-backend",
-      message: "AI 助手未启用：COPILOT_BACKEND 只能是 auto、codex 或 builtin",
+      message: "AI 助手未启用：COPILOT_BACKEND 只能是 auto、codex、grok 或 builtin",
     };
+  }
+
+  if (input.mode === "grok") {
+    const grok = cliBlocker(input.grokProbe);
+    if (grok) return grokDisabled(grok);
+    return grokChoice(input.env);
   }
 
   const blocker = codexBlocker(input.probe);
@@ -75,6 +97,11 @@ export function selectAssistantBackend(input: {
     }
     const model = input.env.CODEX_MODEL?.trim();
     return { enabled: true, backend: "codex", ...(model ? { model } : {}) };
+  }
+
+  const grokBlocker = input.mode === "auto" && input.grokProbe ? cliBlocker(input.grokProbe) : undefined;
+  if (input.mode === "auto" && input.grokProbe && !grokBlocker) {
+    return { ...grokChoice(input.env), ...(blocker ? { codex: blocker } : {}) };
   }
 
   const missing = missingBuiltinKey(input.model, input.env);
@@ -97,6 +124,24 @@ export function selectAssistantBackend(input: {
         message: `AI 助手未启用：无法确认 Codex 登录状态，且服务端没有设置 ${missing}`,
       };
     }
+    if (input.mode === "auto" && grokBlocker === "unauthenticated") {
+      return {
+        enabled: false,
+        backend: "auto",
+        reason: "grok-unauthenticated",
+        missing,
+        message: `AI 助手未启用：Grok 未登录（请运行 grok login），且服务端没有设置 ${missing}`,
+      };
+    }
+    if (input.mode === "auto" && grokBlocker === "unavailable") {
+      return {
+        enabled: false,
+        backend: "auto",
+        reason: "grok-unavailable",
+        missing,
+        message: `AI 助手未启用：无法确认 Grok 登录状态，且服务端没有设置 ${missing}`,
+      };
+    }
     return {
       enabled: false,
       backend: input.mode === "builtin" ? "builtin" : "auto",
@@ -111,17 +156,52 @@ export function selectAssistantBackend(input: {
     backend: "builtin",
     model: input.model,
     ...(input.mode === "auto" && blocker ? { codex: blocker } : {}),
+    ...(grokBlocker ? { grok: grokBlocker } : {}),
   };
 }
 
-function codexBlocker(probe: ProbeResult | undefined): "not-installed" | "unauthenticated" | "unavailable" | null {
+function codexBlocker(probe: ProbeResult | undefined): CliBlocker | null {
+  return cliBlocker(probe);
+}
+
+function cliBlocker(probe: ProbeResult | undefined): CliBlocker | null {
   if (!probe?.installed) return "not-installed";
   if (probe.authed === true) return null;
   if (probe.authed === false) return "unauthenticated";
   return "unavailable";
 }
 
-function codexDisabled(blocker: "not-installed" | "unauthenticated" | "unavailable"): AssistantChoice {
+function grokChoice(env: EnvLike): Extract<AssistantChoice, { backend: "grok"; enabled: true }> {
+  const model = env.GROK_MODEL?.trim();
+  return { enabled: true, backend: "grok", ...(model ? { model } : {}) };
+}
+
+function grokDisabled(blocker: CliBlocker): AssistantChoice {
+  if (blocker === "unauthenticated") {
+    return {
+      enabled: false,
+      backend: "grok",
+      reason: "grok-unauthenticated",
+      message: "AI 助手未启用：请先运行 grok login",
+    };
+  }
+  if (blocker === "unavailable") {
+    return {
+      enabled: false,
+      backend: "grok",
+      reason: "grok-unavailable",
+      message: "AI 助手未启用：无法确认 Grok 登录状态",
+    };
+  }
+  return {
+    enabled: false,
+    backend: "grok",
+    reason: "grok-not-installed",
+    message: "AI 助手未启用：本机没有找到 grok 命令（Grok Build）",
+  };
+}
+
+function codexDisabled(blocker: CliBlocker): AssistantChoice {
   if (blocker === "unauthenticated") {
     return {
       enabled: false,
@@ -150,35 +230,53 @@ export interface AssistantResolver {
   (): Promise<AssistantChoice>;
 }
 
-/** Cache Codex probes so the header status check and the chat request agree. */
+/** Cache CLI probes so the header status check and the chat request agree. */
 export function createAssistantResolver(deps: {
   probe: () => Promise<ProbeResult>;
+  /** Grok Build probe. Without it, `auto` behaves as Codex → builtin and `grok` reports not-installed. */
+  probeGrok?: () => Promise<ProbeResult>;
   env: EnvLike;
   now?: () => number;
   ttlMs?: number;
 }): AssistantResolver {
-  let cache: { at: number; result: ProbeResult } | undefined;
   const ttlMs = deps.ttlMs ?? 15_000;
+  const codex = cachedProbe(deps.probe, ttlMs, deps.now);
+  const grok = deps.probeGrok ? cachedProbe(deps.probeGrok, ttlMs, deps.now) : undefined;
   return async () => {
     const mode = readBackendMode(deps.env.COPILOT_BACKEND);
     let probe: ProbeResult | undefined;
-    if (mode !== "builtin") {
-      const now = deps.now?.() ?? Date.now();
-      if (cache && now - cache.at < ttlMs) probe = cache.result;
-      else {
-        try {
-          probe = await deps.probe();
-          cache = { at: now, result: probe };
-        } catch {
-          probe = { installed: false };
-        }
-      }
+    let grokProbe: ProbeResult | undefined;
+    if (mode === "auto" || mode === "codex") probe = await codex();
+    const codexReady = probe?.installed === true && probe.authed === true;
+    if (mode === "grok" || (mode === "auto" && !codexReady)) {
+      grokProbe = grok ? await grok() : { installed: false };
     }
+    if (mode === "auto" && !grok) grokProbe = undefined;
     return selectAssistantBackend({
       mode,
       probe,
+      grokProbe,
       model: deps.env.COPILOT_MODEL?.trim() || DEFAULT_COPILOT_MODEL,
       env: deps.env,
     });
+  };
+}
+
+function cachedProbe(
+  probe: () => Promise<ProbeResult>,
+  ttlMs: number,
+  clock?: () => number,
+): () => Promise<ProbeResult> {
+  let cache: { at: number; result: ProbeResult } | undefined;
+  return async () => {
+    const now = clock?.() ?? Date.now();
+    if (cache && now - cache.at < ttlMs) return cache.result;
+    try {
+      const result = await probe();
+      cache = { at: now, result };
+      return result;
+    } catch {
+      return { installed: false };
+    }
   };
 }
