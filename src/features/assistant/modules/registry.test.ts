@@ -74,6 +74,8 @@ describe("assistant module registry", () => {
       "edit_notebook_cell",
       "run_notebook_cell",
       "read_cell_output",
+      "list_notebook_variables",
+      "get_notebook_variable",
     ]);
     expect(moduleTool(runDiagnosticsModule, "get_run_log").description).toContain(String(RUN_LOG_TAIL));
     expect(moduleTool(notebookModule, "run_notebook_cell").description).toMatch(/确认/);

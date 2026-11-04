@@ -195,8 +195,11 @@ export class KernelSession {
     return this.ready;
   }
 
-  /** Runs one cell after any queued cells. */
-  execute(code: string): Promise<KernelCellReply> {
+  /**
+   * Runs one cell after any queued cells. `quiet` is for probes such as listing variables: no history entry and no
+   * new execution count, the way VS Code's Jupyter extension reads kernel state.
+   */
+  execute(code: string, options: { quiet?: boolean } = {}): Promise<KernelCellReply> {
     const next = this.queue.then(async () => {
       await this.ready;
       if (this.state === "dead" || !this.child) throw new Error("内核已退出，重启内核后再运行。");
@@ -205,7 +208,7 @@ export class KernelSession {
       try {
         return await new Promise<KernelCellReply>((resolve, reject) => {
           this.pending.set(id, { resolve, reject });
-          this.child!.stdin.write(`${JSON.stringify({ id, code })}\n`);
+          this.child!.stdin.write(`${JSON.stringify({ id, code, ...(options.quiet && { quiet: true }) })}\n`);
         });
       } finally {
         if (this.state === "busy") this.state = "idle";

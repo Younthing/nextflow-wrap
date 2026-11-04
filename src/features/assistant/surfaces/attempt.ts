@@ -1,8 +1,8 @@
-/** Runs a tool action and hands the model either its result or the error to fix. */
-export function attempt<T>(fn: () => T): Promise<T | { error: string }> {
+/** Runs a tool action and hands the model either its result or the error to fix, sync or async. */
+export async function attempt<T>(fn: () => T | Promise<T>): Promise<T | { error: string }> {
   try {
-    return Promise.resolve(fn());
+    return await fn();
   } catch (err) {
-    return Promise.resolve({ error: (err as Error).message });
+    return { error: (err as Error).message };
   }
 }

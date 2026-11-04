@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useStore } from "zustand";
 
-import { useNotebook, useRunNotebook, useSaveNotebook } from "./queries";
+import { fetchNotebookVariable, fetchNotebookVariables, useKernelInfo, useNotebook, useRunNotebook, useSaveNotebook } from "./queries";
 import { createNotebookSession, type NotebookSession, type NotebookSessionState } from "./session";
 
 const NotebookSessionContext = React.createContext<NotebookSession | null>(null);
@@ -18,17 +18,29 @@ export function NotebookSessionProvider({ notebookId, children }: { notebookId: 
   const run = useRunNotebook();
   const saveAsync = save.mutateAsync;
   const runAsync = run.mutateAsync;
-  const [session] = React.useState(() =>
-    createNotebookSession({ notebookId, saved: notebook.data ?? null, ports: { save: saveAsync, run: runAsync } }),
+  const ports = React.useMemo(
+    () => ({ save: saveAsync, run: runAsync, variables: fetchNotebookVariables, variable: fetchNotebookVariable }),
+    [saveAsync, runAsync],
   );
+  const [session] = React.useState(() => createNotebookSession({ notebookId, saved: notebook.data ?? null, ports }));
+  const language = notebook.data?.language;
+  const kernel = useKernelInfo(notebookId, language === "python").data;
 
   React.useLayoutEffect(() => {
-    session.connect({ save: saveAsync, run: runAsync });
-  }, [session, saveAsync, runAsync]);
+    session.connect(ports);
+  }, [session, ports]);
   React.useLayoutEffect(() => {
     if (notebook.data) session.setSaved(notebook.data);
   }, [session, notebook.data]);
   React.useEffect(() => () => session.dispose(), [session]);
+  // Re-read variables whenever the kernel settles: after a run, a restart, or a shutdown from the toolbar.
+  const kernelState = kernel?.state;
+  const kernelStarted = kernel?.startedAt;
+  React.useEffect(() => {
+    if (!language || kernelState === "busy" || kernelState === "starting") return;
+    if (language === "python" && kernelState === undefined) return;
+    void session.refreshVariables();
+  }, [session, language, kernelState, kernelStarted]);
 
   return <NotebookSessionContext value={session}>{children}</NotebookSessionContext>;
 }

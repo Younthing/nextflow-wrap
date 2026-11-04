@@ -40,6 +40,8 @@ function fakeEditor(initial: NotebookDoc) {
       state.selected = select;
     },
     runCell: run,
+    refreshVariables: async () => ({ available: false, reason: "测试里没有内核。", variables: [] }),
+    readVariable: async () => ({ available: false, reason: "测试里没有内核。" }),
   };
   let serial = 0;
   const actions = createNotebookActions(commands, (role, source = "") => {

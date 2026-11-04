@@ -239,3 +239,31 @@ export function normalizeKernelName(value: string): string {
   if (/[\u0000-\u001f]/.test(name)) throw new Error("内核名称不能包含换行");
   return name;
 }
+
+/** One user variable in the notebook's kernel, like a row of VS Code's Jupyter Variables view. */
+export interface NotebookVariable {
+  name: string;
+  type: string;
+  /** `shape` for arrays and data frames, else `len` for sized values. */
+  size?: string;
+  /** Short repr. */
+  preview: string;
+}
+
+/** What `get_notebook_variable` reads: a longer repr plus dtype and columns for arrays and data frames. */
+export interface NotebookVariableDetail extends NotebookVariable {
+  repr: string;
+  truncated?: boolean;
+  dtype?: string;
+  columns?: { name: string; dtype: string }[];
+}
+
+/** Variables in the running kernel, or why there are none to show. Probing never starts a kernel. */
+export type NotebookVariables =
+  | { available: true; kernel?: string; variables: NotebookVariable[]; total: number }
+  | { available: false; reason: string; variables: [] };
+
+export type NotebookVariableLookup =
+  | { available: true; found: true; variable: NotebookVariableDetail }
+  | { available: true; found: false; name: string }
+  | { available: false; reason: string };

@@ -5,6 +5,7 @@ import type { CliBlocker } from "./backend";
 import { useAssistantStatusQuery } from "./queries";
 import { CopilotKitProvider, CopilotSidebar } from "@copilotkit/react-core/v2";
 import "@copilotkit/react-core/v2/styles.css";
+import { AssistantChatInput, ComposerProvider } from "./composer";
 import { AssistantModuleHost } from "./modules/activation";
 import { ASSISTANT_MODULES_PROP } from "./modules/contract";
 
@@ -95,15 +96,18 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
     children
   ) : (
     <CopilotKitProvider runtimeUrl={RUNTIME_URL} properties={properties}>
-      {children}
-      <CopilotSidebar
-        labels={LABELS}
-        open={open}
-        onOpenChange={setOpen}
-        toggleButton={HIDDEN_TOGGLE}
-        width={380}
-        className="assistant-chat"
-      />
+      <ComposerProvider>
+        {children}
+        <CopilotSidebar
+          labels={LABELS}
+          open={open}
+          onOpenChange={setOpen}
+          toggleButton={HIDDEN_TOGGLE}
+          input={AssistantChatInput}
+          width={380}
+          className="assistant-chat"
+        />
+      </ComposerProvider>
     </CopilotKitProvider>
   );
   return (
