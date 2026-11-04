@@ -8,7 +8,7 @@ export interface ProductTheme {
   id: string;
   /** Full product name shown in titles, tray and welcome screens. */
   displayName: string;
-  /** Short mark shown in the logo tile. */
+  /** Text fallback for the logo tile when a theme has no SVG mark (see `./mark`). */
   shortName: string;
   /** One-line description for page metadata. */
   description: string;
@@ -24,15 +24,15 @@ export const DEFAULT_PRODUCT_THEME: ProductTheme = {
   tagline: "笔记本到流程的工作台",
 };
 
-export const IMMUNOFLUORESCENCE_PRODUCT_THEME: ProductTheme = {
-  id: "immunofluorescence",
-  displayName: "免疫荧光分析工作台",
-  shortName: "IF",
-  description: "用笔记本、内置节点搭建并运行免疫荧光图像分析流程",
+export const FLUORA_PRODUCT_THEME: ProductTheme = {
+  id: "fluora",
+  displayName: "Fluora",
+  shortName: "Fl",
+  description: "Fluora · 用笔记本与内置节点完成免疫荧光图像分析",
   tagline: "从荧光图像到定量结果",
 };
 
-export const PRODUCT_THEMES: readonly ProductTheme[] = [DEFAULT_PRODUCT_THEME, IMMUNOFLUORESCENCE_PRODUCT_THEME];
+export const PRODUCT_THEMES: readonly ProductTheme[] = [DEFAULT_PRODUCT_THEME, FLUORA_PRODUCT_THEME];
 
 /** Checks a theme against the contract; returns the problems found (empty when valid). */
 export function validateProductTheme(theme: Partial<ProductTheme>): string[] {
@@ -50,7 +50,7 @@ export function resolveProductTheme(id?: string | null): ProductTheme {
 }
 
 /**
- * The active product theme, selected by `NEXT_PUBLIC_PRODUCT_THEME=<id>` (e.g. `immunofluorescence`).
+ * The active product theme, selected by `NEXT_PUBLIC_PRODUCT_THEME=<id>` (e.g. `fluora`).
  * Unset or unknown ids fall back to the default. NEXT_PUBLIC_ so Next inlines it into client
  * components at build time; the desktop main process reads it at runtime.
  */

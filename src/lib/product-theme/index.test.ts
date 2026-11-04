@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
-  DEFAULT_PRODUCT_THEME, IMMUNOFLUORESCENCE_PRODUCT_THEME, PRODUCT_THEMES, getProductTheme, resolveProductTheme, validateProductTheme,
+  DEFAULT_PRODUCT_THEME, FLUORA_PRODUCT_THEME, PRODUCT_THEMES, getProductTheme, resolveProductTheme, validateProductTheme,
 } from "./index";
 
 describe("product theme", () => {
@@ -14,13 +14,13 @@ describe("product theme", () => {
     expect(new Set(PRODUCT_THEMES.map((t) => t.id)).size).toBe(PRODUCT_THEMES.length);
   });
 
-  it("resolves the immunofluorescence pack by id", () => {
-    expect(resolveProductTheme("immunofluorescence")).toBe(IMMUNOFLUORESCENCE_PRODUCT_THEME);
+  it("resolves the Fluora pack by id", () => {
+    expect(resolveProductTheme("fluora")).toBe(FLUORA_PRODUCT_THEME);
   });
 
   it("selects the active pack from NEXT_PUBLIC_PRODUCT_THEME", () => {
-    vi.stubEnv("NEXT_PUBLIC_PRODUCT_THEME", "immunofluorescence");
-    expect(getProductTheme()).toBe(IMMUNOFLUORESCENCE_PRODUCT_THEME);
+    vi.stubEnv("NEXT_PUBLIC_PRODUCT_THEME", "fluora");
+    expect(getProductTheme()).toBe(FLUORA_PRODUCT_THEME);
     vi.stubEnv("NEXT_PUBLIC_PRODUCT_THEME", "nope");
     expect(getProductTheme()).toBe(DEFAULT_PRODUCT_THEME);
   });
