@@ -9,29 +9,20 @@ import { AsyncPlaceholder } from "@/components/ui/async-placeholder";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { NotebookAssistant } from "@/features/assistant/surfaces/notebook";
-import { newNotebookCell, type NotebookCommands } from "@/features/notebook/assistant-actions";
+import { newNotebookCell } from "@/features/notebook/assistant-actions";
 import { applyCanvasValues, readCanvasValues, type AppliedValue } from "@/features/notebook/canvas-values";
 import { convertNotebook } from "@/features/notebook/convert";
-import { dispatchNotebookKey, dragOffsets, gapAtPointer, moveCellToGap, notebookDraftKey } from "@/features/notebook/edit";
+import { dispatchNotebookKey, dragOffsets, gapAtPointer, moveCellToGap } from "@/features/notebook/edit";
 import { COMMAND_HINT, EDIT_HINT, interpretNotebookKey, toNotebookKeyEvent, type NotebookMode } from "@/features/notebook/keyboard";
-import { useKeepNotebook, useNotebook, useRunNotebook, useSaveNotebook } from "@/features/notebook/queries";
-import { languageForKernel, type CellRunResult, type NotebookCell, type NotebookCellRole, type NotebookDoc, type NotebookRunKernel, type NotebookRunResult } from "@/features/notebook/types";
+import { useKeepNotebook, useNotebook } from "@/features/notebook/queries";
+import { useNotebookSession, useNotebookSessionState } from "@/features/notebook/session-provider";
+import { languageForKernel, type NotebookCell, type NotebookCellRole, type NotebookDoc } from "@/features/notebook/types";
 import { ExportMenu } from "@/features/workbench/components/export-menu";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import { KernelControls } from "./kernel-controls";
 import { KernelPicker } from "./kernel-picker";
 import { CELL_ROLE_LABEL, NotebookCellCard } from "./notebook-cell";
-
-/** Wall clock for cell timings, read in event handlers only. */
-const clock = () => performance.now();
-
-function omit<T>(record: Record<string, T>, key: string): Record<string, T> {
-  const next = { ...record };
-  delete next[key];
-  return next;
-}
 
 /**
  * The gap between two cells. Like VS Code, hovering it reveals buttons that
@@ -114,21 +105,28 @@ function InsertBar({
   );
 }
 
+/**
+ * Renders and drives the open {@link NotebookSession}. The draft, outputs,
+ * autosave, and runs live in the session, which the assistant uses too.
+ */
 export function NotebookEditor({ notebookId }: { notebookId: string }) {
   const router = useRouter();
   const search = useSearchParams();
   const notebook = useNotebook(notebookId);
-  const save = useSaveNotebook();
-  const run = useRunNotebook();
+  const session = useNotebookSession();
   const keep = useKeepNotebook();
-  const [override, setOverride] = React.useState<NotebookDoc | null>(null);
-  const [dirty, setDirty] = React.useState(false);
+  const saved = useNotebookSessionState((state) => state.saved);
+  const draft = useNotebookSessionState((state) => state.draft);
+  const outputs = useNotebookSessionState((state) => state.outputs);
+  const durations = useNotebookSessionState((state) => state.durations);
+  const runningTarget = useNotebookSessionState((state) => state.running);
+  const lastKernel = useNotebookSessionState((state) => state.kernel);
+  const saving = useNotebookSessionState((state) => state.saving > 0);
+  const saveError = useNotebookSessionState((state) => state.saveError);
+  const runError = useNotebookSessionState((state) => state.runError);
+  const dirty = draft !== null;
   const [selected, setSelected] = React.useState<string | null>(null);
   const [selectionFor, setSelectionFor] = React.useState<string | null>(null);
-  const [outputs, setOutputs] = React.useState<Record<string, CellRunResult>>({});
-  const [durations, setDurations] = React.useState<Record<string, number>>({});
-  const [runningTarget, setRunningTarget] = React.useState<string | "all" | null>(null);
-  const [lastKernel, setLastKernel] = React.useState<NotebookRunKernel | null>(null);
   const [mode, setMode] = React.useState<NotebookMode>("command");
   const [deleteArmed, setDeleteArmed] = React.useState(false);
   const [markdownEditId, setMarkdownEditId] = React.useState<string | null>(null);
@@ -152,19 +150,14 @@ export function NotebookEditor({ notebookId }: { notebookId: string }) {
   const scrollerRef = React.useRef<HTMLDivElement>(null);
   const cellListRef = React.useRef<HTMLDivElement>(null);
   const [canvasFor, setCanvasFor] = React.useState<string | null>(null);
+  const [canvasCells, setCanvasCells] = React.useState<NotebookCell[] | null>(null);
   const [fromCanvas, setFromCanvas] = React.useState<{ from: string; applied: AppliedValue[]; skipped: string[]; before: NotebookCell[] } | null>(null);
   const [focusTick, setFocusTick] = React.useState<{ id: string; mode: NotebookMode; token: number } | null>(null);
   const focusSerial = React.useRef(0);
-  const runningRef = React.useRef<string | null>(null);
-  const keyboardRef = React.useRef<{
-    doc: NotebookDoc | null;
-    mode: NotebookMode;
-    deleteArmed: boolean;
-    dirty: boolean;
-  }>({ doc: null, mode: "command", deleteArmed: false, dirty: false });
-  const saveNotebook = save.mutate;
+  /** Mode and delete chord as of the last key, read between renders. The doc is read from the session. */
+  const keyboardRef = React.useRef<{ mode: NotebookMode; deleteArmed: boolean }>({ mode: "command", deleteArmed: false });
   const selectionKey = notebookId;
-  const selectionCells = notebook.data?.cells;
+  const selectionCells = saved?.cells;
   if (selectionCells && selectionFor !== selectionKey) {
     setSelectionFor(selectionKey);
     setSelected(selectionCells[0]?.id ?? null);
@@ -173,70 +166,42 @@ export function NotebookEditor({ notebookId }: { notebookId: string }) {
     setMarkdownEditId(null);
   }
 
-  const draft = dirty ? override : notebook.data ?? null;
+  const live = draft ?? saved;
   const marked = React.useMemo(() => {
-    const doc = draft ?? notebook.data;
-    if (!doc) return false;
-    if (doc.cells.some((cell) => cell.role === "input" || cell.role === "output")) return true;
-    return doc.cells.some((cell) => /@input\b|@output\b/.test(cell.source));
-  }, [draft, notebook.data]);
+    if (!live) return false;
+    if (live.cells.some((cell) => cell.role === "input" || cell.role === "output")) return true;
+    return live.cells.some((cell) => /@input\b|@output\b/.test(cell.source));
+  }, [live]);
 
   React.useEffect(() => {
-    if (!draft || !dirty) return;
-    const snapshot = notebookDraftKey(draft);
-    const handle = window.setTimeout(() => {
-      saveNotebook(draft, {
-        onSuccess: (saved) => {
-          setOverride((current) => {
-            if (!current) return null;
-            const same = notebookDraftKey(current) === snapshot;
-            if (same) {
-              setDirty(false);
-              return null;
-            }
-            return current;
-          });
-          return saved;
-        },
-      });
-    }, 700);
-    return () => window.clearTimeout(handle);
-  }, [draft, dirty, saveNotebook]);
+    keyboardRef.current = { mode, deleteArmed };
+  }, [mode, deleteArmed]);
 
-  const live = draft;
+  // A tool that edits the session asks the editor to show the cell it touched.
+  React.useEffect(
+    () =>
+      session.onReveal((cellId) => {
+        setSelected(cellId);
+        setDeleteArmed(false);
+      }),
+    [session],
+  );
 
-  React.useEffect(() => {
-    if (!live) return;
-    keyboardRef.current = { doc: live, mode, deleteArmed, dirty };
-  }, [live, mode, deleteArmed, dirty]);
-
-  const update = (patch: Partial<NotebookDoc>) => {
-    if (!notebook.data) return;
-    const base = keyboardRef.current.doc ?? override ?? notebook.data;
-    const next = { ...base, ...patch };
-    keyboardRef.current = {
-      doc: next,
-      mode: keyboardRef.current.mode,
-      deleteArmed: keyboardRef.current.deleteArmed,
-      dirty: true,
-    };
-    setOverride(next);
-    setDirty(true);
-  };
+  const update = (patch: Partial<NotebookDoc>) => session.update(patch);
 
   const updateCell = (id: string, patch: Partial<NotebookCell>) => {
-    const base = keyboardRef.current.doc ?? draft;
+    const base = session.doc();
     if (!base) return;
     update({ cells: base.cells.map((cell) => (cell.id === id ? { ...cell, ...patch } : cell)) });
   };
 
   // Values handed over by a canvas node's </> button land in the input cells once, then the URL is cleaned.
   const canvas = readCanvasValues(search);
-  const canvasKey = canvas && notebook.data ? search.toString() : null;
+  const canvasKey = canvas && saved ? search.toString() : null;
   if (canvasKey !== canvasFor) {
     setCanvasFor(canvasKey);
-    if (canvas && canvasKey && notebook.data) {
-      const base = override ?? notebook.data;
+    if (canvas && canvasKey && live) {
+      const base = live;
       let inputs: ReturnType<typeof convertNotebook>["inputs"] = [];
       try {
         inputs = convertNotebook(base).inputs;
@@ -244,10 +209,7 @@ export function NotebookEditor({ notebookId }: { notebookId: string }) {
         // A notebook that does not convert has no markers to fill.
       }
       const result = applyCanvasValues(base.cells, inputs, canvas.values, base.language);
-      if (result.cells.some((cell, i) => cell !== base.cells[i])) {
-        setOverride({ ...base, cells: result.cells });
-        setDirty(true);
-      }
+      if (result.cells.some((cell, i) => cell !== base.cells[i])) setCanvasCells(result.cells);
       setFromCanvas({
         from: canvas.from,
         applied: result.applied,
@@ -256,6 +218,10 @@ export function NotebookEditor({ notebookId }: { notebookId: string }) {
       });
     }
   }
+  // The session is outside React state, so the filled cells are written after render.
+  React.useLayoutEffect(() => {
+    if (canvasCells) session.update({ cells: canvasCells });
+  }, [canvasCells, session]);
   React.useEffect(() => {
     if (canvasKey) router.replace(`/workbench/${notebookId}`);
   }, [canvasKey, notebookId, router]);
@@ -309,93 +275,17 @@ export function NotebookEditor({ notebookId }: { notebookId: string }) {
   if (notebook.error || !notebook.data) {
     return <AsyncPlaceholder status="error" className="h-auto" message={notebook.error?.message ?? "笔记本不存在"} />;
   }
-  if (!live) return <AsyncPlaceholder status="pending" className="h-full" />;
+  if (!live || !saved) return <AsyncPlaceholder status="pending" className="h-full" />;
 
-  const savedAt = notebook.data.updatedAt;
-  const runDisabled = dirty || save.isPending || run.isPending || runningTarget !== null;
+  const savedAt = saved.updatedAt;
+  const runDisabled = dirty || saving || runningTarget !== null;
 
-  const beginRun = (cellId?: string) => {
-    if (runningRef.current) return;
-    runningRef.current = cellId ?? "all";
-    setRunningTarget(runningRef.current);
-    const started = clock();
-    run.mutate(
-      { id: notebookId, cellId },
-      {
-        onSuccess: (result) => {
-          setLastKernel(result.kernel ?? null);
-          setOutputs((current) => {
-            const next = cellId ? { ...current } : {};
-            for (const cell of result.cells) next[cell.id] = cell;
-            return next;
-          });
-          setDurations((current) => (cellId ? { ...current, [cellId]: clock() - started } : {}));
-        },
-        onSettled: () => {
-          runningRef.current = null;
-          setRunningTarget(null);
-        },
-      },
-    );
-  };
-
-  /** Saves `doc` when asked, then runs `cellId`. Rejects with the save or run error, which also renders under the editor. */
-  const saveThenRun = async (doc: NotebookDoc, needsSave: boolean, cellId: string | null): Promise<NotebookRunResult | undefined> => {
-    runningRef.current = cellId ?? "save";
-    if (cellId) setRunningTarget(cellId);
+  const persistThenRun = async (cellId: string | null) => {
     try {
-      if (needsSave) {
-        const snapshot = notebookDraftKey(doc);
-        await save.mutateAsync(doc);
-        setOverride((current) => {
-          if (!current || notebookDraftKey(current) === snapshot) {
-            setDirty(false);
-            return null;
-          }
-          return current;
-        });
-      }
-      if (!cellId) return undefined;
-      const started = clock();
-      const result = await run.mutateAsync({ id: notebookId, cellId });
-      setDurations((current) => ({ ...current, [cellId]: clock() - started }));
-      setLastKernel(result.kernel ?? null);
-      setOutputs((current) => {
-        const next = { ...current };
-        for (const cell of result.cells) next[cell.id] = cell;
-        return next;
-      });
-      return result;
-    } finally {
-      runningRef.current = null;
-      setRunningTarget(null);
-    }
-  };
-
-  const persistThenRun = async (doc: NotebookDoc, needsSave: boolean, cellId: string | null) => {
-    if (runningRef.current) return;
-    try {
-      await saveThenRun(doc, needsSave, cellId);
+      await session.saveThenRun(cellId);
     } catch {
-      // save.error / run.error render under the editor.
+      // saveError / runError render under the editor.
     }
-  };
-
-  /** The editor's command API for the notebook assistant: the same draft, autosave, and Shift+Enter run path. */
-  const assistantCommands: NotebookCommands = {
-    read: () => ({ doc: keyboardRef.current.doc ?? live, outputs, busy: runningRef.current !== null }),
-    setCells: (cells, select) => {
-      update({ cells });
-      if (select) setSelected(select);
-      setDeleteArmed(false);
-    },
-    runCell: async (cellId) => {
-      if (runningRef.current) throw new Error("笔记本正在运行，等它结束再试");
-      const snap = keyboardRef.current;
-      const result = await saveThenRun(snap.doc ?? live, snap.dirty, cellId);
-      if (!result) throw new Error("单元格没有运行");
-      return result;
-    },
   };
 
   const requestFocus = (id: string, nextMode: NotebookMode) => {
@@ -405,9 +295,10 @@ export function NotebookEditor({ notebookId }: { notebookId: string }) {
 
   const commitKey = (cellId: string, origin: NotebookMode, event: Parameters<typeof toNotebookKeyEvent>[0]) => {
     const snap = keyboardRef.current;
-    const doc = snap.doc ?? live;
+    const doc = session.doc() ?? live;
+    const wasDirty = session.store.getState().draft !== null;
     const keyEvent = toNotebookKeyEvent(event);
-    if (runningRef.current && interpretNotebookKey(origin, keyEvent, snap.deleteArmed).command?.type === "run") {
+    if (session.isBusy() && interpretNotebookKey(origin, keyEvent, snap.deleteArmed).command?.type === "run") {
       return true;
     }
     const result = dispatchNotebookKey(
@@ -418,14 +309,8 @@ export function NotebookEditor({ notebookId }: { notebookId: string }) {
       () => newNotebookCell("code"),
       false,
     );
-    const nextDoc = { ...doc, cells: result.surface.cells };
-    const nextDirty = snap.dirty || result.changed;
-    keyboardRef.current = {
-      doc: nextDoc,
-      mode: result.surface.mode,
-      deleteArmed: result.surface.deleteArmed,
-      dirty: nextDirty,
-    };
+    const nextDirty = wasDirty || result.changed;
+    keyboardRef.current = { mode: result.surface.mode, deleteArmed: result.surface.deleteArmed };
     if (result.changed) update({ cells: result.surface.cells });
     setSelected(result.surface.selectedId);
     setMode(result.surface.mode);
@@ -438,7 +323,7 @@ export function NotebookEditor({ notebookId }: { notebookId: string }) {
       setMarkdownEditId(null);
     }
     if (result.save && (result.run || nextDirty)) {
-      void persistThenRun(nextDoc, nextDirty, result.run?.cellId ?? null);
+      void persistThenRun(result.run?.cellId ?? null);
     }
     return result.handled;
   };
@@ -512,33 +397,24 @@ export function NotebookEditor({ notebookId }: { notebookId: string }) {
   const dragIndex = drag ? live.cells.findIndex((cell) => cell.id === drag.id) : -1;
   const offsets = drag ? dragOffsets(drag.layout.pitches, dragIndex, drag.gap) : null;
 
-  const clearOutput = (id?: string) => {
-    if (!id) {
-      setOutputs({});
-      setDurations({});
-      return;
-    }
-    setOutputs((current) => omit(current, id));
-    setDurations((current) => omit(current, id));
-  };
+  const clearOutput = (id?: string) => session.clearOutput(id);
   const hasOutputs = Object.keys(outputs).length > 0;
   const selectedIndex = live.cells.findIndex((cell) => cell.id === selected);
   const selectedCell = live.cells.find((cell) => cell.id === selected);
   const openPublish = () => {
     const href = `/workbench/${notebookId}/publish`;
-    if (dirty && override) {
-      save.mutate(override, { onSuccess: () => router.push(href) });
+    if (dirty) {
+      session.flush().then(() => router.push(href), () => {});
       return;
     }
     router.push(href);
   };
-  const savedLabel = save.isPending || dirty
+  const savedLabel = saving || dirty
       ? "保存中…"
       : `已自动保存 ${new Date(savedAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false })}`;
 
   return (
     <div className="flex size-full min-h-0 flex-col">
-      <NotebookAssistant doc={live} outputs={outputs} busy={runningTarget !== null} commands={assistantCommands} />
       {/* Single row: never wrap. Narrow widths hide lower-priority actions via @container. */}
       <div
         role="toolbar"
@@ -554,7 +430,7 @@ export function NotebookEditor({ notebookId }: { notebookId: string }) {
         <span aria-hidden className="mx-1 hidden h-4 w-px shrink-0 bg-border @[28rem]:block" />
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button type="button" size="sm" variant="ghost" className="h-7 shrink-0 gap-1 px-2 font-normal" aria-label="运行全部" disabled={runDisabled} onClick={() => beginRun()}>
+            <Button type="button" size="sm" variant="ghost" className="h-7 shrink-0 gap-1 px-2 font-normal" aria-label="运行全部" disabled={runDisabled} onClick={() => session.runAll()}>
               {runningTarget === "all" ? <Loader2 className="animate-spin" /> : <FastForward />}
               <span className="hidden @[24rem]:inline">全部运行</span>
             </Button>
@@ -757,7 +633,7 @@ export function NotebookEditor({ notebookId }: { notebookId: string }) {
         </div>
       </div>
 
-      {(save.error || run.error) && <p role="alert" className="border-t border-border px-4 py-2 text-sm text-destructive">{save.error?.message ?? run.error?.message}</p>}
+      {(saveError || runError) && <p role="alert" className="border-t border-border px-4 py-2 text-sm text-destructive">{saveError ?? runError}</p>}
       <footer className="flex items-center gap-3 border-t border-border px-4 py-1.5 text-[11px] text-muted-foreground">
         <span className="truncate" title={mode === "command" ? COMMAND_HINT : EDIT_HINT}>{mode === "command" ? COMMAND_HINT : EDIT_HINT}</span>
         <span className="ml-auto shrink-0">{live.language === "python" ? "常驻内核 · 变量会保留" : "每次从头运行"}</span>

@@ -1,13 +1,14 @@
-import { infoConfirmView, type AcceptedResult, type ConfirmView } from "@/features/assistant/confirm";
+import { infoConfirmView, type AcceptedResult, type ConfirmView, type PreparedInvocation } from "@/features/assistant/confirm";
 import { insertCellAt, removeCell } from "./edit";
 import { segmentsOf } from "./outputs";
-import type { CellRunResult, NotebookCell, NotebookCellRole, NotebookDoc, NotebookRunResult } from "./types";
+import type { NotebookSession, NotebookSnapshot } from "./session";
+import type { CellRunResult, NotebookCell, NotebookCellRole, NotebookDoc } from "./types";
 
 /*
  * What the notebook assistant can see and do, mirroring VS Code's notebook
  * tools (GetNotebookSummary, EditNotebook, RunNotebookCell, ReadCellOutput).
- * Everything goes through {@link NotebookCommands}, the same draft, autosave,
- * and run path the editor's buttons use. Failures throw with a message the
+ * Everything goes through the open {@link NotebookSession}, the same draft,
+ * autosave, and run path the editor's buttons use. Failures throw with a message the
  * model can read and correct itself from.
  */
 
@@ -18,15 +19,8 @@ export const NOTEBOOK_OUTPUT_LIMIT = 4_000;
 const PREVIEW_LINES = 3;
 const PREVIEW_CHARS = 240;
 
-/** The open notebook as the editor holds it, and the commands its toolbar and keyboard use. */
-export interface NotebookCommands {
-  /** Latest draft (unsaved edits included), outputs shown under each cell, and whether a run is in flight. */
-  read(): { doc: NotebookDoc; outputs: Readonly<Record<string, CellRunResult>>; busy: boolean };
-  /** Replaces the cells as one edit. The editor autosaves it like a keystroke. */
-  setCells(cells: NotebookCell[], select?: string): void;
-  /** Saves a dirty draft, then runs one cell like Shift+Enter. Rejects with the API error. */
-  runCell(cellId: string): Promise<NotebookRunResult>;
-}
+/** The part of the session the tools use: read, replace cells, run one cell. */
+export type NotebookDocumentApi = Pick<NotebookSession, "read" | "setCells" | "runCell">;
 
 export type NotebookEditType = "insert" | "delete" | "edit";
 
@@ -107,7 +101,7 @@ export function describeCellOutput(result: CellRunResult): NotebookCellOutputVie
 }
 
 /** Why `run_notebook_cell` would refuse this cell right now. Empty means it can run. */
-export function runCellBlockers(state: ReturnType<NotebookCommands["read"]>, cellId: string): string[] {
+export function runCellBlockers(state: NotebookSnapshot, cellId: string): string[] {
   const cell = state.doc.cells.find((item) => item.id === cellId);
   if (!cell) return [`找不到单元格 ${cellId}。`];
   if (cell.role === "markdown") return ["说明单元格不能运行，选一个代码单元格。"];
@@ -138,7 +132,7 @@ export function runCellConfirmView(doc: NotebookDoc, cellId: string, problems: s
 }
 
 /** Cell list the model plans edits from: ids, kinds, a short preview, and what ran. */
-export function notebookSummary({ doc, outputs, busy }: ReturnType<NotebookCommands["read"]>) {
+export function notebookSummary({ doc, outputs, busy }: NotebookSnapshot) {
   return {
     notebookId: doc.id,
     name: doc.name,
@@ -162,7 +156,7 @@ export function notebookSummary({ doc, outputs, busy }: ReturnType<NotebookComma
   };
 }
 
-export function createNotebookActions(commands: NotebookCommands, makeCell = newNotebookCell) {
+export function createNotebookActions(commands: NotebookDocumentApi, makeCell = newNotebookCell) {
   const summary = () => notebookSummary(commands.read());
 
   function editCell(input: NotebookEditInput) {
@@ -228,5 +222,25 @@ export function createNotebookActions(commands: NotebookCommands, makeCell = new
     return { hasOutput: true, ...describeCellOutput(output) };
   }
 
-  return { summary, editCell, runCell, readOutput };
+  /**
+   * `run_notebook_cell`'s prepareInvocation: the confirm for this cell, and an
+   * accept-time check that the notebook and the cell's source are unchanged.
+   */
+  function prepareRunCell(cellId: string, reason?: string): PreparedInvocation<RanNotebookCell> {
+    const opened = commands.read();
+    const problems = runCellBlockers(opened, cellId);
+    const sourceOf = (doc: NotebookDoc) => doc.cells.find((cell) => cell.id === cellId)?.source;
+    return {
+      view: runCellConfirmView(opened.doc, cellId, problems, reason),
+      problems: () => {
+        const latest = commands.read();
+        if (latest.doc.id !== opened.doc.id) return ["当前页面已经不是这本笔记本，没有运行。"];
+        if (sourceOf(latest.doc) !== sourceOf(opened.doc)) return ["确认时单元格内容已变化，没有运行。请再试一次。"];
+        return runCellBlockers(latest, cellId);
+      },
+      invoke: () => runCell(cellId),
+    };
+  }
+
+  return { summary, editCell, runCell, readOutput, prepareRunCell };
 }

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import {
+  type QueryClient,
   queryOptions,
   useMutation,
   useQuery,
@@ -37,6 +38,15 @@ export const healthQueryOptions = () =>
     queryKey: ["health"],
     queryFn: () => api<HealthStatus>("/health"),
   });
+
+/** Runner health for a one-off check, or `undefined` when the server is unreachable. */
+export async function loadHealth(qc: QueryClient): Promise<HealthStatus | undefined> {
+  try {
+    return await qc.fetchQuery(healthQueryOptions());
+  } catch {
+    return undefined;
+  }
+}
 
 export function useHealthStatus(enabled = true) {
   return useQuery({

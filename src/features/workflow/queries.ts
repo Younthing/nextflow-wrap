@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  type QueryClient,
   queryOptions,
   useMutation,
   useQuery,
@@ -11,7 +12,7 @@ import type { EditorStore } from "@/features/editor/store";
 import { getEditorSaveSession } from "@/features/editor/editor-save";
 import { api, ApiError } from "@/lib/api";
 import { scriptModuleKey, type ScriptModuleList } from "@/features/notebook/queries";
-import { indexModules } from "./catalog";
+import { indexModules, type ModuleIndex } from "./catalog";
 import { duplicateWorkflowName, WORKFLOW_NAME_MAX } from "./library";
 import type { ModuleDef, WorkflowDoc, WorkflowSummary } from "./types";
 
@@ -38,6 +39,26 @@ export const moduleCatalogQueryOptions = () =>
     queryKey: scriptModuleKey,
     queryFn: () => api<ScriptModuleList>("/script-modules"),
   });
+
+/**
+ * The module index for a one-off plan. Reuses the editor's index once the
+ * published modules are cached; before that it only knows the builtins.
+ */
+export async function loadModuleIndex(
+  qc: QueryClient,
+  stored: ModuleIndex,
+): Promise<{ index: ModuleIndex; error?: string }> {
+  const options = moduleCatalogQueryOptions();
+  const cached = qc.getQueryData(options.queryKey);
+  if (stored.size && cached) return { index: stored };
+  try {
+    const raw = cached ?? (await qc.fetchQuery(options));
+    return { index: indexModules(raw.modules) };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { index: new Map(), error: `模块库加载失败：${message}` };
+  }
+}
 
 export function useModuleCatalog() {
   return useQuery({ ...moduleCatalogQueryOptions(), select: withIndex });

@@ -6,7 +6,8 @@ import { emptyWorkflow } from "@/features/workflow/document";
 import { fixtureReadsWorkflow } from "@/features/workflow/fixture-workflows";
 import { FIXTURE_MODULES } from "@/features/workflow/fixture-modules";
 import type { WorkflowDoc } from "@/features/workflow/types";
-import { ensureWorkflowSaved, prepareStartRun, startConfirmView, startPlanStamp, type StartRunInput } from "./assistant-start-run";
+import { ensureWorkflowSaved, prepareStartRun, prepareStartRunInvocation, startConfirmView, startPlanStamp, type StartRunInput, type StartRunServices } from "./assistant-start-run";
+import type { RunDetail } from "@/features/runs/types";
 import { getEditorSaveSession, type EditorSaveRead } from "./editor-save";
 import { createEditorStore, selectIsDirty, type EditorStore } from "./store";
 
@@ -163,3 +164,61 @@ describe("ensureWorkflowSaved", () => {
   });
 });
 
+
+describe("prepareStartRunInvocation", () => {
+  function services(store: EditorStore) {
+    const launched: unknown[] = [];
+    const deps = {
+      store,
+      saveWorkflow: vi.fn(async (doc: WorkflowDoc) => doc),
+      launch: vi.fn(async (request) => {
+        launched.push(request);
+        return { id: "run1", runName: "brave_turing", status: "submitted" } as RunDetail;
+      }),
+      health: vi.fn(async () => ({ mocked: true, runnerReady: true }) as never),
+      catalog: vi.fn(async () => ({ index })),
+      readConfig: vi.fn(() => defaultLaunchConfig()),
+      rememberConfig: vi.fn(),
+      openRun: vi.fn(),
+    } satisfies StartRunServices;
+    return { deps, launched };
+  }
+
+  it("saves a dirty canvas, shows the plan, and launches only on invoke", async () => {
+    const store = createEditorStore();
+    store.getState().load(qcDemoWorkflow());
+    store.getState().setName("改名");
+    const { deps } = services(store);
+    const prepared = await prepareStartRunInvocation(deps, "试一下");
+    expect(deps.saveWorkflow).toHaveBeenCalledOnce();
+    expect(prepared.view).toMatchObject({ title: "启动运行", hint: "试一下" });
+    expect(prepared.problems()).toEqual([]);
+    expect(deps.launch).not.toHaveBeenCalled();
+
+    await expect(prepared.invoke()).resolves.toMatchObject({ accepted: true, runId: "run1", message: "已启动 brave_turing" });
+    expect(deps.launch).toHaveBeenCalledOnce();
+    expect(deps.rememberConfig).toHaveBeenCalledWith("qc-smoke", expect.objectContaining({ executor: "local" }));
+    expect(deps.openRun).toHaveBeenCalledWith("run1");
+  });
+
+  it("refuses at accept time when the canvas changed after the confirm opened", async () => {
+    const store = createEditorStore();
+    store.getState().load(qcDemoWorkflow());
+    const { deps } = services(store);
+    const prepared = await prepareStartRunInvocation(deps);
+    store.getState().setParam("outdir", "elsewhere");
+    expect(prepared.problems()).toEqual(["确认时流程或启动设置已变化，没有启动。请再试一次。"]);
+    await expect(prepared.invoke()).rejects.toThrow(/已变化/);
+    expect(deps.launch).not.toHaveBeenCalled();
+  });
+
+  it("blocks an unsaved canvas without saving or launching", async () => {
+    const store = createEditorStore();
+    store.getState().load(emptyWorkflow(""));
+    const { deps } = services(store);
+    const prepared = await prepareStartRunInvocation(deps);
+    expect(prepared.view.type).toBe("info");
+    expect(prepared.view.problems).toContain("请先保存流程（Ctrl+S）");
+    expect(deps.saveWorkflow).not.toHaveBeenCalled();
+  });
+});

@@ -10,7 +10,9 @@ import { Button } from "@/components/ui/button";
 import { PANELS, useLayoutStore, usePanel } from "@/components/layout/layout-store";
 import { ResizeHandle } from "@/components/layout/resize-handle";
 import { PanelLoading } from "@/components/ui/panel-notice";
+import { NotebookAssistant } from "@/features/assistant/surfaces/notebook";
 import { NotebookEditor } from "@/features/notebook/components/notebook-editor";
+import { NotebookSessionProvider } from "@/features/notebook/session-provider";
 import { PublishWizard } from "@/features/notebook/components/publish-wizard";
 import { useCreateNotebook, useNotebooks } from "@/features/notebook/queries";
 import type { NotebookSummary } from "@/features/notebook/types";
@@ -130,7 +132,11 @@ function WorkbenchFrame({ project, path }: { project: Project; path?: string[] }
           <section className="glass flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl">
             <WorkbenchTabs tabs={tabs} names={names} active={activeId} onClose={close} />
             {view.kind === "notebook" ? (
-              <NotebookEditor key={view.id} notebookId={view.id} />
+              // The editor and the assistant both work on the open notebook's session.
+              <NotebookSessionProvider key={view.id} notebookId={view.id}>
+                <NotebookAssistant />
+                <NotebookEditor notebookId={view.id} />
+              </NotebookSessionProvider>
             ) : view.kind === "missing" ? (
               <AsyncPlaceholder status="error" className="m-4 h-auto" message="没有这个页面" />
             ) : (

@@ -5,10 +5,13 @@
  *   dialog. It registers no tools and carries no scenario instructions.
  * - Module (this contract): id, a standalone prompt fragment, and the name and
  *   description of each tool. Like a `languageModelTools` contribution.
- * - Surface (`../surfaces/*`): mounted on the page that owns the store. It calls
- *   `useAssistantModule(id)` and registers the tools with `useFrontendTool`.
- * - Domain (`features/<domain>/assistant-actions.ts`): what the tools do,
- *   written against that domain's store or command API.
+ * - Surface (`../surfaces/*`): mounted next to the domain's session. It calls
+ *   `useAssistantModule(id)`, registers the tools with `useFrontendTool`, and
+ *   puts risky ones through `useConfirmedTool`. No queries, mutations, or router.
+ * - Domain (`features/<domain>/assistant-actions.ts` and its service hooks):
+ *   what the tools do, written against the domain's session — the editor
+ *   store, the notebook session, the run on screen. Risky tools return a
+ *   `PreparedInvocation` (VS Code `prepareInvocation` → `invoke`).
  *
  * Only mounted modules reach the model. A request names them in
  * {@link ASSISTANT_MODULES_PROP}; no list means no scenario at all.

@@ -1,4 +1,7 @@
-import { infoConfirmView, type ConfirmView } from "@/features/assistant/confirm";
+import { infoConfirmView, type ConfirmView, type PreparedInvocation } from "@/features/assistant/confirm";
+import type { HealthStatus } from "@/lib/api-types";
+import type { AcceptedRun } from "@/features/runs/assistant-actions";
+import type { RunDetail } from "@/features/runs/types";
 import { getEditorSaveSession, type EditorSaveRead } from "./editor-save";
 import { selectIsDirty, type EditorStore } from "./store";
 import { api } from "@/lib/api";
@@ -20,9 +23,10 @@ import type { LaunchRequest } from "@/features/runs/types";
 import { launchParams } from "@/features/workflow/inputs";
 
 /*
- * `start_run` planning for the canvas assistant: the same launch the run
- * dialog would submit, or the reasons it would refuse. The surface asks for
- * confirmation and only then calls the launch API.
+ * `start_run` for the canvas assistant: the same launch the run dialog would
+ * submit, or the reasons it would refuse. {@link prepareStartRunInvocation}
+ * saves, plans, and returns the confirm plus the launch; the surface only
+ * shows the confirm and calls `invoke` after an accept.
  */
 
 export interface StartRunInput {
@@ -237,3 +241,80 @@ export async function ensureWorkflowSaved(
   return { doc: store.getState().toDoc() };
 }
 
+
+/** What `start_run` needs from the app: the editor session, its save queue, and the run APIs. */
+export interface StartRunServices {
+  store: EditorStore;
+  saveWorkflow(doc: WorkflowDoc): Promise<WorkflowDoc>;
+  launch(request: LaunchRequest): Promise<RunDetail>;
+  health(): Promise<HealthStatus | undefined>;
+  catalog(stored: ModuleIndex): Promise<{ index: ModuleIndex; error?: string }>;
+  readConfig(docId: string): LaunchConfig;
+  rememberConfig(workflowId: string, launch: LaunchConfig): void;
+  openRun(runId: string): void;
+}
+
+/**
+ * `start_run`'s prepareInvocation: saves a dirty canvas, plans the launch, and
+ * returns the confirm view. `invoke` saves again if the canvas changed, refuses
+ * if the plan no longer matches what was shown, then launches.
+ */
+export async function prepareStartRunInvocation(
+  services: StartRunServices,
+  reason?: string,
+): Promise<PreparedInvocation<AcceptedRun>> {
+  const { store } = services;
+  let saveError: string | undefined;
+  const state = store.getState();
+  if (state.docId && selectIsDirty(state)) {
+    const saved = await ensureWorkflowSaved(services.saveWorkflow, store);
+    if ("error" in saved) saveError = saved.error;
+  }
+
+  const health = await services.health();
+  const catalog = await services.catalog(store.getState().index);
+  const snapshot = (): StartRunPlan => {
+    const current = store.getState();
+    return prepareStartRun({
+      docId: current.docId,
+      doc: current.toDoc(),
+      index: catalog.index,
+      config: services.readConfig(current.docId),
+      real: !!health && !health.mocked,
+      runnerReady: !!health?.runnerReady,
+      diagnostics: health?.diagnostics,
+      catalogError: catalog.error,
+    });
+  };
+  let shown = snapshot();
+  if (saveError) shown = { ...shown, problems: [...shown.problems, saveError], request: null };
+  const changed = "确认时流程或启动设置已变化，没有启动。";
+
+  return {
+    view: startConfirmView(shown, reason),
+    problems: () => {
+      const fresh = snapshot();
+      if (startPlanStamp(fresh) !== startPlanStamp(shown)) return [`${changed}请再试一次。`];
+      return fresh.problems;
+    },
+    invoke: async () => {
+      const latest = store.getState();
+      if (latest.docId && selectIsDirty(latest)) {
+        const saved = await ensureWorkflowSaved(services.saveWorkflow, store);
+        if ("error" in saved) throw new Error(saved.error);
+      }
+      const fresh = snapshot();
+      if (startPlanStamp(fresh) !== startPlanStamp(shown) || !fresh.request) throw new Error(changed);
+      services.rememberConfig(fresh.workflow.id, fresh.launch);
+      const run = await services.launch(fresh.request);
+      services.openRun(run.id);
+      return {
+        accepted: true,
+        runId: run.id,
+        runName: run.runName,
+        status: run.status,
+        message: `已启动 ${run.runName}`,
+      };
+    },
+  };
+}

@@ -83,6 +83,18 @@ export async function settleConfirmedAction<T extends AcceptedResult>(
   }
 }
 
+/**
+ * A risky tool call after `prepareInvocation`: what to show, what to re-check
+ * at accept time, and the call itself. Domain services build these; the
+ * surface only puts them through the confirm dialog.
+ */
+export interface PreparedInvocation<T extends AcceptedResult> {
+  view: ConfirmView;
+  /** Re-checked when the user accepts. Anything listed blocks `invoke`. */
+  problems: () => readonly string[];
+  invoke: () => Promise<T>;
+}
+
 export interface ConfirmThenRunOptions<T extends AcceptedResult> {
   isReplay: boolean;
   aborted: () => boolean;

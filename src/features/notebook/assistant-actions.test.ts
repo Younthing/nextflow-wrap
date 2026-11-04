@@ -6,7 +6,7 @@ import {
   describeCellOutput,
   runCellBlockers,
   runCellConfirmView,
-  type NotebookCommands,
+  type NotebookDocumentApi,
 } from "./assistant-actions";
 import { simulateCells } from "./simulate";
 import { fixtureNotebooks } from "./test-fixtures";
@@ -18,7 +18,7 @@ function fixture(id: string): NotebookDoc {
   return doc;
 }
 
-/** The editor's command API over plain state, with the demo runner standing in for the kernel. */
+/** The session's document API over plain state, with the demo runner standing in for the kernel. */
 function fakeEditor(initial: NotebookDoc) {
   const state = {
     doc: initial,
@@ -33,7 +33,7 @@ function fakeEditor(initial: NotebookDoc) {
     for (const cell of cells) state.outputs[cell.id] = cell;
     return { cells, kernel: { mode: "jupyter", kernel: "python3" } };
   });
-  const commands: NotebookCommands = {
+  const commands: NotebookDocumentApi = {
     read: () => ({ doc: state.doc, outputs: state.outputs, busy: state.busy }),
     setCells: (cells: NotebookCell[], select?: string) => {
       state.doc = { ...state.doc, cells };
@@ -131,6 +131,19 @@ describe("run_notebook_cell", () => {
     editor.state.busy = true;
     await expect(editor.actions.runCell("c2")).rejects.toThrow(/正在运行/);
     expect(editor.run).not.toHaveBeenCalled();
+  });
+
+  it("prepares the confirm, and refuses at accept time when the cell's source changed", async () => {
+    const prepared = editor.actions.prepareRunCell("c2", "验证");
+    expect(prepared.view).toMatchObject({ title: "运行单元格", hint: "验证" });
+    expect(prepared.problems()).toEqual([]);
+    editor.actions.editCell({ editType: "edit", cellId: "c2", source: "rows = 1\n" });
+    expect(prepared.problems()).toEqual(["确认时单元格内容已变化，没有运行。请再试一次。"]);
+    expect(editor.run).not.toHaveBeenCalled();
+
+    const fresh = editor.actions.prepareRunCell("c2");
+    await expect(fresh.invoke()).resolves.toMatchObject({ accepted: true, cellId: "c2" });
+    expect(editor.actions.prepareRunCell("nope").view.type).toBe("info");
   });
 
   it("asks before running, and the confirm names the cell and kernel", () => {
