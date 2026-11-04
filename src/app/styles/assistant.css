@@ -41,17 +41,23 @@ aside.copilotKitSidebar [data-copilotkit] {
  * card on the radius-xl, inset by the shell's 0.75rem gutter instead of
  * running edge to edge. Its width still counts from the window edge, so the
  * page CopilotKit pushes aside keeps the same 0.75rem gap to it.
+ *
+ * CopilotKit's drawer chrome (border-l, bg-background, shadow-xl, fixed
+ * top-0 right-0 h-[100dvh]) sits in its own @layer, so these unlayered rules
+ * already outrank it; `!important` keeps it that way should CopilotKit ever
+ * mark them important or ship them unlayered.
  */
 aside.copilotKitSidebar {
-  inset-block: 0.75rem;
-  right: 0.75rem;
-  height: auto;
-  max-height: none;
+  top: 0.75rem !important;
+  bottom: 0.75rem !important;
+  right: 0.75rem !important;
+  height: auto !important;
+  max-height: none !important;
   overflow: hidden;
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-xl);
-  background-color: var(--glass);
-  box-shadow: var(--glass-shadow), var(--glass-highlight);
+  border: 1px solid var(--glass-border) !important;
+  border-radius: var(--radius-xl) !important;
+  background-color: var(--glass) !important;
+  box-shadow: var(--glass-shadow), var(--glass-highlight) !important;
   -webkit-backdrop-filter: blur(18px) saturate(160%);
   backdrop-filter: blur(18px) saturate(160%);
 }
@@ -59,9 +65,15 @@ aside.copilotKitSidebar {
 aside.copilotKitSidebar[aria-hidden="true"] {
   --tw-translate-x: calc(100% + 1.5rem);
 }
+/*
+ * CopilotKit pins `width: var(--sidebar-width) !important` inside
+ * @layer base, and a layered !important beats an unlayered one, so the width
+ * cannot be overridden; cap it instead, or the card would run 0.75rem into the
+ * page it pushed aside.
+ */
 @media (min-width: 768px) {
   aside.copilotKitSidebar[data-copilot-sidebar] {
-    width: calc(var(--sidebar-width) - 0.75rem) !important;
+    max-width: calc(var(--sidebar-width) - 0.75rem) !important;
   }
 }
 .copilotKitSidebar .copilotKitHeader {
