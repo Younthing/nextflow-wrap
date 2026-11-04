@@ -2,16 +2,19 @@ import type { Metadata } from "next";
 
 import { AppShell } from "@/components/layout/app-shell";
 import { Providers } from "@/components/providers";
+import { getProductTheme } from "@/lib/product-theme";
 import { THEME_INIT_SCRIPT } from "@/lib/theme";
 import { jetbrainsMono, notoSansSC, notoSerifSC } from "./fonts";
 import "./globals.css";
 
+const productTheme = getProductTheme();
+
 export const metadata: Metadata = {
   title: {
-    default: "Nextflow Studio",
-    template: "%s · Nextflow Studio",
+    default: productTheme.displayName,
+    template: `%s · ${productTheme.displayName}`,
   },
-  description: "用笔记本、内置节点搭建并运行 Nextflow 流程",
+  description: productTheme.description,
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

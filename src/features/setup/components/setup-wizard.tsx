@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PanelLoading, PanelNotice } from "@/components/ui/panel-notice";
 import { mockingActive, setDemoMode } from "@/lib/mocking";
+import { getProductTheme } from "@/lib/product-theme";
 import { toast } from "@/lib/toast";
 import { shouldAutoInstall } from "../auto-install";
 import { useInstallRequired, useInstallTool, useSetupStatus } from "../queries";
@@ -37,7 +38,7 @@ export function SetupWizardView({
     <div className="mx-auto flex h-full max-w-3xl flex-col gap-4 overflow-y-auto pb-6">
       <Card>
         <CardHeader>
-          <CardTitle className="font-serif text-xl">欢迎使用 Nextflow Studio</CardTitle>
+          <CardTitle className="font-serif text-xl">欢迎使用 {getProductTheme().displayName}</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <ToolChecklist tools={status.tools} onInstall={onInstall} installing={installing} />
