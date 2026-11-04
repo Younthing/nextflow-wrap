@@ -70,6 +70,16 @@ describe("convertNotebook", () => {
     expect(() => convertNotebook(doc)).toThrow(/pattern/);
   });
 
+  it("rejects input names that collide with Nextflow globals", () => {
+    for (const name of ["channel", "Channel", "params", "task", "workflow", "nextflow"]) {
+      const doc: NotebookDoc = {
+        ...qc(),
+        cells: [{ id: "c", role: "input", source: `# @input name=${name} type=int default=0\n` }],
+      };
+      expect(() => convertNotebook(doc)).toThrow(/Nextflow 内置名冲突/);
+    }
+  });
+
   it("splits list arguments", () => {
     const converted = convertNotebook(qc());
     expect(tryRunArgv(converted.inputs, { fastq_zip: "S1_fastq.zip,S2_fastq.zip", title: "QC 汇总" })).toEqual([

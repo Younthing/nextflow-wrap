@@ -20,6 +20,15 @@ describe("immunofluorescence example workflows", () => {
     expect([...main, ...IF_SIDE_MODULE_IDS].every((id) => used.has(id))).toBe(true);
   });
 
+  it("never declares an input name Nextflow reserves (IF_BLOB_DETECT used `channel`)", () => {
+    const blob = modules.find((def) => def.id === "script/if_blob_detect")!;
+    expect(blob.inputs.map((port) => port.name)).toContain("channel_index");
+    for (const def of modules) {
+      expect(def.inputs.map((port) => port.name)).not.toContain("channel");
+      expect(def.script).not.toMatch(/--channel\b(?!_)/);
+    }
+  });
+
   it("needs apoc only in the APOC module and never opens a napari viewer", () => {
     for (const def of modules) {
       expect(def.script).not.toMatch(/napari/);
