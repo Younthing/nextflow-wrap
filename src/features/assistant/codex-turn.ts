@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { CodexEvent, CodexHarness, CodexSession } from "@/features/codex-harness";
+import type { CodexEvent, CodexHarness } from "@/features/codex-harness";
 import type { SessionPermit } from "./session-limit";
 import { isRecord } from "@/lib/record";
 
@@ -137,6 +137,7 @@ export async function* interpretCodexEvents(
   toolNames: readonly string[],
   newId?: () => string,
   signal?: AbortSignal,
+  label = "Codex",
 ): AsyncGenerator<CodexAguiEvent> {
   const nextId = newId ?? (() => crypto.randomUUID());
   let raw = "";
@@ -145,7 +146,7 @@ export async function* interpretCodexEvents(
   let ended = false;
   const messageId = nextId();
   for await (const event of events) {
-    throwIfAborted(signal);
+    throwIfAborted(signal, label);
     if (event.type === "text.delta") {
       raw += event.delta;
       if (!streamed && shouldStream(raw)) {
@@ -162,12 +163,12 @@ export async function* interpretCodexEvents(
     }
     if (event.type === "turn.end") {
       ended = true;
-      if (event.status !== "completed") throw new Error(failure ?? `Codex 回合结束：${event.status}`);
+      if (event.status !== "completed") throw new Error(failure ?? `${label} 回合结束：${event.status}`);
       break;
     }
   }
-  throwIfAborted(signal);
-  if (!ended) throw new Error(failure ?? "Codex 会话在回合结束前关闭了");
+  throwIfAborted(signal, label);
+  if (!ended) throw new Error(failure ?? `${label} 会话在回合结束前关闭了`);
   const call = parseToolReply(raw, toolNames);
   if (call) {
     if (streamed) throw new CodexTurnError(MIXED_TOOL_MESSAGE);
@@ -180,6 +181,30 @@ export async function* interpretCodexEvents(
   }
   if (streamed) return;
   if (raw) yield textEvent(messageId, raw);
+}
+
+/** The slice of a harness session one assistant run needs. Codex and Grok sessions both fit. */
+export interface AgentTurnSession {
+  events: AsyncIterable<CodexEvent>;
+  startTurn(input: string): Promise<{ turnId: string }>;
+  interrupt(): Promise<void>;
+  close(): Promise<void>;
+}
+
+export interface AgentAssistantRun {
+  /** Opens one short-lived local agent session in `cwd`. */
+  open: (cwd: string) => Promise<AgentTurnSession>;
+  /** Name used in user-facing errors, e.g. `Codex` or `Grok`. */
+  label: string;
+  /** Prefix for the empty temp working directory. */
+  tempPrefix: string;
+  prompt: string;
+  /** Set only in tests. A chat run omits this and gets an empty temp directory. */
+  cwd?: string;
+  maxSteps?: number;
+  signal?: AbortSignal;
+  /** When set, the agent starts only if this request still owns the session slot. */
+  permit?: SessionPermit;
 }
 
 export interface CodexAssistantRun {
@@ -195,10 +220,33 @@ export interface CodexAssistantRun {
 }
 
 /** One CopilotKit run: a short-lived Codex thread, then AG-UI text or one tool call. */
-export async function* runCodexAssistant(input: PromptInput, options: CodexAssistantRun): AsyncGenerator<CodexAguiEvent> {
+export function runCodexAssistant(input: PromptInput, options: CodexAssistantRun): AsyncGenerator<CodexAguiEvent> {
+  return runAgentAssistant(input, {
+    label: "Codex",
+    tempPrefix: "nextflow-codex-",
+    prompt: options.prompt,
+    cwd: options.cwd,
+    maxSteps: options.maxSteps,
+    signal: options.signal,
+    permit: options.permit,
+    open: (cwd) => options.harness.open({
+      cwd,
+      model: options.model,
+      approvalPolicy: "never",
+      sandboxPolicy: "readOnly",
+      autoApproval: "decline",
+    }),
+  });
+}
+
+/**
+ * One CopilotKit run over any local agent harness: an empty temp cwd, one
+ * prompt turn, then AG-UI text or one browser tool call.
+ */
+export async function* runAgentAssistant(input: PromptInput, options: AgentAssistantRun): AsyncGenerator<CodexAguiEvent> {
   const claimed = options.permit?.claim() ?? false;
   const maxSteps = resolveMaxSteps(options.maxSteps);
-  let session: CodexSession | undefined;
+  let session: AgentTurnSession | undefined;
   let workspace: { cwd: string; remove: () => Promise<void> } | undefined;
   let turnReady = false;
   let sawAbort = false;
@@ -225,19 +273,13 @@ export async function* runCodexAssistant(input: PromptInput, options: CodexAssis
 
     workspace = options.cwd
       ? { cwd: options.cwd, remove: async () => undefined }
-      : await createEmptyCodexCwd();
+      : await createEmptyCwd(options.tempPrefix);
     if (aborted()) return;
-    session = await options.harness.open({
-      cwd: workspace.cwd,
-      model: options.model,
-      approvalPolicy: "never",
-      sandboxPolicy: "readOnly",
-      autoApproval: "decline",
-    });
+    session = await options.open(workspace.cwd);
     // An abort during open() must not start a turn after the HTTP slot was released.
     if (aborted()) return;
     // interrupt() rejects until startTurn has a turn id. Closing is what
-    // actually stops a run cancelled during thread/start.
+    // actually stops a run cancelled while the session is starting.
     const pending = session.startTurn(renderCodexPrompt(options.prompt, input, maxSteps)).then(
       () => {
         turnReady = true;
@@ -251,7 +293,7 @@ export async function* runCodexAssistant(input: PromptInput, options: CodexAssis
     );
     const names = (input.tools ?? []).map((tool) => tool.name);
     try {
-      yield* interpretCodexEvents(session.events, names, undefined, options.signal);
+      yield* interpretCodexEvents(session.events, names, undefined, options.signal, options.label);
     } catch (error) {
       const started = await pending;
       if (!started.ok) throw started.error;
@@ -270,8 +312,8 @@ export async function* runCodexAssistant(input: PromptInput, options: CodexAssis
   }
 }
 
-async function createEmptyCodexCwd(): Promise<{ cwd: string; remove: () => Promise<void> }> {
-  const cwd = await mkdtemp(join(tmpdir(), "nextflow-codex-"));
+async function createEmptyCwd(prefix: string): Promise<{ cwd: string; remove: () => Promise<void> }> {
+  const cwd = await mkdtemp(join(tmpdir(), prefix));
   return {
     cwd,
     remove: () => rm(cwd, { recursive: true, force: true }),
@@ -283,8 +325,8 @@ function resolveMaxSteps(value: number | undefined): number {
   return value;
 }
 
-function throwIfAborted(signal?: AbortSignal): void {
-  if (signal?.aborted) throw new Error("Codex 回合已取消");
+function throwIfAborted(signal?: AbortSignal, label = "Codex"): void {
+  if (signal?.aborted) throw new Error(`${label} 回合已取消`);
 }
 
 function textEvent(messageId: string, delta: string): CodexAguiEvent {

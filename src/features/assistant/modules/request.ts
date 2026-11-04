@@ -39,7 +39,14 @@ export async function requestAssistantPrompt(request: Request): Promise<{ reques
     return { request, prompt: composeAssistantPrompt([]) };
   }
   const text = await request.text();
-  const rebuilt = new Request(request, { body: text });
+  // Copy fields instead of `new Request(request, ...)`: Next's NextRequest keeps
+  // private state, and cloning it that way throws in the real route runtime.
+  const rebuilt = new Request(request.url, {
+    method: request.method,
+    headers: request.headers,
+    body: text,
+    signal: request.signal,
+  });
   let moduleIds: readonly string[] = [];
   if (text) {
     try {

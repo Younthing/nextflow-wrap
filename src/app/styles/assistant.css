@@ -1,14 +1,149 @@
-/* CopilotKit sidebar: app fonts and a quieter welcome line. */
+/*
+ * CopilotKit sidebar, dressed in the app's own tokens.
+ *
+ * CopilotKit's stylesheet redeclares --background, --primary, --muted, … on
+ * every [data-copilotkit] element (a neutral shadcn palette, plus a `.dark`
+ * one), which hides ours. `inherit` hands each one back from :root / .dark.
+ * `aside` lifts these above `.dark [data-copilotkit]`.
+ */
+aside.copilotKitSidebar[data-copilotkit],
+aside.copilotKitSidebar [data-copilotkit] {
+  --background: inherit;
+  --foreground: inherit;
+  --muted: inherit;
+  --muted-foreground: inherit;
+  --border: inherit;
+  --input: inherit;
+  --ring: inherit;
+  --primary: inherit;
+  --primary-foreground: inherit;
+  --secondary: inherit;
+  --secondary-foreground: inherit;
+  --accent: inherit;
+  --accent-foreground: inherit;
+  --destructive: inherit;
+  --destructive-foreground: inherit;
+  --radius: inherit;
+  --card: var(--glass);
+  --card-foreground: var(--foreground);
+  --popover: var(--background);
+  --popover-foreground: var(--foreground);
+}
+
 .copilotKitSidebar {
   --cpk-font-sans:
     var(--font-noto-sans-sc), ui-sans-serif, system-ui, sans-serif;
+  --cpk-font-mono: var(--font-jetbrains-mono), ui-monospace, monospace;
 }
-.copilotKitSidebar h1 {
+
+/* The panel is a glass-strong surface, like dialogs and menus. */
+aside.copilotKitSidebar {
+  background-color: var(--glass-strong);
+  border-color: var(--glass-border);
+  box-shadow: var(--glass-shadow), var(--glass-highlight);
+  -webkit-backdrop-filter: blur(24px) saturate(170%);
+  backdrop-filter: blur(24px) saturate(170%);
+}
+.copilotKitSidebar .copilotKitHeader {
+  background-color: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border-color: var(--border);
+  padding-block: 0.875rem;
+}
+.copilotKitSidebar .copilotKitHeader [class*="text-base"] {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+/* Welcome line: quiet, not a hero title. Markdown headings keep theirs. */
+.copilotKitSidebar h1:not(.cpk\:prose *) {
   padding-inline: 2rem;
   font-size: 0.95rem;
   line-height: 1.7;
   color: var(--muted-foreground);
 }
+
+/* Messages: markdown in app colours; the user bubble on the app radius. */
+.copilotKitSidebar .cpk\:prose {
+  --tw-prose-body: var(--foreground);
+  --tw-prose-headings: var(--foreground);
+  --tw-prose-lead: var(--muted-foreground);
+  --tw-prose-links: var(--primary);
+  --tw-prose-bold: var(--foreground);
+  --tw-prose-counters: var(--muted-foreground);
+  --tw-prose-bullets: var(--muted-foreground);
+  --tw-prose-hr: var(--border);
+  --tw-prose-quotes: var(--foreground);
+  --tw-prose-quote-borders: var(--border);
+  --tw-prose-captions: var(--muted-foreground);
+  --tw-prose-kbd: var(--foreground);
+  --tw-prose-code: var(--foreground);
+  --tw-prose-pre-code: var(--foreground);
+  --tw-prose-pre-bg: var(--muted);
+  --tw-prose-th-borders: var(--border);
+  --tw-prose-td-borders: var(--border);
+  font-size: 0.875rem;
+  line-height: 1.7;
+}
+.copilotKitSidebar .copilotKitUserMessage .cpk\:prose {
+  border-radius: var(--radius);
+}
+
+/* Composer: a glass field like the app's inputs, primary send button. */
+.copilotKitSidebar .copilotKitInput {
+  background-color: var(--glass);
+  border: 1px solid var(--input);
+  border-radius: var(--radius);
+  box-shadow: var(--glass-highlight);
+  transition: border-color 150ms, box-shadow 150ms;
+}
+.copilotKitSidebar .copilotKitInput:focus-within {
+  border-color: var(--ring);
+  box-shadow:
+    var(--glass-highlight),
+    0 0 0 3px color-mix(in oklab, var(--ring) 40%, transparent);
+}
+.copilotKitSidebar .copilotKitInput textarea {
+  color: var(--foreground);
+  font-size: 0.875rem;
+}
+.copilotKitSidebar .copilotKitInput textarea::placeholder {
+  color: var(--muted-foreground);
+}
+.copilotKitSidebar .copilotKitInput button:not([data-testid="copilot-send-button"]) {
+  color: var(--muted-foreground);
+}
+.copilotKitSidebar .copilotKitInput button:not([data-testid="copilot-send-button"]):hover:not(:disabled) {
+  background-color: var(--accent);
+  color: var(--foreground);
+}
+.copilotKitSidebar [data-testid="copilot-send-button"] {
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+}
+.copilotKitSidebar [data-testid="copilot-send-button"]:disabled {
+  background-color: var(--muted);
+  color: var(--muted-foreground);
+}
+.copilotKitSidebar [data-testid="copilot-send-button"]:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* "Thinking" pill: glass and primary instead of CopilotKit's violet. */
+.copilotKitSidebar .cpk-intelligence-indicator__chrome {
+  background: var(--glass);
+  border-color: var(--glass-border);
+  box-shadow: var(--glass-highlight);
+}
+.copilotKitSidebar .cpk-intelligence-indicator__content {
+  color: var(--primary);
+}
+.copilotKitSidebar .cpk-intelligence-indicator[data-status="finished"] .cpk-intelligence-indicator__content {
+  color: var(--muted-foreground);
+}
+
 /* The sidebar pushes the page aside on wide screens; below that the editor
    would be too narrow, so it floats over the inspector instead. */
 @media (max-width: 1799px) {

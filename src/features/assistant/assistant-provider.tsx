@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import type { CliBlocker } from "./backend";
 import { useAssistantStatusQuery } from "./queries";
 import { CopilotKitProvider, CopilotSidebar } from "@copilotkit/react-core/v2";
 import "@copilotkit/react-core/v2/styles.css";
@@ -26,9 +27,23 @@ const LABELS = {
   sidebarLabel: "AI 助手侧边栏",
 };
 
+/** Facts the settings page shows; the header button only needs `detail` / `message`. */
+export interface AssistantStatusFacts {
+  /** Backend actually in use (or the forced one that failed). */
+  backend?: string;
+  model?: string;
+  /** Why the assistant is off, e.g. `codex-unauthenticated`, `missing-key`. */
+  reason?: string;
+  /** API key env var the built-in backend still needs. */
+  missing?: string;
+  /** Why `auto` skipped a local CLI. */
+  codex?: CliBlocker;
+  grok?: CliBlocker;
+}
+
 export type AssistantStatus =
-  | { enabled: true; detail: string }
-  | { enabled: false; message: string };
+  | ({ enabled: true; detail: string } & AssistantStatusFacts)
+  | ({ enabled: false; message: string } & AssistantStatusFacts);
 
 interface AssistantContextValue {
   status: AssistantStatus;

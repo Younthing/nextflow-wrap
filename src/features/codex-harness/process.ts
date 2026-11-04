@@ -9,6 +9,8 @@ export interface CodexSpawnSpec {
   binaryPath: string;
   args: string[];
   cwd?: string;
+  /** Child environment. Defaults to `process.env`. */
+  env?: NodeJS.ProcessEnv;
 }
 
 export interface CodexChildExit {
@@ -36,7 +38,7 @@ export function spawnCodexChild(spec: CodexSpawnSpec): CodexChild {
   const child = spawn(spec.binaryPath, spec.args, {
     cwd: spec.cwd,
     stdio: ["pipe", "pipe", "pipe"],
-    env: process.env,
+    env: spec.env ?? process.env,
     detached: process.platform !== "win32",
     windowsHide: true,
   });

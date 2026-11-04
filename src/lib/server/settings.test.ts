@@ -48,6 +48,12 @@ describe("settings", () => {
     expect(env.NEXTFLOW_BIN).toBe("/usr/local/bin/nextflow");
   });
 
+  it("maps the Grok backend and model to the variables the assistant reads", () => {
+    const settings = { ...defaultSettings(), assistant: { backend: "grok" as const, grokModel: "grok-code" } };
+    expect(settingsUpdateSchema.safeParse({ settings }).success).toBe(true);
+    expect(settingsEnv(settings)).toMatchObject({ COPILOT_BACKEND: "grok", GROK_MODEL: "grok-code" });
+  });
+
   it("rejects malformed values", () => {
     const bad = { settings: { ...defaultSettings(), runtime: { defaultEngine: "shell", memory: "lots", httpProxy: "socks5://x" } } };
     expect(settingsUpdateSchema.safeParse(bad).success).toBe(false);
