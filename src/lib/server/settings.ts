@@ -7,6 +7,7 @@ import { SAFE_COMMAND, SAFE_HOST, SAFE_PATH, SAFE_USER } from "@/features/remote
 import { REMOTE_ID } from "@/features/remote/types";
 import { CLOUD_SECRET_KEYS, defaultSettings, SECRET_KEYS, type SecretKey, type SettingsUpdate, type SettingsView, type StudioSettings } from "@/features/settings/types";
 import { dataDirectory } from "./paths";
+import { NEXTFLOW_VERSION_PATTERN } from "@/features/settings/nextflow-version";
 
 type EnvMap = Partial<Record<string, string>>;
 
@@ -33,6 +34,7 @@ export const settingsSchema = z.object({
     memory: optionalText(40).refine((value) => !value || /^\d+(?:\.\d+)?\s*\.?\s*(?:[KMGT]B)$/i.test(value), "写成 16.GB 这样的形式"),
     javaHome: optionalText(1000),
     nextflowBin: optionalText(1000),
+    nextflowVersion: optionalText(40).refine((value) => !value || value === "latest" || NEXTFLOW_VERSION_PATTERN.test(value), "选择最新稳定版，或填写完整版本号，例如 26.10.4"),
     nextflowSetup: z.string().max(10_000).regex(/^[^\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]*$/, "不能包含控制字符")
       .optional().transform((value) => value?.replace(/\r\n?/g, "\n").trim() || undefined),
     jupyterPython: optionalText(1000),
@@ -137,6 +139,7 @@ export function settingsEnv(settings: StudioSettings, secrets: Partial<Record<Se
   const set = (key: string, value: string | undefined) => { if (value) env[key] = value; };
   set("NEXTFLOW_JAVA_HOME", settings.runtime.javaHome);
   set("NEXTFLOW_BIN", settings.runtime.nextflowBin);
+  set("NEXTFLOW_STUDIO_NEXTFLOW_VERSION", settings.runtime.nextflowVersion);
   set("NEXTFLOW_STUDIO_NEXTFLOW_SETUP", settings.runtime.nextflowSetup);
   set("NEXTFLOW_STUDIO_JUPYTER_PYTHON", settings.runtime.jupyterPython);
   set("NEXTFLOW_HTTP_PROXY", settings.runtime.httpProxy);
@@ -183,7 +186,7 @@ export function settingsView(dir?: string, env: EnvMap = process.env): SettingsV
   const ours = state.studioSettingsApplied?.ours ?? new Set<string>();
   const mapped = Object.keys(settingsEnv({
     ...settings,
-    runtime: { ...settings.runtime, javaHome: "x", nextflowBin: "x", nextflowSetup: "x", jupyterPython: "x", httpProxy: "x" },
+    runtime: { ...settings.runtime, javaHome: "x", nextflowBin: "x", nextflowVersion: "x", nextflowSetup: "x", jupyterPython: "x", httpProxy: "x" },
     assistant: { backend: "codex", model: "x", codexModel: "x", grokModel: "x" },
     cloud: { awsProfile: "x", awsRegion: "x", googleCredentials: "x", azureBatchAccount: "x", azureStorageAccount: "x" },
   }, Object.fromEntries(SECRET_KEYS.map((key) => [key, "x"]))));

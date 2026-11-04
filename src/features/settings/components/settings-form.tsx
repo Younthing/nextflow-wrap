@@ -18,6 +18,7 @@ import type { AssistantStatus } from "@/features/assistant/assistant-provider";
 import type { SecretKey, SettingsUpdate, SettingsView, StudioSettings } from "../types";
 import { AssistantSettingsCard } from "./assistant-settings-card";
 import { SecretField } from "./secret-field";
+import { DEFAULT_NEXTFLOW_VERSION } from "../nextflow-version";
 
 const ENGINE_LABEL: Partial<Record<ContainerEngine, string>> = { shell: "本机 shell（不加 profile）", bash: "本机 bash（不加 profile）", zsh: "本机 zsh（不加 profile）" };
 /** A browser shows run notifications only after the user allows them; the desktop shell needs no permission. */
@@ -75,6 +76,23 @@ export function SettingsForm({ view, onSave, saving, assistantStatus }: {
           <CardDescription>在当前执行主机上初始化环境；Windows 连接 WSL 时在 WSL 内执行 · 保存后重启 Runner 生效</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField label="Nextflow 版本" htmlFor="nextflow-version-policy" hint={overridden("NEXTFLOW_STUDIO_NEXTFLOW_VERSION")}>
+              <Select value={draft.runtime.nextflowVersion === "latest" ? "latest" : "fixed"} onValueChange={(value) => runtime({ nextflowVersion: value === "latest" ? "latest" : DEFAULT_NEXTFLOW_VERSION })}>
+                <SelectTrigger id="nextflow-version-policy" className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="latest">最新稳定版</SelectItem>
+                  <SelectItem value="fixed">指定版本</SelectItem>
+                </SelectContent>
+              </Select>
+            </FormField>
+            {draft.runtime.nextflowVersion !== "latest" && (
+              <FormField label="指定版本号" htmlFor="nextflow-version">
+                <Input id="nextflow-version" required pattern="[0-9]+\.[0-9]+\.[0-9]+" className="h-8 font-mono text-xs" placeholder={DEFAULT_NEXTFLOW_VERSION} value={draft.runtime.nextflowVersion ?? DEFAULT_NEXTFLOW_VERSION} onChange={(event) => runtime({ nextflowVersion: event.target.value })} />
+              </FormField>
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground">最新稳定版会在每次新运行和模块试跑前联网查询；首次使用所选版本时可能下载运行时。实际版本记入运行记录。模块试跑需要 Nextflow 26.04 或以上。独立远程集群使用各自主机的 Nextflow 配置。</p>
           <FormField label="Nextflow 启动前命令（Bash）" htmlFor="nextflow-setup" hint={overridden("NEXTFLOW_STUDIO_NEXTFLOW_SETUP") ?? "支持多行；留空时使用原环境。运行环境检查时也会执行，任一命令失败则停止启动。"}>
             <Textarea
               id="nextflow-setup"

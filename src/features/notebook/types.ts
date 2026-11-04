@@ -182,6 +182,7 @@ export interface KernelSpecList {
 }
 
 export interface TryRunRecord {
+  nextflowVersion?: string;
   notebookId: string;
   rev: number;
   passed: boolean;

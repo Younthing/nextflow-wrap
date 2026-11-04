@@ -49,6 +49,24 @@ export const NextflowEnvironment: Story = {
   },
 };
 
+export const NextflowVersion: Story = {
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("combobox", { name: "Nextflow 版本" }));
+    await userEvent.click(within(document.body).getByRole("option", { name: "最新稳定版" }));
+    await expect(canvas.queryByLabelText("指定版本号")).not.toBeInTheDocument();
+    await userEvent.click(await canvas.findByRole("button", { name: /保存设置/ }));
+    await expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({ settings: expect.objectContaining({ runtime: expect.objectContaining({ nextflowVersion: "latest" }) }) }));
+    await userEvent.click(await canvas.findByRole("combobox", { name: "Nextflow 版本" }));
+    await userEvent.click(within(document.body).getByRole("option", { name: "指定版本" }));
+    const input = await canvas.findByLabelText("指定版本号");
+    await userEvent.clear(input);
+    await userEvent.type(input, "26.10.5");
+    await userEvent.click(canvas.getByRole("button", { name: /保存设置/ }));
+    await expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({ settings: expect.objectContaining({ runtime: expect.objectContaining({ nextflowVersion: "26.10.5" }) }) }));
+  },
+};
+
 export const AssistantCodexReady: Story = {
   args: { assistantStatus: { status: { enabled: true, detail: "本机 Codex（gpt-5-codex）", backend: "codex", model: "gpt-5-codex" }, refresh: fn() } },
   play: async ({ canvasElement }) => {

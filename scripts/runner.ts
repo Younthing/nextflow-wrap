@@ -278,7 +278,11 @@ async function execute(run: StoredExecution, tools: RuntimeTools, port: number, 
   eventTokens.set(id, token);
   try {
     await mkdir(run.attemptDir, { recursive: true });
+    // Resolve latest for every new run instead of keeping the runner startup version indefinitely.
+    const previousVersion = run.resumeFrom ? db.run(run.resumeFrom, true)?.detail.nextflowVersion : undefined;
+    if (previousVersion || tools.env.NEXTFLOW_STUDIO_NEXTFLOW_VERSION === "latest") tools = await preflight(previousVersion);
     const runtimeState = db.runtime()!;
+    db.setRuntime({ ...runtimeState, versions: tools.versions });
     const requested = run.detail.launch;
     const local = requested.executor === "local";
     const docker = requested.engine === "docker";
@@ -332,7 +336,7 @@ async function execute(run: StoredExecution, tools: RuntimeTools, port: number, 
     if (run.resumeFrom) args.push("-resume", run.sessionId!);
     await writeFile(join(run.attemptDir, "params.json"), JSON.stringify(params, null, 2));
     await writeFile(join(run.attemptDir, "run.config"), runConfig);
-    await writeFile(join(run.attemptDir, "manifest.json"), JSON.stringify({ workflow: run.detail.workflow, versions: runtimeState.versions, resources: tools.resources, executable: tools.nextflow, args, setup: tools.setup }, null, 2));
+    await writeFile(join(run.attemptDir, "manifest.json"), JSON.stringify({ workflow: run.detail.workflow, versions: { ...runtimeState.versions, ...tools.versions }, resources: tools.resources, executable: tools.nextflow, args, setup: tools.setup }, null, 2));
     if (stopping) throw new Error("Runner 正在停止");
     const head = await spawnDetached(tools.nextflow, args, { cwd: run.projectDir, env: tools.env, logPath: join(run.attemptDir, "console.log"), setup: tools.setup });
     db.updateRun(id, (record) => {
@@ -340,6 +344,7 @@ async function execute(run: StoredExecution, tools: RuntimeTools, port: number, 
       record.detail.launch = launch;
       record.detail.runConfig = runConfig;
       record.detail.command = [tools.nextflow, ...args.map((arg) => JSON.stringify(arg))].join(" ");
+      record.detail.nextflowVersion = tools.versions.nextflow;
       record.detail.status = "running";
       if (record.detail.phase === "preparing") record.detail.phase = "executing";
       record.detail.startedAt = new Date().toISOString();

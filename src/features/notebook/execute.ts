@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 
 import { CommandError, runCommand } from "@/features/project/server/command";
-import { findJava, findNextflow, NEXTFLOW_PIN_ENV, toolEnvironment } from "@/features/project/server/preflight";
+import { findJava, findNextflow, toolEnvironment } from "@/features/project/server/preflight";
+import { selectNextflowRuntime, nextflowSetup } from "@/features/project/server/nextflow-version";
 import { runtimeEnvironment } from "@/features/project/server/runtime-environment";
 import { nextflowCacheEnv } from "@/lib/server/paths";
 import { CELL_DRIVER } from "./cell-driver";
@@ -62,18 +63,18 @@ export async function findTryRunNextflow(): Promise<NextflowLauncher> {
     throw new ConvertError("找不到 nextflow，无法用 Nextflow 模块测试试跑。请先在设置页安装 Nextflow。");
   }
   const { home } = await findJava(base);
+  const selected = await selectNextflowRuntime(bin, { ...base, JAVA_HOME: home, NXF_JAVA_HOME: home });
   return {
-    bin,
-    setup: process.env.NEXTFLOW_STUDIO_NEXTFLOW_SETUP,
+    bin: selected.bin,
+    setup: nextflowSetup(process.env.NEXTFLOW_STUDIO_NEXTFLOW_SETUP, selected.version),
     env: {
-      ...base,
+      ...selected.env,
       ...nextflowCacheEnv(base),
       JAVA_HOME: home,
       NXF_JAVA_HOME: home,
       NXF_ANSI_LOG: "false",
       NXF_DISABLE_CHECK_LATEST: "true",
       // Same release as pipeline runs and the sidebar badge; `module run` needs Nextflow ≥ 26.04.
-      ...NEXTFLOW_PIN_ENV,
       PATH: [base.PATH, join(home, "bin")].filter(Boolean).join(delimiter),
     },
   };
@@ -265,6 +266,7 @@ export async function executeTryRun(
       exitCode,
       durationMs,
       log: clipTryRunLog(header, tail),
+      nextflowVersion: launcher.env.NXF_VER,
       outputs,
       ranAt: new Date().toISOString(),
       bindings: staged.records,

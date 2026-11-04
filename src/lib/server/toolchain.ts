@@ -5,6 +5,7 @@ import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
 import { dataDirectory, type PathEnv } from "./paths";
 import { getProductTheme } from "@/lib/product-theme";
+import { DEFAULT_NEXTFLOW_VERSION } from "@/features/settings/nextflow-version";
 
 /**
  * The tools a desktop install needs, pinned to exact releases with their SHA-256.
@@ -26,7 +27,7 @@ export const TOOLCHAIN = {
   },
   nextflow: {
     label: "Nextflow",
-    version: "26.10.4",
+    version: DEFAULT_NEXTFLOW_VERSION,
     // The `-dist` launcher embeds the runtime jar, so it works offline from the first run.
     asset: { url: "https://github.com/nextflow-io/nextflow/releases/download/v26.10.4/nextflow-26.10.4-dist", sha256: "2cbda6e7fdbbb1e7a413973eff549653f566ba6bb7bdfbb58eb78d0f831fdec4" },
   },

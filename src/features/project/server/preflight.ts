@@ -4,9 +4,11 @@ import { arch, cpus, totalmem } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { ENGINE_LABELS, executorDef, isHostShell, launchTools, type LaunchConfig } from "../launch";
 import { nextflowCacheEnv } from "@/lib/server/paths";
-import { managedPaths, managedToolEnv, nextflowPluginsDirectory, pluginInstalled, TOOLCHAIN, WEBLOG_PLUGIN } from "@/lib/server/toolchain";
+import { managedPaths, managedToolEnv, nextflowPluginsDirectory, pluginInstalled, WEBLOG_PLUGIN } from "@/lib/server/toolchain";
 import { runCommand } from "./command";
 import { runtimeEnvironment } from "./runtime-environment";
+import { selectNextflowRuntime, parseNextflowVersion, nextflowSetup } from "./nextflow-version";
+export { parseNextflowVersion } from "./nextflow-version";
 
 async function executable(name: string, override: string | undefined, fallbacks: string[] = [], path = process.env.PATH): Promise<string> {
   const candidates = override ? [override] : [
@@ -46,25 +48,19 @@ export async function findJava(env: NodeJS.ProcessEnv = toolEnvironment()): Prom
   throw new Error("Nextflow needs a supported Java 17–26. Set NEXTFLOW_JAVA_HOME to an installed JDK, or install one from the setup page.");
 }
 
-/**
- * Every Studio launch of Nextflow runs this release: the launcher on PATH (whatever version it is) fetches and
- * runs the pinned runtime. The badge, setup page, try-run and pipeline runs must all use it, or they disagree.
- */
-export const NEXTFLOW_PIN_ENV = { NXF_VER: TOOLCHAIN.nextflow.version } as const;
-
-/** The release number in `nextflow -version` output; undefined when it is not there. */
-export const parseNextflowVersion = (output: string) => output.match(/\bversion\s+(\d+\.\d+\.\d+\S*)/)?.[1];
-
-/** `NEXTFLOW_BIN`, then PATH, then the managed launcher. */
+/** `NEXTFLOW_BIN`, then PATH, then the managed launcher; version selection is shared by all launch paths. */
 export const findNextflow = (env: NodeJS.ProcessEnv = toolEnvironment()) => executable("nextflow", env.NEXTFLOW_BIN, [managedPaths().nextflow], env.PATH);
 
-export async function preflight() {
+export async function preflight(version?: string) {
   const base = await runtimeEnvironment(toolEnvironment());
-  const nextflow = await findNextflow(base);
+  if (version) base.NEXTFLOW_STUDIO_NEXTFLOW_VERSION = version;
+  const launcher = await findNextflow(base);
   const dockerCli = await executable("docker", base.DOCKER_BIN, [], base.PATH).catch(() => undefined);
   const { home: javaHome, version: javaVersion } = await findJava(base);
   // Conda environments and container images go to the shared cache that the notebook try-run also uses.
-  const env: NodeJS.ProcessEnv = { ...base, ...nextflowCacheEnv(base), JAVA_HOME: javaHome, NXF_JAVA_HOME: javaHome, NXF_ANSI_LOG: "false", ...NEXTFLOW_PIN_ENV };
+  const selected = await selectNextflowRuntime(launcher, { ...base, ...nextflowCacheEnv(base), JAVA_HOME: javaHome, NXF_JAVA_HOME: javaHome, NXF_ANSI_LOG: "false" });
+  const nextflow = selected.bin;
+  const env: NodeJS.ProcessEnv = selected.env;
   // Append, never prepend: JAVA_HOME already picks the JVM, and a directory such as /usr/bin or /opt/homebrew/bin
   // in front would shadow the python3 or Rscript of the environment the user started the app from.
   env.PATH = [base.PATH, join(javaHome, "bin"), dockerCli ? join(dockerCli, "..") : ""].filter(Boolean).join(delimiter);
@@ -77,12 +73,11 @@ export async function preflight() {
     }
   }
   const check = (bin: string, args: string[]) => runCommand(bin, args, { env, quiet: true, timeoutMs: 30_000 });
-  const nextflowVersion = parseNextflowVersion(await check(nextflow, ["-version"]));
-  if (!nextflowVersion) throw new Error(`${nextflow} -version did not report a Nextflow version`);
+  const nextflowVersion = selected.version;
   // The launcher's own release, which is what `nextflow -version` prints in the user's shell.
   const unpinned = { ...env };
   delete unpinned.NXF_VER;
-  const launcherVersion = await runCommand(nextflow, ["-version"], { env: unpinned, quiet: true, timeoutMs: 30_000 })
+  const launcherVersion = await runCommand(launcher, ["-version"], { env: unpinned, quiet: true, timeoutMs: 30_000 })
     .then(parseNextflowVersion).catch(() => undefined);
   // Docker is optional. A CLI without a running daemon (Docker Desktop closed) counts as no Docker,
   // so the runner still starts and the shell, conda and other runtimes keep working.
@@ -104,7 +99,7 @@ export async function preflight() {
   }
   const hostArch = arch() === "x64" ? "x86_64" : arch() === "arm64" ? "aarch64" : arch();
   return {
-    nextflow, docker, env, weblog, setup: process.env.NEXTFLOW_STUDIO_NEXTFLOW_SETUP,
+    nextflow, docker, env, weblog, setup: nextflowSetup(process.env.NEXTFLOW_STUDIO_NEXTFLOW_SETUP, selected.version),
     versions: {
       nextflow: nextflowVersion,
       ...(launcherVersion && launcherVersion !== nextflowVersion ? { nextflowLauncher: launcherVersion } : {}),

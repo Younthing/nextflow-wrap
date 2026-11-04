@@ -62,6 +62,8 @@ export interface LaunchRequest {
 }
 
 export interface RunDetail extends RunSummary {
+  /** Exact engine version resolved for this execution. */
+  nextflowVersion?: string;
   nextflowSessionId?: string;
   resumeFromRunId?: string;
   exitCode?: number;

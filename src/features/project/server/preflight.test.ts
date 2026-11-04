@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { findTryRunNextflow } from "@/features/notebook/execute";
 import { TOOLCHAIN } from "@/lib/server/toolchain";
-import { NEXTFLOW_PIN_ENV, parseNextflowVersion } from "./preflight";
+import { parseNextflowVersion } from "./preflight";
 import { runCommand } from "./command";
 
 const banner = (version: string) => `\n      N E X T F L O W\n      version ${version} build 5935\n      created 04-03-2025 17:55 UTC\n      cite doi:10.1038/nbt.3820\n      http://nextflow.io\n`;
@@ -32,7 +32,6 @@ describe("Nextflow version", () => {
       const launcher = await findTryRunNextflow().catch(() => undefined);
       if (!launcher) return; // No supported Java on this machine.
       expect(launcher.env.NXF_VER).toBe(TOOLCHAIN.nextflow.version);
-      expect(NEXTFLOW_PIN_ENV.NXF_VER).toBe(TOOLCHAIN.nextflow.version);
       expect(parseNextflowVersion(await runCommand(launcher.bin, ["-version"], { env: launcher.env, quiet: true }))).toBe(TOOLCHAIN.nextflow.version);
     } finally {
       if (previous === undefined) delete process.env.NEXTFLOW_BIN;

@@ -146,6 +146,7 @@ export function RunHeader({ run }: { run: RunDetail }) {
             {run.remoteHost ? `${run.remoteHost} · ${run.executor === "local" ? "登录节点" : executorDef(run.executor).name}` : executorDef(run.executor).name}
             {health.data?.mocked && <Badge variant="warning">预览</Badge>}
           </span>
+          {run.nextflowVersion && <span className="font-mono text-xs text-muted-foreground">Nextflow {run.nextflowVersion}</span>}
         </Stat>
         <Stat label="软件环境">
           {ENGINE_LABELS[run.launch.engine]}

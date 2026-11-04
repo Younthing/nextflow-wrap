@@ -59,6 +59,20 @@ describe("settings", () => {
     expect(settingsUpdateSchema.safeParse(bad).success).toBe(false);
   });
 
+  it("validates and persists latest or an exact Nextflow version", () => {
+    const dir = temp();
+    for (const nextflowVersion of ["latest", "26.10.5"]) {
+      const update = settingsUpdateSchema.parse({ settings: { ...defaultSettings(), runtime: { defaultEngine: "shell", nextflowVersion } } });
+      const env: Record<string, string | undefined> = {};
+      expect(saveSettings(update, dir, env).runnerRestartNeeded).toBe(true);
+      expect(readSettings(dir).runtime.nextflowVersion).toBe(nextflowVersion);
+      expect(settingsEnv(readSettings(dir)).NEXTFLOW_STUDIO_NEXTFLOW_VERSION).toBe(nextflowVersion);
+    }
+    for (const nextflowVersion of ["v26.10.5", "26", "stable", "26.10.5; id"]) {
+      expect(settingsUpdateSchema.safeParse({ settings: { ...defaultSettings(), runtime: { defaultEngine: "shell", nextflowVersion } } }).success).toBe(false);
+    }
+  });
+
   it("persists multiline Nextflow setup, normalizes line endings and can clear it", () => {
     const dir = temp();
     const env: Record<string, string | undefined> = {};

@@ -22,7 +22,7 @@ export function BackendStatus({ collapsed = false }: { collapsed?: boolean }) {
         : { tone: data.mocked ? ("warning" as const) : ("success" as const), text: `Nextflow ${data.nextflowVersion}${data.mocked ? " · 模拟" : ""}` };
   // The shell's `nextflow -version` can differ: Studio pins the release it runs and the launcher fetches it.
   const pinned = !isPending && !isError && data.nextflowLauncherVersion
-    ? `${getProductTheme().displayName} 运行 Nextflow ${data.nextflowVersion}（NXF_VER 固定）；PATH 上的 nextflow 启动器本身是 ${data.nextflowLauncherVersion}`
+    ? `${getProductTheme().displayName} 运行 Nextflow ${data.nextflowVersion}（按版本设置选择）；PATH 上的 nextflow 启动器本身是 ${data.nextflowLauncherVersion}`
     : undefined;
   const degraded = !isPending && !isError && data.status === "degraded";
 

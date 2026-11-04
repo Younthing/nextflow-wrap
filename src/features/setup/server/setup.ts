@@ -3,7 +3,8 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { listKernelSpecs } from "@/features/notebook/server/kernels";
 import { runCommand } from "@/features/project/server/command";
-import { findJava, findNextflow, NEXTFLOW_PIN_ENV, parseNextflowVersion, toolEnvironment } from "@/features/project/server/preflight";
+import { findJava, findNextflow, toolEnvironment } from "@/features/project/server/preflight";
+import { selectNextflowRuntime } from "@/features/project/server/nextflow-version";
 import { runtimeEnvironment } from "@/features/project/server/runtime-environment";
 import { dataDirectory } from "@/lib/server/paths";
 import {
@@ -71,16 +72,19 @@ export async function setupStatus(): Promise<SetupStatus> {
     install: { label: "下载 Temurin JRE", version: TOOLCHAIN.java.version },
   });
 
-  const nextflow = await findNextflow(env).catch(() => undefined);
+  let nextflow = await findNextflow(env).catch(() => undefined);
   let nextflowVersion: string | undefined;
+  let nextflowError: string | undefined;
   if (nextflow && java) {
-    nextflowVersion = await quiet(nextflow, ["-version"], { ...env, JAVA_HOME: java.home, NXF_JAVA_HOME: java.home, ...NEXTFLOW_PIN_ENV })
-      .then(parseNextflowVersion)
-      .catch(() => undefined);
+    try {
+      const selected = await selectNextflowRuntime(nextflow, { ...env, JAVA_HOME: java.home, NXF_JAVA_HOME: java.home });
+      nextflow = selected.bin;
+      nextflowVersion = selected.version;
+    } catch (error) { nextflowError = error instanceof Error ? error.message : String(error); }
   }
   tools.push({
     id: "nextflow", label: TOOLCHAIN.nextflow.label, required: true,
-    state: nextflow ? "ok" : "missing", version: nextflowVersion, path: nextflow,
+    state: nextflowError ? "error" : nextflow ? "ok" : "missing", version: nextflowVersion, path: nextflow, detail: nextflowError,
     source: nextflow ? (nextflow.startsWith(paths.root) ? "managed" : "system") : undefined,
     install: { label: "下载 Nextflow", version: TOOLCHAIN.nextflow.version },
   });

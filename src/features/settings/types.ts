@@ -19,6 +19,8 @@ export interface StudioSettings {
     memory?: string;
     javaHome?: string;
     nextflowBin?: string;
+    /** `latest` resolves the newest stable release; otherwise an exact release number. */
+    nextflowVersion?: string;
     /** Bash initialization before Nextflow launches and runtime environment checks. */
     nextflowSetup?: string;
     jupyterPython?: string;
