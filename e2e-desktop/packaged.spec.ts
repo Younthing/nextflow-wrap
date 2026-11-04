@@ -1,18 +1,19 @@
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { _electron as electron, expect, test, type ElectronApplication, type Page } from "@playwright/test";
 import { addFileInput, extend, go, notebookModule, runWithShell, shot } from "../e2e/helpers";
+import { SCHEMA_VERSION } from "../src/lib/server/schema";
+import { defaultSettings } from "../src/features/settings/types";
 
 /**
- * The packaged app end to end: an old data directory is upgraded on first start, and a notebook published as a
+ * The packaged app end to end: incompatible data is reset on first start, and a notebook published as a
  * module runs through a generated Nextflow project from inside the app, with the web server, runner and kernels
  * hosted by Electron. Needs Java, Nextflow and python3 with ipykernel on the machine, like the web e2e.
  */
 
 const root = resolve(__dirname, "..");
-const SCHEMA_VERSION = 5;
 
 function packagedBinary(): string {
   if (process.env.DESKTOP_APP) return process.env.DESKTOP_APP;
@@ -24,25 +25,21 @@ function packagedBinary(): string {
   return join(release, "linux-unpacked", "nextflow-studio-desktop");
 }
 
-/** A data directory as version 2 of the schema left it (before app metadata and version files existed). */
-function legacyDataDirectory(): string {
-  const dir = mkdtempSync(join(tmpdir(), "nfs-desktop-legacy-"));
+/** An incompatible development database: no historical schema or migration contract is required. */
+function incompatibleDataDirectory(): string {
+  const dir = mkdtempSync(join(tmpdir(), "nfs-desktop-incompatible-"));
   const db = new DatabaseSync(join(dir, "studio.sqlite"));
   db.exec(`
     CREATE TABLE workflows (id TEXT PRIMARY KEY, data TEXT NOT NULL);
-    CREATE TABLE runs (id TEXT PRIMARY KEY, status TEXT NOT NULL, created TEXT NOT NULL, data TEXT NOT NULL, idempotency TEXT UNIQUE, deleted INTEGER NOT NULL DEFAULT 0);
-    CREATE TABLE tasks (run_id TEXT NOT NULL, id TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(run_id,id));
-    CREATE TABLE events (run_id TEXT NOT NULL, digest TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(run_id,digest));
-    CREATE TABLE runtime (id INTEGER PRIMARY KEY CHECK(id=1), data TEXT NOT NULL);
-    CREATE TABLE notebooks (id TEXT PRIMARY KEY, updated TEXT NOT NULL, data TEXT NOT NULL);
-    CREATE TABLE notebook_revisions (notebook_id TEXT NOT NULL, rev INTEGER NOT NULL, data TEXT NOT NULL, PRIMARY KEY(notebook_id, rev));
-    CREATE TABLE script_modules (id TEXT PRIMARY KEY, data TEXT NOT NULL);
-    CREATE TABLE notebook_try_runs (notebook_id TEXT NOT NULL, rev INTEGER NOT NULL, data TEXT NOT NULL, PRIMARY KEY(notebook_id, rev));
-    PRAGMA user_version=2;
+    PRAGMA user_version=${SCHEMA_VERSION + 1};
   `);
   const workflow = { id: "wf_legacy", name: "旧版本的流程", description: "", version: 1, params: { outdir: "results" }, nodes: [], edges: [], updatedAt: "2026-06-01T00:00:00.000Z" };
   db.prepare("INSERT INTO workflows VALUES (?,?)").run(workflow.id, JSON.stringify(workflow));
   db.close();
+  const settings = { ...defaultSettings(), notifications: { runFinished: false } };
+  writeFileSync(join(dir, "settings.json"), JSON.stringify(settings));
+  mkdirSync(join(dir, "work"));
+  writeFileSync(join(dir, "work", "incompatible-task.txt"), "stale task state");
   return dir;
 }
 
@@ -69,22 +66,26 @@ test.describe("packaged desktop app", () => {
     if (!closed) running.process().kill("SIGKILL");
   });
 
-  test("upgrades a data directory written by an older version", async () => {
-    const dataDir = legacyDataDirectory();
+  test("resets incompatible development data and preserves settings", async () => {
+    const dataDir = incompatibleDataDirectory();
+    const settings = readFileSync(join(dataDir, "settings.json"), "utf8");
     const launched = await launch(dataDir);
     app = launched.app;
     const { page } = launched;
     await go(page, "/workflows");
-    await expect(page.getByText("旧版本的流程")).toBeVisible();
-    await shot(page, "e2e-desktop-upgraded.png");
+    await expect(page.getByText("旧版本的流程")).toHaveCount(0);
+    await shot(page, "e2e-desktop-reset.png");
 
-    const setup = await page.evaluate(async () => (await fetch("/api/setup")).json() as Promise<{ migration?: { from: number; to: number; backup?: string } }>);
-    expect(setup.migration).toMatchObject({ from: 2, to: SCHEMA_VERSION });
-    expect(readdirSync(join(dataDir, "backups")).some((name) => name.startsWith("studio-v2-"))).toBe(true);
-    expect(existsSync(join(dataDir, "layout.json"))).toBe(true);
+    expect(existsSync(join(dataDir, "work", "incompatible-task.txt"))).toBe(false);
+    expect(readFileSync(join(dataDir, "settings.json"), "utf8")).toBe(settings);
     const db = new DatabaseSync(join(dataDir, "studio.sqlite"), { readOnly: true });
-    expect(Number(db.prepare("PRAGMA user_version").get()?.user_version)).toBe(SCHEMA_VERSION);
-    db.close();
+    try {
+      expect(Number(db.prepare("PRAGMA user_version").get()?.user_version)).toBe(SCHEMA_VERSION);
+      expect(db.prepare("SELECT id FROM workflows WHERE id=?").get("wf_legacy")).toBeUndefined();
+      expect(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='projects'").get()).toBeDefined();
+    } finally {
+      db.close();
+    }
   });
 
   test("runs a published notebook through a generated Nextflow project", async () => {
