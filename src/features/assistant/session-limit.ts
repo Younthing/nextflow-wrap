@@ -66,8 +66,13 @@ export function createSessionPermit(release: () => void): SessionPermit {
 }
 
 export function codexBusyResponse(): Response {
+  return busyResponse("Codex");
+}
+
+/** HTTP 429 naming the local CLI backend (`Codex` or `Grok`) whose session cap is full. */
+export function busyResponse(label: string): Response {
   return Response.json(
-    { message: "Codex 正在处理的会话已达上限，请稍后再试" },
+    { message: `${label} 正在处理的会话已达上限，请稍后再试` },
     { status: 429, headers: { "cache-control": "no-store", "retry-after": "2" } },
   );
 }
