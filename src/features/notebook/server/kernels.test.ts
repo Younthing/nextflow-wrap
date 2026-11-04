@@ -8,11 +8,13 @@ import type { NotebookDoc } from "../types";
 
 let runNotebookCells: typeof import("../execute").runNotebookCells;
 let kernels: typeof import("./kernels");
+let variables: typeof import("./kernel-variables");
 
 beforeAll(async () => {
   process.env.NEXTFLOW_STUDIO_DATA_DIR = mkdtempSync(join(tmpdir(), "nb-kernel-"));
   ({ runNotebookCells } = await import("../execute"));
   kernels = await import("./kernels");
+  variables = await import("./kernel-variables");
 });
 
 afterAll(() => kernels.shutdownAllKernels());
@@ -86,6 +88,38 @@ describe("persistent Jupyter kernel", () => {
     const after = await runNotebookCells(doc(cellsLong, id), "u");
     expect(after.cells[0].outputs?.find((o) => o.outputType === "execute_result")).toMatchObject({ data: { "text/plain": "7" } });
     expect(kernels.kernelInfo(id).state).toBe("idle");
+  }, 180_000);
+
+  it("lists and reads variables without touching history or the execution count", async () => {
+    const id = "nb_variables";
+    const before = doc([], id);
+    expect(await variables.listNotebookVariables(before)).toMatchObject({ available: false, reason: expect.stringMatching(/还没启动/) });
+    const vars: NotebookDoc["cells"] = [
+      { id: "v", role: "code", source: "import os\nimport pandas as pd\ndef helper(): pass\n_hidden = 1\nn = 3\nwords = ['a', 'b']\ndf = pd.DataFrame({'a': [1, 2], 'b': ['x', 'y']})\nn" },
+      { id: "w", role: "code", source: "n + 1" },
+      { id: "h", role: "code", source: "(len(In), _)" },
+    ];
+    const first = await runNotebookCells(doc(vars, id), "v");
+    expect(first.cells[0].executionCount).toBe(1);
+
+    const listed = await variables.listNotebookVariables(doc(vars, id));
+    expect(listed).toMatchObject({ available: true });
+    if (!listed.available) return;
+    expect(listed.variables.map((item) => item.name)).toEqual(["df", "n", "words"]);
+    expect(listed.variables[0]).toMatchObject({ type: "DataFrame", size: "2×2" });
+    expect(listed.variables[2]).toMatchObject({ type: "list", size: "len 2", preview: "['a', 'b']" });
+
+    const detail = await variables.readNotebookVariable(doc(vars, id), "df");
+    expect(detail).toMatchObject({ found: true, variable: { name: "df", columns: [{ name: "a", dtype: "int64" }, { name: "b" }] } });
+    expect(await variables.readNotebookVariable(doc(vars, id), "nope")).toMatchObject({ available: true, found: false });
+    await expect(variables.readNotebookVariable(doc(vars, id), "os.path")).rejects.toThrow(/变量名无效/);
+
+    // Probes are quiet: the next cell is still execution 2, and `_` / In hold only the user's cells.
+    const next = await runNotebookCells(doc(vars, id), "w");
+    expect(next.cells[0].executionCount).toBe(2);
+    const history = await runNotebookCells(doc(vars, id), "h");
+    expect(history.cells[0].outputs?.find((o) => o.outputType === "execute_result")).toMatchObject({ data: { "text/plain": "(4, 4)" } });
+    expect((await variables.listNotebookVariables(doc(vars, id))).variables.some((item) => item.name.startsWith("__nf"))).toBe(false);
   }, 180_000);
 
   it("renders matplotlib figures inline", async () => {

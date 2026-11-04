@@ -1,7 +1,15 @@
 import { createStore, type StoreApi } from "zustand/vanilla";
 
 import { notebookDraftKey } from "./edit";
-import type { CellRunResult, NotebookCell, NotebookDoc, NotebookRunKernel, NotebookRunResult } from "./types";
+import type {
+  CellRunResult,
+  NotebookCell,
+  NotebookDoc,
+  NotebookRunKernel,
+  NotebookRunResult,
+  NotebookVariableLookup,
+  NotebookVariables,
+} from "./types";
 
 /*
  * One open notebook, independent of the component that draws it — the role of
@@ -28,6 +36,8 @@ export interface NotebookSessionState {
   kernel: NotebookRunKernel | null;
   saveError: string | null;
   runError: string | null;
+  /** Last read of the kernel's variables (VS Code's Jupyter Variables view). `null` until read. */
+  variables: NotebookVariables | null;
 }
 
 /** What a tool sees: the latest doc (unsaved edits included), outputs, and whether a save or run holds the session. */
@@ -41,6 +51,9 @@ export interface NotebookSnapshot {
 export interface NotebookSessionPorts {
   save(doc: NotebookDoc): Promise<NotebookDoc>;
   run(request: { id: string; cellId?: string }): Promise<NotebookRunResult>;
+  /** Kernel variables. Optional so a session without a kernel (tests, previews) still opens. */
+  variables?(id: string): Promise<NotebookVariables>;
+  variable?(id: string, name: string): Promise<NotebookVariableLookup>;
 }
 
 export interface NotebookSession {
@@ -67,6 +80,10 @@ export interface NotebookSession {
   saveThenRun(cellId: string | null): Promise<NotebookRunResult | undefined>;
   /** Saves and runs one cell like Shift+Enter, refusing while busy. */
   runCell(cellId: string): Promise<NotebookRunResult>;
+  /** Re-reads the kernel's variables into `variables`. Never starts a kernel or touches history. */
+  refreshVariables(): Promise<NotebookVariables>;
+  /** One variable's type, size, and a clipped repr. */
+  readVariable(name: string): Promise<NotebookVariableLookup>;
   /** Saves a dirty draft now. */
   flush(): Promise<void>;
   /** Drops a pending autosave. */
@@ -109,7 +126,10 @@ export function createNotebookSession(options: {
     kernel: null,
     saveError: null,
     runError: null,
+    variables: null,
   }));
+  /** Only the newest variables read lands, so a slow probe never overwrites a later one. */
+  let variablesSerial = 0;
 
   const connected = () => {
     if (!ports) throw new Error("笔记本还没有连上服务端");
@@ -255,6 +275,23 @@ export function createNotebookSession(options: {
       const result = await saveThenRun(cellId);
       if (!result) throw new Error("单元格没有运行");
       return result;
+    },
+    async refreshVariables() {
+      const read = connected().variables;
+      const serial = ++variablesSerial;
+      let next: NotebookVariables;
+      try {
+        next = read ? await read(notebookId) : { available: false, reason: "这里读不到内核变量。", variables: [] };
+      } catch (err) {
+        next = { available: false, reason: `读取变量失败：${message(err)}`, variables: [] };
+      }
+      if (serial === variablesSerial) store.setState({ variables: next });
+      return next;
+    },
+    async readVariable(name) {
+      const read = connected().variable;
+      if (!read) return { available: false, reason: "这里读不到内核变量。" };
+      return read(notebookId, name);
     },
     async flush() {
       const draft = store.getState().draft;

@@ -1,6 +1,6 @@
 import { delay, http, HttpResponse } from "msw";
 
-import type { KernelInfo, KernelSpecList } from "@/features/notebook/types";
+import type { KernelInfo, KernelSpecList, NotebookVariables } from "@/features/notebook/types";
 
 /** Jupyter kernelspecs the mock backend reports. */
 export const mockKernelSpecs: KernelSpecList = {
@@ -31,4 +31,8 @@ export const kernelHandlers = [
     }
     return HttpResponse.json(kernels.get(id) ?? { notebookId: id, state: "stopped" });
   }),
+  // Demo cells are simulated, so there is no kernel namespace to read.
+  http.get("/api/notebooks/:id/variables", () =>
+    HttpResponse.json<NotebookVariables>({ available: false, reason: "演示模式没有真实内核，读不到变量。", variables: [] }),
+  ),
 ];

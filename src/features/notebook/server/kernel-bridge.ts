@@ -4,7 +4,8 @@
  *
  * - `--list` prints the installed kernelspecs and exits.
  * - `--kernel NAME --cwd DIR` starts the kernel, prints a `ready` event, then answers
- *   `{"id": ..., "code": ...}` requests one at a time until stdin closes.
+ *   `{"id": ..., "code": ...}` requests one at a time until stdin closes. `"quiet": true` runs a probe
+ *   (variables) with store_history=False, so it leaves the execution count and In/Out history alone.
  * - SIGUSR1 interrupts the running cell through jupyter_client, so both signal and message
  *   interrupt modes work. SIGTERM and stdin EOF shut the kernel down.
  *
@@ -122,9 +123,9 @@ except Exception as error:
         pass
     sys.exit(4)
 
-def run(code):
+def run(code, quiet=False):
     pending_interrupt[0] = False
-    msg_id = kc.execute(code, store_history=True, allow_stdin=False, stop_on_error=True)
+    msg_id = kc.execute(code, store_history=not quiet, allow_stdin=False, stop_on_error=not quiet)
     outputs = []
     count = None
     status = "ok"
@@ -192,7 +193,7 @@ try:
             request = json.loads(line)
         except ValueError:
             continue
-        result = run(request.get("code", ""))
+        result = run(request.get("code", ""), bool(request.get("quiet")))
         result["id"] = request.get("id")
         emit(result)
         if result["status"] == "dead":

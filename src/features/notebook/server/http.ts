@@ -13,6 +13,7 @@ import { executeTryRun, runNotebookCells } from "@/features/notebook/execute";
 import { NotebookConflictError, notebookFiles } from "@/features/notebook/server/notebook-files";
 import { readEnvironmentYml } from "@/features/notebook/server/environment-yml";
 import { existingKernel, kernelFor, kernelInfo, KernelUnavailableError, listKernelSpecs, shutdownKernel } from "@/features/notebook/server/kernels";
+import { listNotebookVariables, readNotebookVariable, VARIABLE_NAME } from "@/features/notebook/server/kernel-variables";
 import { referenceCounts, scriptModuleViews, summarizeNotebook } from "@/features/notebook/library";
 import { languageForKernel, type NotebookDoc } from "@/features/notebook/types";
 import { HttpError } from "@/features/runs/server/service";
@@ -318,6 +319,15 @@ export async function handleNotebookApi(method: string, path: string[], request:
   if (action === "kernel" && method === "GET") {
     requireNotebook(db, id);
     return json(kernelInfo(id));
+  }
+
+  // Variables of the running kernel. Read-only: never starts a kernel and leaves the execution count alone.
+  if (action === "variables" && method === "GET") {
+    const notebook = requireNotebook(db, id);
+    const name = new URL(request.url).searchParams.get("name")?.trim();
+    if (!name) return json(await listNotebookVariables(notebook));
+    if (!VARIABLE_NAME.test(name)) throw new HttpError(400, `变量名无效：${name}`);
+    return json(await readNotebookVariable(notebook, name));
   }
 
   if (action === "kernel" && method === "POST") {

@@ -2,11 +2,12 @@ import { infoConfirmView, type AcceptedResult, type ConfirmView, type PreparedIn
 import { insertCellAt, removeCell } from "./edit";
 import { segmentsOf } from "./outputs";
 import type { NotebookSession, NotebookSnapshot } from "./session";
-import type { CellRunResult, NotebookCell, NotebookCellRole, NotebookDoc } from "./types";
+import type { CellRunResult, NotebookCell, NotebookCellRole, NotebookDoc, NotebookVariables } from "./types";
 
 /*
  * What the notebook assistant can see and do, mirroring VS Code's notebook
- * tools (GetNotebookSummary, EditNotebook, RunNotebookCell, ReadCellOutput).
+ * tools (GetNotebookSummary, EditNotebook, RunNotebookCell, ReadCellOutput) plus the kernel variables Copilot
+ * reads from the Jupyter extension.
  * Everything goes through the open {@link NotebookSession}, the same draft,
  * autosave, and run path the editor's buttons use. Failures throw with a message the
  * model can read and correct itself from.
@@ -19,8 +20,11 @@ export const NOTEBOOK_OUTPUT_LIMIT = 4_000;
 const PREVIEW_LINES = 3;
 const PREVIEW_CHARS = 240;
 
-/** The part of the session the tools use: read, replace cells, run one cell. */
-export type NotebookDocumentApi = Pick<NotebookSession, "read" | "setCells" | "runCell">;
+/** Variables put in the chat context; the rest are one list_notebook_variables call away. */
+export const CONTEXT_VARIABLE_LIMIT = 50;
+
+/** The part of the session the tools use: read, replace cells, run one cell, read kernel variables. */
+export type NotebookDocumentApi = Pick<NotebookSession, "read" | "setCells" | "runCell" | "refreshVariables" | "readVariable">;
 
 export type NotebookEditType = "insert" | "delete" | "edit";
 
@@ -156,6 +160,22 @@ export function notebookSummary({ doc, outputs, busy }: NotebookSnapshot) {
   };
 }
 
+/**
+ * Variable names for the chat context, like the kernel state Copilot attaches to a notebook request, so the
+ * model does not guess names. `null` before the first read.
+ */
+export function notebookVariablesContext(variables: NotebookVariables | null) {
+  if (!variables) return null;
+  if (!variables.available) return { available: false, reason: variables.reason };
+  const shown = variables.variables.slice(0, CONTEXT_VARIABLE_LIMIT);
+  return {
+    available: true,
+    total: variables.total,
+    variables: shown.map((item) => `${item.name}: ${item.type}${item.size ? ` (${item.size})` : ""}`),
+    ...(variables.total > shown.length && { note: `只列出 ${shown.length} 个，用 list_notebook_variables 看全部` }),
+  };
+}
+
 export function createNotebookActions(commands: NotebookDocumentApi, makeCell = newNotebookCell) {
   const summary = () => notebookSummary(commands.read());
 
@@ -242,5 +262,27 @@ export function createNotebookActions(commands: NotebookDocumentApi, makeCell = 
     };
   }
 
-  return { summary, editCell, runCell, readOutput, prepareRunCell };
+  /** Fresh read of the kernel's variables, like VS Code's Jupyter Variables view. */
+  async function listVariables() {
+    const result = await commands.refreshVariables();
+    if (!result.available) return { available: false, reason: result.reason, variables: [] };
+    const more = result.total > result.variables.length;
+    return {
+      ...result,
+      ...(result.total === 0 && { note: "内核里还没有用户变量。" }),
+      ...(more && { note: `只列出前 ${result.variables.length} 个（共 ${result.total} 个）。` }),
+    };
+  }
+
+  /** One variable's type, size, dtype or columns, and a clipped repr. */
+  async function getVariable(name: string) {
+    const trimmed = name?.trim();
+    if (!trimmed) throw new Error("需要变量名。先用 list_notebook_variables 查变量名");
+    const result = await commands.readVariable(trimmed);
+    if (!result.available) return { available: false, reason: result.reason };
+    if (!result.found) throw new Error(`内核里没有变量 ${trimmed}。先用 list_notebook_variables 查变量名`);
+    return { available: true, ...result.variable };
+  }
+
+  return { summary, editCell, runCell, readOutput, prepareRunCell, listVariables, getVariable };
 }

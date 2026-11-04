@@ -9,9 +9,15 @@ import {
 } from "@copilotkit/react-core/v2";
 import { z } from "zod";
 
-import { NOTEBOOK_CELL_KINDS, createNotebookActions, notebookSummary } from "@/features/notebook/assistant-actions";
+import {
+  NOTEBOOK_CELL_KINDS,
+  createNotebookActions,
+  notebookSummary,
+  notebookVariablesContext,
+} from "@/features/notebook/assistant-actions";
 import { useNotebookSession, useNotebookSessionState } from "@/features/notebook/session-provider";
 import { useAssistantStatus } from "../assistant-provider";
+import { codeReference, useComposerReferences, type ComposerReferences } from "../composer";
 import { attempt } from "./attempt";
 import { clipReason } from "../confirm";
 import { useConfirmedTool } from "../confirmed-tool";
@@ -34,6 +40,27 @@ function NotebookTools() {
     description: "用户正在编辑的笔记本：单元格 id、类型、内容预览和输出状态",
     value: summary as unknown as JsonSerializable,
   });
+
+  // Kernel variables: names in the context, and chips above the chat input that insert `name`.
+  const variables = useNotebookSessionState((state) => state.variables);
+  useAgentContext({
+    description: "笔记本常驻内核里的用户变量（变量名: 类型 (大小)），或读不到变量的原因",
+    value: React.useMemo(() => notebookVariablesContext(variables), [variables]) as unknown as JsonSerializable,
+  });
+  const references = React.useMemo<ComposerReferences | null>(() => {
+    if (!variables) return null;
+    return {
+      title: "变量",
+      items: variables.variables.map((item) => ({
+        label: item.name,
+        detail: `${item.type}${item.size ? ` · ${item.size}` : ""}`,
+        text: codeReference(item.name),
+      })),
+      note: variables.available ? "内核里还没有变量" : variables.reason,
+      onRefresh: () => void session.refreshVariables(),
+    };
+  }, [variables, session]);
+  useComposerReferences(references);
 
   useConfigureSuggestions({
     suggestions: [
@@ -85,6 +112,20 @@ function NotebookTools() {
     description: moduleTool(notebookModule, "read_cell_output").description,
     parameters: z.object({ cellId: z.string().describe("单元格 id") }),
     handler: async ({ cellId }) => attempt(() => actions.readOutput(cellId)),
+  }, [actions]);
+
+  useFrontendTool({
+    name: moduleTool(notebookModule, "list_notebook_variables").name,
+    description: moduleTool(notebookModule, "list_notebook_variables").description,
+    parameters: z.object({}),
+    handler: async () => attempt(() => actions.listVariables()),
+  }, [actions]);
+
+  useFrontendTool({
+    name: moduleTool(notebookModule, "get_notebook_variable").name,
+    description: moduleTool(notebookModule, "get_notebook_variable").description,
+    parameters: z.object({ name: z.string().describe("变量名，如 df") }),
+    handler: async ({ name }) => attempt(() => actions.getVariable(name)),
   }, [actions]);
 
   return dialog;

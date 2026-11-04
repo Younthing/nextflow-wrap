@@ -8,6 +8,7 @@ const prompt = `## 笔记本
 - 上下文里有笔记本摘要。需要准确的单元格 id、完整内容或输出时，先用 get_notebook_summary 和 read_cell_output，不要凭记忆改。
 - 修改笔记本要调用 edit_notebook_cell，不要只描述步骤：insert 在 cellId 之后插入（TOP / BOTTOM 表示开头 / 末尾），edit 改 source 或 kind，delete 删除。source 要写完整的单元格内容，保留缩进，不要写省略标记。一次改多格按顺序逐个调用。不要删除用户没提到的单元格。
 - 改完代码要验证时用 run_notebook_cell。它会先弹出确认对话框，调用后必须停下来等工具返回；返回 declined 表示用户没有确认，不要立刻重试。Python 笔记本跑在常驻内核里，只运行这一格，变量会保留；R 笔记本每次从第一格跑到这一格。
+- 上下文里还有内核变量摘要（变量名、类型、shape）。写代码或回答要用到已有变量时，先用 list_notebook_variables 确认变量名，再用 get_notebook_variable 看类型、列和内容预览，不要猜变量名。用户消息里用反引号写的名字（如 \`df\`）通常就是变量。读变量不会运行单元格，也不会启动内核；内核没启动或是 R 笔记本时会返回原因，照实告诉用户，不要编造变量。
 - 运行出错时读返回的 error 和 stderr，修好单元格再运行。看已经跑过的输出用 read_cell_output。
 - 切换内核、试跑和发布仍在页面上操作，不要声称已经做过。`;
 
@@ -30,6 +31,16 @@ export const notebookModule = {
     {
       name: "read_cell_output",
       description: "读取一个单元格当前显示的输出：stdout、stderr、报错和文本结果（过长会截断）。",
+    },
+    {
+      name: "list_notebook_variables",
+      description:
+        "列出当前笔记本常驻内核里的用户变量：变量名、类型、大小（shape 或长度）和简短预览，不含模块、函数和类。不运行单元格、不启动内核、不改执行计数。内核没启动、换了内核或是 R 笔记本时返回 available=false 和原因。",
+    },
+    {
+      name: "get_notebook_variable",
+      description:
+        "按变量名读取内核里一个变量的详情：类型、大小、dtype、数据框的列和类型，以及截断后的 repr。不运行单元格、不改执行计数。变量名先用 list_notebook_variables 查。",
     },
   ],
 } as const satisfies AssistantModule;

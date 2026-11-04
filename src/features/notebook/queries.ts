@@ -6,7 +6,17 @@ import { api } from "@/lib/api";
 import type { ModuleDef } from "@/features/workflow/types";
 import type { ScriptModuleView } from "./library";
 import type { PortBindingRequest } from "./input-bindings";
-import type { KernelInfo, KernelSpecList, NotebookDoc, NotebookRevision, NotebookRunResult, NotebookSummary, TryRunRecord } from "./types";
+import type {
+  KernelInfo,
+  KernelSpecList,
+  NotebookDoc,
+  NotebookRevision,
+  NotebookRunResult,
+  NotebookSummary,
+  NotebookVariableLookup,
+  NotebookVariables,
+  TryRunRecord,
+} from "./types";
 
 export const notebookKeys = {
   all: ["notebooks"] as const,
@@ -155,6 +165,12 @@ export function useKernelInfo(id: string, enabled = true) {
     },
   });
 }
+
+/** Variables in the notebook's running kernel. Read-only; the server never starts a kernel for it. */
+export const fetchNotebookVariables = (id: string) => api<NotebookVariables>(`/notebooks/${id}/variables`);
+
+export const fetchNotebookVariable = (id: string, name: string) =>
+  api<NotebookVariableLookup>(`/notebooks/${id}/variables?name=${encodeURIComponent(name)}`);
 
 export function useKernelAction() {
   const qc = useQueryClient();
