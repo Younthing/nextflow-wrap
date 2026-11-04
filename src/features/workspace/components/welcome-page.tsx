@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { PanelLoading } from "@/components/ui/panel-notice";
 import { getProductTheme } from "@/lib/product-theme";
+import { ProductMark } from "@/lib/product-theme/mark";
 import { SearchField } from "@/components/ui/search-field";
 import { PathBrowserDialog } from "@/features/files/components/path-input";
 import { useFsListing } from "@/features/files/queries";
@@ -83,7 +84,7 @@ export function WelcomeView({ projects, home, busyId, backend, shortcuts, onNew,
     <div className="flex h-full gap-3 p-3">
       <aside className="flex w-80 shrink-0 flex-col px-5 pt-9 pb-5">
         <div className="flex items-center gap-3 px-2">
-          <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-primary font-mono text-base font-bold text-primary-foreground">{productTheme.shortName}</span>
+          <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-primary font-mono text-base font-bold text-primary-foreground"><ProductMark theme={productTheme} /></span>
           <div className="min-w-0">
             <h1 className="font-serif text-xl leading-tight font-bold">{productTheme.displayName}</h1>
             <p className="text-xs text-muted-foreground">{productTheme.tagline}</p>
