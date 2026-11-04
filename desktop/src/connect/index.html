@@ -89,7 +89,7 @@
 
 <div id="splash" hidden role="status" aria-live="polite">
   <div class="logo" aria-hidden="true">nf</div>
-  <h1>Nextflow Studio</h1>
+  <h1 id="splash-name">Nextflow Studio</h1>
   <div class="target" id="splash-target"></div>
   <div class="bar" aria-hidden="true"></div>
   <div id="status" class="mono"></div>
@@ -157,6 +157,17 @@
   const KINDS = { local: "本机", wsl: "WSL", ssh: "SSH", url: "地址" };
   const DETAIL = { local: () => "这台电脑", wsl: (c) => `WSL · ${c.distro}`, ssh: (c) => `ssh ${c.target}${c.port ? `:${c.port}` : ""}`, url: (c) => c.url };
   const $ = (id) => document.getElementById(id);
+  // Product theme (appearance only): name + logo tile, mirroring ProductMark in src/lib/product-theme/mark.tsx.
+  const FLUORA_MARK = '<svg viewBox="0 0 32 32" fill="none" width="60%" height="60%" aria-hidden="true"><circle cx="16" cy="16" r="11" stroke="currentColor" stroke-width="2" opacity="0.55"/><circle cx="14" cy="17" r="6" fill="currentColor" opacity="0.18"/><circle cx="14" cy="17" r="3.4" fill="currentColor"/><path d="M20.5 6.8a10.5 10.5 0 0 1 4.7 6.1" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="22.6" cy="11.4" r="1.3" fill="currentColor"/></svg>';
+  function applyProduct(product) {
+    if (!product) return;
+    document.title = product.displayName;
+    $("splash-name").textContent = product.displayName;
+    for (const logo of document.querySelectorAll(".logo")) {
+      if (product.id === "fluora") logo.innerHTML = FLUORA_MARK;
+      else logo.textContent = product.shortName;
+    }
+  }
   const form = $("form");
   let kind = "local";
   let state;
@@ -274,6 +285,7 @@
 
   (async () => {
     state = await api.state();
+    applyProduct(state && state.product);
     const target = state.target;
     if (state.view === "splash") {
       show("splash");
