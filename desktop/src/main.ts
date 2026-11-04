@@ -439,6 +439,7 @@ function registerIpc() {
       error,
       dev,
       version: app.getVersion(),
+      product: { id: getProductTheme().id, displayName: productName, shortName: getProductTheme().shortName },
     };
   });
   ipcMain.handle("connect:distros", (event) => (fromConnectPage(event) ? wslDistros() : []));
