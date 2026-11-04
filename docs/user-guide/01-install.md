@@ -6,6 +6,7 @@
 
 | 系统 | 文件 |
 | --- | --- |
+| Windows x64 | `.exe` 安装程序（NSIS）；运行工作流需连接 WSL 或远程 Linux |
 | macOS（Apple 芯片） | 文件名带 `arm64` 的 `.dmg` |
 | macOS（Intel） | 文件名带 `x64` 的 `.dmg` |
 | Linux x64 | `.AppImage`（`chmod +x` 后双击或在终端运行） |

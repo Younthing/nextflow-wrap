@@ -1,16 +1,18 @@
 name: Desktop
 
 # Pull requests that touch the desktop shell build an unsigned Linux app and run the packaged-app e2e.
-# A `desktop-v*` tag builds, signs and notarizes the macOS app (when the secrets are set) and publishes
-# every platform to a GitHub release, which electron-updater reads for auto-update.
+# Like electron/fiddle: build on native runners, upload artifacts, then publish in one job.
+# Only desktop-v* tags publish. Manual branch builds produce downloadable Actions artifacts.
 on:
   pull_request:
     paths:
       - "desktop/**"
       - "e2e-desktop/**"
-      - "src/features/desktop/**"
-      - "src/lib/server/**"
-      - "scripts/runner.ts"
+      - "src/**"
+      - "scripts/**"
+      - "public/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
       - "next.config.ts"
       - ".github/workflows/desktop.yml"
   push:
@@ -18,7 +20,11 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   packaged-e2e:
@@ -26,6 +32,8 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -38,6 +46,12 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --dir desktop install --frozen-lockfile
       - run: pnpm --dir desktop typecheck
+      - run: node --test scripts/prepare-desktop-release.test.mjs
+      - name: Check the release tag matches desktop/package.json
+        if: startsWith(github.ref, 'refs/tags/desktop-v')
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: node -e 'const v = require("./desktop/package.json").version; if (process.env.RELEASE_TAG !== `desktop-v${v}`) throw new Error("Release tag does not match desktop/package.json");'
       - name: Install Nextflow
         run: bash scripts/install-nextflow.sh
       - name: Install Jupyter kernel
@@ -47,6 +61,12 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium
       - name: Packaged-app e2e
         run: xvfb-run --auto-servernum pnpm exec playwright test -c e2e-desktop/playwright.config.ts
+      # Windows needs a real Linux server for WSL/SSH, not a Next.js build made on Windows.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-linux-server
+          path: desktop/resources/server/*
+          if-no-files-found: error
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -57,49 +77,112 @@ jobs:
             e2e-artifacts
           if-no-files-found: ignore
 
-  release:
-    if: startsWith(github.ref, 'refs/tags/desktop-v')
+  build:
     needs: packaged-e2e
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14
-            target: --mac
+          - os: macos-15
+            target: --mac --arm64
+          - os: macos-15-intel
+            target: --mac --x64
           - os: ubuntu-latest
-            target: --linux
+            target: --linux --x64
+          - os: windows-latest
+            target: --win --x64
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
       - uses: pnpm/action-setup@v6.1.0
       - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: pnpm
       - uses: actions/setup-java@v4
+        if: runner.os != 'Windows'
         with:
           distribution: temurin
           java-version: "21"
       - run: pnpm install --frozen-lockfile
       - run: pnpm --dir desktop install --frozen-lockfile
+      - run: pnpm --dir desktop typecheck
       - name: Install Nextflow (prefetches nf-weblog into the bundle)
+        if: runner.os != 'Windows'
         run: bash scripts/install-nextflow.sh
-      - name: Check the tag matches desktop/package.json
-        run: |
-          version="$(node -p "require('./desktop/package.json').version")"
-          test "desktop-v${version}" = "${GITHUB_REF_NAME}" || { echo "tag ${GITHUB_REF_NAME} != desktop-v${version}"; exit 1; }
-      - name: Build, sign, notarize and publish
+      - name: Bundle local server and shell
+        if: runner.os != 'Windows'
+        run: node desktop/scripts/bundle.mjs --skip-server
+      - name: Bundle Windows shell
+        if: runner.os == 'Windows'
+        run: pnpm --dir desktop bundle:shell
+      - uses: actions/download-artifact@v4
+        with:
+          name: desktop-linux-server
+          path: desktop/resources/server
+      - name: Package (sign and notarize when configured)
         working-directory: desktop
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # macOS signing: a Developer ID Application certificate exported as .p12, base64-encoded.
-          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          CSC_LINK: ${{ github.event_name != 'pull_request' && (runner.os == 'macOS' && secrets.MAC_CSC_LINK || runner.os == 'Windows' && secrets.WIN_CSC_LINK) || '' }}
+          CSC_KEY_PASSWORD: ${{ github.event_name != 'pull_request' && (runner.os == 'macOS' && secrets.MAC_CSC_KEY_PASSWORD || runner.os == 'Windows' && secrets.WIN_CSC_KEY_PASSWORD) || '' }}
           # Notarization with an app-specific password.
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_ID: ${{ github.event_name != 'pull_request' && runner.os == 'macOS' && secrets.APPLE_ID || '' }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ github.event_name != 'pull_request' && runner.os == 'macOS' && secrets.APPLE_APP_SPECIFIC_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ github.event_name != 'pull_request' && runner.os == 'macOS' && secrets.APPLE_TEAM_ID || '' }}
           # Without a certificate electron-builder builds an unsigned app instead of failing.
-          CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.MAC_CSC_LINK != '' }}
-        run: node scripts/bundle.mjs && pnpm exec electron-builder ${{ matrix.target }} --publish always
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: pnpm exec electron-builder ${{ matrix.target }} --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-package-${{ matrix.os }}
+          path: |
+            desktop/release/*.exe
+            desktop/release/*.dmg
+            desktop/release/*.zip
+            desktop/release/*.AppImage
+            desktop/release/*.blockmap
+            desktop/release/latest*.yml
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/desktop-v')
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6.1.0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: desktop-package-*
+          path: release-artifacts
+      - name: Collect packages and merge macOS update metadata
+        run: node scripts/prepare-desktop-release.mjs release-artifacts release-assets
+      - name: Publish complete release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # A failed upload leaves a draft. Reruns may replace draft assets, never a public release.
+          if gh release view "$RELEASE_TAG" --json isDraft > release.json; then
+            node -e 'if (!require("./release.json").isDraft) throw new Error("Release is already public");'
+          else
+            gh release create "$RELEASE_TAG" --verify-tag --draft --title "$RELEASE_TAG" --generate-notes
+          fi
+          gh release upload "$RELEASE_TAG" release-assets/* --clobber
+          gh release edit "$RELEASE_TAG" --draft=false
