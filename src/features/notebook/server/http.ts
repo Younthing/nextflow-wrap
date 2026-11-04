@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -9,6 +9,7 @@ import { PercentError } from "@/features/notebook/jupytext";
 import { notebookFromLibrary } from "@/features/notebook/library-copy";
 import { publishScriptModule } from "@/features/notebook/publish";
 import { exampleData, exampleLibraryCopies, exampleModules, exampleNotebooks, exampleWorkflow } from "@/features/notebook/examples";
+import { IF_EXAMPLE_IMAGE, IF_EXAMPLE_KEYWORDS, ifExampleNotebooks, ifExampleWorkflow } from "@/features/notebook/examples-if";
 import { executeTryRun, runNotebookCells } from "@/features/notebook/execute";
 import { NotebookConflictError, notebookFiles } from "@/features/notebook/server/notebook-files";
 import { readEnvironmentYml } from "@/features/notebook/server/environment-yml";
@@ -19,7 +20,7 @@ import { languageForKernel, type NotebookDoc } from "@/features/notebook/types";
 import { HttpError } from "@/features/runs/server/service";
 import type { StudioStore } from "@/lib/server/database";
 import { dataDirectory, store } from "@/lib/server/database";
-import { EXAMPLE_PROJECT_ID } from "@/features/workspace/projects";
+import { EXAMPLE_PROJECT_ID, IF_EXAMPLE_PROJECT_ID } from "@/features/workspace/projects";
 import { currentProjectId } from "@/features/workspace/server/projects";
 
 const json = (value: unknown, status = 200) => Response.json(value, { status, headers: { "cache-control": "no-store" } });
@@ -91,6 +92,7 @@ const editSchema = z.object({
  * the example data in `data/`. Once: removing the project or any of its content later does not bring it back.
  */
 export function ensureExampleProject(db: StudioStore = store()) {
+  ensureIfExampleProject(db);
   if (db.meta(EXAMPLE_SEEDED)) return;
   const folder = db.workspace ?? join(dataDirectory(), "projects", "example");
   mkdirSync(folder, { recursive: true });
@@ -123,6 +125,41 @@ export function ensureExampleProject(db: StudioStore = store()) {
 }
 
 const EXAMPLE_SEEDED = "exampleSeeded";
+
+/**
+ * The immunofluorescence example project, seeded once like the first one, in `<data>/projects/example-if`: five
+ * notebooks, their modules, the workflow and `data/image.tif` copied from the image shipped under `public/`.
+ */
+export function ensureIfExampleProject(db: StudioStore) {
+  if (db.meta(IF_EXAMPLE_SEEDED)) return;
+  const folder = join(db.dataDir ?? dataDirectory(), "projects", IF_EXAMPLE_PROJECT_ID);
+  mkdirSync(join(folder, "results"), { recursive: true });
+  const notebooks = ifExampleNotebooks(IF_EXAMPLE_PROJECT_ID);
+  const modules = exampleModules(notebooks, IF_EXAMPLE_KEYWORDS);
+  const copies = exampleLibraryCopies(notebooks, modules);
+  db.transaction(() => {
+    if (db.meta(IF_EXAMPLE_SEEDED)) return;
+    const now = new Date().toISOString();
+    if (!db.project(IF_EXAMPLE_PROJECT_ID)) db.saveProject({ id: IF_EXAMPLE_PROJECT_ID, name: "免疫荧光分析示例", path: folder, createdAt: now, openedAt: now });
+    for (const doc of notebooks) {
+      db.insertNotebookSnapshot(doc);
+      db.saveRevision({ notebookId: doc.id, rev: doc.rev, cells: doc.cells, savedAt: doc.updatedAt });
+    }
+    for (const mod of modules) db.saveScriptModule(mod);
+    for (const copy of copies) db.saveLibraryCopy(copy);
+    db.saveWorkflow(ifExampleWorkflow(IF_EXAMPLE_PROJECT_ID));
+    db.setMeta(IF_EXAMPLE_SEEDED, now);
+  });
+  // The server runs from the folder that holds `public/` (the checkout, or the packaged app server).
+  const source = join(/* turbopackIgnore: true */ process.cwd(), ...IF_EXAMPLE_IMAGE.asset);
+  const target = join(folder, IF_EXAMPLE_IMAGE.path);
+  if (existsSync(source) && !existsSync(target)) {
+    mkdirSync(dirname(target), { recursive: true });
+    copyFileSync(source, target);
+  }
+}
+
+const IF_EXAMPLE_SEEDED = "ifExampleSeeded";
 
 function requireNotebook(db: StudioStore, id: string): NotebookDoc {
   const doc = db.notebook(id);

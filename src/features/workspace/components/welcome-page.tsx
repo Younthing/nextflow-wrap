@@ -13,7 +13,7 @@ import { ProductMark } from "@/lib/product-theme/mark";
 import { SearchField } from "@/components/ui/search-field";
 import { PathBrowserDialog } from "@/features/files/components/path-input";
 import { useFsListing } from "@/features/files/queries";
-import { displayPath, EXAMPLE_PROJECT_ID, filterProjects, openedLabel } from "@/features/workspace/projects";
+import { displayPath, EXAMPLE_PROJECT_ID, filterProjects, isExampleProject, openedLabel } from "@/features/workspace/projects";
 import { useCreateProject, useForgetProject, useOpenProject, useProjects, useReopenProject } from "@/features/workspace/queries";
 import type { CreateProjectRequest, Project } from "@/features/workspace/types";
 import { toast } from "@/lib/toast";
@@ -152,7 +152,7 @@ export function WelcomeView({ projects, home, busyId, backend, shortcuts, onNew,
                   <span className="grid min-w-0 gap-0.5">
                     <span className="flex min-w-0 items-center gap-2">
                       <span className="truncate font-medium">{project.name}</span>
-                      {project.id === EXAMPLE_PROJECT_ID ? <span className="shrink-0 rounded-full bg-muted px-2 py-px text-[11px] text-muted-foreground">示例</span> : null}
+                      {isExampleProject(project.id) ? <span className="shrink-0 rounded-full bg-muted px-2 py-px text-[11px] text-muted-foreground">示例</span> : null}
                     </span>
                     <span className="truncate font-mono text-[11.5px] text-muted-foreground" title={project.path}>{displayPath(project.path, home)}</span>
                   </span>

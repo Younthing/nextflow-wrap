@@ -3,6 +3,12 @@ import type { Project } from "./types";
 /** Id of the example project. Notebooks without a project belong to it. */
 export const EXAMPLE_PROJECT_ID = "example";
 
+/** Id of the immunofluorescence example project. */
+export const IF_EXAMPLE_PROJECT_ID = "example-if";
+
+/** Preset example projects, badged 示例 on the welcome page. */
+export const isExampleProject = (id: string) => id === EXAMPLE_PROJECT_ID || id === IF_EXAMPLE_PROJECT_ID;
+
 /** Folders created inside a new project. Notebooks stay in the app database, data and results on disk. */
 export const PROJECT_SCAFFOLD = ["data", "results"] as const;
 
