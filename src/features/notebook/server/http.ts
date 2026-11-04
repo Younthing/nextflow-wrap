@@ -10,6 +10,7 @@ import { notebookFromLibrary } from "@/features/notebook/library-copy";
 import { publishScriptModule } from "@/features/notebook/publish";
 import { exampleData, exampleLibraryCopies, exampleModules, exampleNotebooks, exampleWorkflow } from "@/features/notebook/examples";
 import { IF_EXAMPLE_IMAGE, IF_EXAMPLE_KEYWORDS, ifExampleNotebooks, ifExampleWorkflow } from "@/features/notebook/examples-if";
+import { IF_SIDE_FILES, ifSideNotebooks, ifSideWorkflow } from "@/features/notebook/examples-if-side";
 import { executeTryRun, runNotebookCells } from "@/features/notebook/execute";
 import { NotebookConflictError, notebookFiles } from "@/features/notebook/server/notebook-files";
 import { readEnvironmentYml } from "@/features/notebook/server/environment-yml";
@@ -128,9 +129,15 @@ const EXAMPLE_SEEDED = "exampleSeeded";
 
 /**
  * The immunofluorescence example project, seeded once like the first one, in `<data>/projects/example-if`: five
- * notebooks, their modules, the workflow and `data/image.tif` copied from the image shipped under `public/`.
+ * notebooks, their modules, the workflow and `data/image.tif` copied from the image shipped under `public/`; then
+ * its side branches.
  */
 export function ensureIfExampleProject(db: StudioStore) {
+  ensureIfMainExample(db);
+  ensureIfSideExample(db);
+}
+
+function ensureIfMainExample(db: StudioStore) {
   if (db.meta(IF_EXAMPLE_SEEDED)) return;
   const folder = join(db.dataDir ?? dataDirectory(), "projects", IF_EXAMPLE_PROJECT_ID);
   mkdirSync(join(folder, "results"), { recursive: true });
@@ -150,9 +157,44 @@ export function ensureIfExampleProject(db: StudioStore) {
     db.saveWorkflow(ifExampleWorkflow(IF_EXAMPLE_PROJECT_ID));
     db.setMeta(IF_EXAMPLE_SEEDED, now);
   });
+  copyExampleAsset(folder, IF_EXAMPLE_IMAGE);
+}
+
+/**
+ * The IF side branches (eight more notebooks and modules, the `example_if_side` workflow and their images), added
+ * once to the IF example project, including one seeded before they existed. Skipped when that project was removed.
+ */
+function ensureIfSideExample(db: StudioStore) {
+  if (db.meta(IF_SIDE_EXAMPLE_SEEDED)) return;
+  const project = db.project(IF_EXAMPLE_PROJECT_ID);
+  const now = new Date().toISOString();
+  if (!project) {
+    db.setMeta(IF_SIDE_EXAMPLE_SEEDED, now);
+    return;
+  }
+  const notebooks = ifSideNotebooks(IF_EXAMPLE_PROJECT_ID);
+  const modules = exampleModules(notebooks, IF_EXAMPLE_KEYWORDS);
+  const copies = exampleLibraryCopies(notebooks, modules);
+  db.transaction(() => {
+    if (db.meta(IF_SIDE_EXAMPLE_SEEDED)) return;
+    for (const doc of notebooks) {
+      if (db.notebook(doc.id)) continue;
+      db.insertNotebookSnapshot(doc);
+      db.saveRevision({ notebookId: doc.id, rev: doc.rev, cells: doc.cells, savedAt: doc.updatedAt });
+    }
+    for (const mod of modules) if (!db.scriptModule(mod.id)) db.saveScriptModule(mod);
+    for (const copy of copies) if (!db.libraryCopy(copy.moduleId)) db.saveLibraryCopy(copy);
+    if (!db.workflow("example_if_side")) db.saveWorkflow(ifSideWorkflow(IF_EXAMPLE_PROJECT_ID));
+    db.setMeta(IF_SIDE_EXAMPLE_SEEDED, now);
+  });
+  for (const file of IF_SIDE_FILES) copyExampleAsset(project.path, file);
+}
+
+/** Copies a file shipped under `public/` into the project, unless it is already there. */
+function copyExampleAsset(folder: string, file: { path: string; asset: readonly string[] }) {
   // The server runs from the folder that holds `public/` (the checkout, or the packaged app server).
-  const source = join(/* turbopackIgnore: true */ process.cwd(), ...IF_EXAMPLE_IMAGE.asset);
-  const target = join(folder, IF_EXAMPLE_IMAGE.path);
+  const source = join(/* turbopackIgnore: true */ process.cwd(), ...file.asset);
+  const target = join(folder, file.path);
   if (existsSync(source) && !existsSync(target)) {
     mkdirSync(dirname(target), { recursive: true });
     copyFileSync(source, target);
@@ -160,6 +202,7 @@ export function ensureIfExampleProject(db: StudioStore) {
 }
 
 const IF_EXAMPLE_SEEDED = "ifExampleSeeded";
+const IF_SIDE_EXAMPLE_SEEDED = "ifSideExampleSeeded";
 
 function requireNotebook(db: StudioStore, id: string): NotebookDoc {
   const doc = db.notebook(id);
