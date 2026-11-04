@@ -11,8 +11,8 @@ Python packages: numpy<2, scipy, pandas, scikit-image (tifffile), matplotlib, sc
 
 ## Side branches (`example_if_side`)
 
-Eight more notebooks/modules in `src/features/notebook/examples-if-side.ts`, wired in the `example_if_side` workflow
-(the main `example_if` workflow stays the five-module chain):
+Eight more notebooks/modules in `src/features/notebook/examples-if-side.ts`. `example_if` stays the five-module main
+chain; `example_if_side` is the full workflow: the whole main chain plus every side branch:
 
 - After `if_postprocess` (main-chain labels on `data/image.tif`): `if_morph_extra` (open / close / erode_connected /
   edges / skeleton / split_touching), `if_neighbors` (touching + proximal neighbours, nearest distances),

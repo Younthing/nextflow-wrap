@@ -533,14 +533,15 @@ export function ifSideNotebooks(projectId = IF_EXAMPLE_PROJECT_ID): NotebookDoc[
 }
 
 /**
- * The side branches as one workflow: the main chain up to post-processing fans out to morphology, neighbours,
- * object classification, colocalisation and blob detection; membrane, APOC and time-lapse run on their own images.
+ * The full workflow: the whole main chain (through measurement and the summary), with post-processing also fanning
+ * out to morphology, neighbours, object classification and colocalisation, blob detection on the image, and
+ * membrane, APOC and time-lapse branches on their own images. `example_if` stays the main chain only.
  */
 export function ifSideWorkflow(projectId = IF_EXAMPLE_PROJECT_ID): WorkflowDoc {
   return {
     id: "example_if_side",
-    name: "免疫荧光旁支分析示例",
-    description: "主链分割后扇出：形态学、邻域、物体分类、共定位、斑点检测；并行：膜分割、APOC 像素分类、时序强度",
+    name: "免疫荧光完整分析示例（主链 + 旁支）",
+    description: "完整主链（背景扣除 → 分割 → 后处理 → 测量 → 统计聚类），后处理后扇出形态学、邻域、物体分类、共定位，原图斑点检测；并行：膜分割、APOC 像素分类、时序强度",
     version: 1,
     params: { outdir: "results_side" },
     projectId,
@@ -549,6 +550,8 @@ export function ifSideWorkflow(projectId = IF_EXAMPLE_PROJECT_ID): WorkflowDoc {
       node("pre", "script/if_preprocess", "IF_PREPROCESS", 380, 80, { widgets: { nuclei_channel: 0, background_sigma: 50, smooth_sigma: 2 } }),
       node("seg", "script/if_segment", "IF_SEGMENT", 780, 80, { widgets: { min_distance: 8, distance_sigma: 2 } }),
       node("post", "script/if_postprocess", "IF_POSTPROCESS", 1180, 80, { widgets: { min_area: 50, expand_distance: 8 } }),
+      node("measure", "script/if_measure", "IF_MEASURE", 1600, -320, { widgets: { nuclei_channel: 0 } }),
+      node("summary", "script/if_summarize", "IF_SUMMARIZE", 2000, -320, { widgets: { n_clusters: 3, nuclei_channel: 0 } }),
       node("morph", "script/if_morph_extra", "IF_MORPH_EXTRA", 1600, -120, { widgets: { op: "open", radius: 2 } }),
       node("neighbors", "script/if_neighbors", "IF_NEIGHBORS", 1600, 80, { widgets: { max_distance: 60, n_nearest: 3 } }),
       node("objclf", "script/if_object_clf", "IF_OBJECT_CLF", 1600, 280, { widgets: { annotation: "", n_classes: 3, n_trees: 100 } }),
@@ -566,6 +569,13 @@ export function ifSideWorkflow(projectId = IF_EXAMPLE_PROJECT_ID): WorkflowDoc {
       edge("image", "file", "pre", "image"),
       edge("pre", "filtered", "seg", "filtered"),
       edge("seg", "labels", "post", "labels"),
+      edge("post", "nuclei", "measure", "nuclei"),
+      edge("post", "cells", "measure", "cells"),
+      edge("image", "file", "measure", "image"),
+      edge("measure", "features", "summary", "features"),
+      edge("image", "file", "summary", "image"),
+      edge("post", "nuclei", "summary", "nuclei"),
+      edge("post", "cells", "summary", "cells"),
       edge("post", "nuclei", "morph", "labels"),
       edge("post", "cells", "neighbors", "labels"),
       edge("image", "file", "objclf", "image"),

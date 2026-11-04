@@ -70,7 +70,7 @@ describe("example project on a fresh install", () => {
       expect(db.workflow("example_if")!.nodes.length).toBe(6);
       const side = db.workflow("example_if_side")!;
       expect(side.projectId).toBe(IF_EXAMPLE_PROJECT_ID);
-      expect(side.edges.filter((item) => item.source === "post").map((item) => item.target).sort()).toEqual(["coloc", "coloc", "morph", "neighbors", "objclf"]);
+      expect(side.edges.filter((item) => item.source === "post").map((item) => item.target).sort()).toEqual(["coloc", "coloc", "measure", "measure", "morph", "neighbors", "objclf", "summary", "summary"]);
       for (const file of IF_SIDE_FILES) {
         expect(readFileSync(join(project!.path, file.path)).length).toBe(readFileSync(join(process.cwd(), ...file.asset)).length);
       }
