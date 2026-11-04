@@ -8,6 +8,7 @@ import "@copilotkit/react-core/v2/styles.css";
 import { AssistantChatInput, ComposerProvider } from "./composer";
 import { AssistantModuleHost } from "./modules/activation";
 import { ASSISTANT_MODULES_PROP } from "./modules/contract";
+import { useLayoutStore } from "@/components/layout/layout-store";
 
 const RUNTIME_URL = "/api/copilotkit";
 
@@ -74,9 +75,29 @@ function sameStringList(left: readonly string[], right: readonly string[]): bool
   return left.length === right.length && left.every((item, index) => item === right[index]);
 }
 
+/**
+ * The panel takes width from the page, so opening it folds the main navigation to its icon rail. Only the opening
+ * itself does: a nav the user opens again stays open, and closing the panel unfolds the nav only if this folded it.
+ */
+function useFoldNavWhileOpen(open: boolean) {
+  const folded = React.useRef(false);
+  React.useEffect(() => {
+    const { panels, setPanel } = useLayoutStore.getState();
+    if (open) {
+      if (panels.nav.collapsed) return;
+      setPanel("nav", { ...panels.nav, collapsed: true });
+      folded.current = true;
+    } else if (folded.current) {
+      folded.current = false;
+      if (panels.nav.collapsed) setPanel("nav", { ...panels.nav, collapsed: false });
+    }
+  }, [open]);
+}
+
 export function AssistantProvider({ children }: { children: React.ReactNode }) {
   const { data: status } = useAssistantStatusQuery();
   const [open, setOpen] = React.useState(false);
+  useFoldNavWhileOpen(open);
   const [modules, setModules] = React.useState<readonly string[]>([]);
   const onModules = React.useCallback((ids: readonly string[]) => {
     setModules((current) => (sameStringList(current, ids) ? current : ids));
