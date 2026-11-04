@@ -334,13 +334,13 @@ print(f"{int(cell_labels.max())} 个细胞（去掉 {len(background)} 块背景�
 const ifBlobDetect = cells(
   ["markdown", "# 斑点检测\n\n在单通道上用 LoG、DoG、DoH 或高斯平滑后的局部极大值检测斑点状结构（细胞核、颗粒），输出坐标、尺度和强度。\n"],
   ["input", `# @input name=image type=path required
-# @input name=channel type=int default=0
+# @input name=channel_index type=int default=0
 # @input name=method type=str default="log"
 # @input name=min_sigma type=float default=4
 # @input name=max_sigma type=float default=12
 # @input name=threshold type=float default=0.05
 image = "data/image.tif"
-channel = 0
+channel_index = 0
 method = "log"
 min_sigma = 4.0
 max_sigma = 12.0
@@ -353,7 +353,7 @@ METHODS = ("log", "dog", "doh", "peaks")
 if method not in METHODS:
     raise SystemExit(f"method 需为 {', '.join(METHODS)} 之一，实际：{method}")
 img = io.imread(image)
-plane = img[..., channel] if img.ndim == 3 else img
+plane = img[..., channel_index] if img.ndim == 3 else img
 plane = exposure.rescale_intensity(plane.astype(np.float64), out_range=(0.0, 1.0))
 if method == "log":
     found = feature.blob_log(plane, min_sigma=min_sigma, max_sigma=max_sigma, num_sigma=10, threshold=threshold)
@@ -556,7 +556,7 @@ export function ifSideWorkflow(projectId = IF_EXAMPLE_PROJECT_ID): WorkflowDoc {
       node("neighbors", "script/if_neighbors", "IF_NEIGHBORS", 1600, 80, { widgets: { max_distance: 60, n_nearest: 3 } }),
       node("objclf", "script/if_object_clf", "IF_OBJECT_CLF", 1600, 280, { widgets: { annotation: "", n_classes: 3, n_trees: 100 } }),
       node("coloc", "script/if_coloc", "IF_COLOC", 1600, 480, { widgets: { channel_a: 1, channel_b: 2 } }),
-      node("blob", "script/if_blob_detect", "IF_BLOB_DETECT", 380, 400, { widgets: { channel: 0, method: "log", min_sigma: 4, max_sigma: 12, threshold: 0.05 } }),
+      node("blob", "script/if_blob_detect", "IF_BLOB_DETECT", 380, 400, { widgets: { channel_index: 0, method: "log", min_sigma: 4, max_sigma: 12, threshold: 0.05 } }),
       node("membrane", FILE_ID, "MEMBRANE", 0, 680, { config: {}, settings: { path: "data/membrane.tif" } }),
       node("memseg", "script/if_membrane_seg", "IF_MEMBRANE_SEG", 380, 680, { widgets: { frame: 0, spot_sigma: 6, outline_sigma: 2, min_area: 30, background_factor: 1.25 } }),
       node("blobs", FILE_ID, "BLOBS", 0, 900, { config: {}, settings: { path: "data/blobs.tif" } }),

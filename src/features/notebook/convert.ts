@@ -19,6 +19,13 @@ export class ConvertError extends Error {
 const INPUT_RE = /^\s*#\s*@input\b(.*)$/;
 const OUTPUT_RE = /^\s*#\s*@output\b(.*)$/;
 
+/**
+ * Names Nextflow resolves to its own globals inside a process. An input with one of these
+ * names becomes `val channel` / `--channel '${channel}'` in main.nf, and the script receives
+ * e.g. `class nextflow.Channel` instead of the value.
+ */
+const NEXTFLOW_RESERVED_INPUTS = new Set(["channel", "Channel", "params", "task", "workflow", "nextflow"]);
+
 /** Words, with quoted regions kept in the same token and quotes removed. */
 function tokenize(rest: string): string[] {
   const tokens: string[] = [];
@@ -58,6 +65,9 @@ function parseInput(rest: string, where: string): MarkerInput {
   const type = map.get("type");
   if (typeof name !== "string" || !/^[A-Za-z_][\w]*$/.test(name)) {
     throw new ConvertError(`${where}：@input 需要 name=标识符`);
+  }
+  if (NEXTFLOW_RESERVED_INPUTS.has(name)) {
+    throw new ConvertError(`${where}：@input ${name} 与 Nextflow 内置名冲突，请改名（如 ${name}_index）`);
   }
   if (typeof type !== "string") throw new ConvertError(`${where}：@input ${name} 需要 type=`);
   const fallback = map.get("default");
