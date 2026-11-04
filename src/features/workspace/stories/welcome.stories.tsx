@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/nextjs-vite";
-import { expect, fn, userEvent, within } from "storybook/test";
+import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 
 import type { Project } from "@/features/workspace/types";
 import { BackendCardView } from "../components/backend-card";
@@ -74,7 +74,12 @@ export const BackendOffline: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("button", { name: "更多后端操作" }));
-    await expect(within(document.body).getByRole("menuitem", { name: /用当前代码重新构建/ })).toBeVisible();
+    // The menu renders in a Radix portal on document.body and is positioned (and faded in) a frame after it mounts.
+    const rebuild = await within(document.body).findByRole("menuitem", { name: /用当前代码重新构建/ });
+    await waitFor(() => expect(rebuild).toBeVisible());
+    // The a11y check runs after play; close the menu so the page is no longer aria-hidden.
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(within(document.body).queryByRole("menu")).toBeNull());
   },
 };
 

@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
-import { addFileInput, artifactDirs, extend, notebookModule, runWithShell, shot } from "./helpers";
+import { addFileInput, artifactDirs, extend, notebookModule, runWithShell, shot, uploadToWorkspace } from "./helpers";
 
 /**
  * Single-cell acceptance on the real stack: two scanpy notebooks run in the persistent Jupyter
@@ -95,11 +95,13 @@ test.describe("single-cell user path", () => {
       { source: CLUSTER_OUTPUT, role: "output" },
     ], [{ cell: 1 }, { cell: 2, text: /clusters \d+/ }], { port: "filtered", path: counts });
 
+    // The canvas run reads its data from the workspace, so the counts go into data/ first.
+    const countsInWorkspace = await uploadToWorkspace(page, counts, `pbmc3k_${stamp}.h5ad`);
     await page.goto("/workflows");
     await page.getByRole("button", { name: "新建", exact: true }).click();
     await page.waitForURL(/\/workflows\/(?!modules$)[^/]+$/);
     await page.getByRole("textbox", { name: "流程名称" }).fill(`单细胞 ${stamp}`);
-    const reference = await addFileInput(page, counts);
+    const reference = await addFileInput(page, countsInWorkspace);
 
     // Zoom out and move the reference to the left so the chain fits beside it, clear of the minimap.
     await page.getByRole("button", { name: /zoom out/i }).click();
