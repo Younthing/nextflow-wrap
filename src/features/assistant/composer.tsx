@@ -61,7 +61,7 @@ const MAX_CHIPS = 12;
 function ReferenceRow({ references, onPick }: { references: ComposerReferences; onPick: (text: string) => void }) {
   const shown = references.items.slice(0, MAX_CHIPS);
   return (
-    <div className="pointer-events-auto mx-auto flex w-full max-w-3xl flex-wrap items-center gap-1.5 px-4 pb-1.5 text-xs" aria-label={references.title}>
+    <div className="pointer-events-auto flex w-full flex-wrap items-center gap-1.5 pt-2 text-xs" aria-label={references.title}>
       <span className="text-muted-foreground">{references.title}</span>
       {shown.map((item) => (
         <button
@@ -110,13 +110,20 @@ function ChatInputWithReferences(props: CopilotChatInputProps) {
     });
   }, []);
 
+  // The references sit under the input, with the disclaimer after them: the textarea grows upwards as it fills,
+  // so they stay put and a click still lands where it was aimed.
+  const { showDisclaimer = true, textArea = NO_SPELLCHECK, ...input } = props;
   return (
-    <div ref={wrapper}>
+    <div ref={wrapper} className="assistant-composer">
+      <CopilotChatInput {...input} textArea={textArea} showDisclaimer={false} />
       {references && <ReferenceRow references={references} onPick={insert} />}
-      <CopilotChatInput {...props} />
+      {showDisclaimer && <CopilotChatInput.Disclaimer />}
     </div>
   );
 }
+
+/** Inserted references are `` `name` ``, which the browser would underline as misspelled. */
+const NO_SPELLCHECK = { spellCheck: false, autoCorrect: "off", autoCapitalize: "off" };
 
 /**
  * CopilotKit's input with the host's references row above it, for the chat's `input` slot. It keeps the input's

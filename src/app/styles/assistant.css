@@ -36,24 +36,74 @@ aside.copilotKitSidebar [data-copilotkit] {
   --cpk-font-mono: var(--font-jetbrains-mono), ui-monospace, monospace;
 }
 
-/* The panel is a glass-strong surface, like dialogs and menus. */
+/*
+ * The panel is a rail like the navigation, explorer and inspector: a `glass`
+ * card on the radius-xl, inset by the shell's 0.75rem gutter instead of
+ * running edge to edge. Its width still counts from the window edge, so the
+ * page CopilotKit pushes aside keeps the same 0.75rem gap to it.
+ */
 aside.copilotKitSidebar {
-  background-color: var(--glass-strong);
-  border-color: var(--glass-border);
+  inset-block: 0.75rem;
+  right: 0.75rem;
+  height: auto;
+  max-height: none;
+  overflow: hidden;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-xl);
+  background-color: var(--glass);
   box-shadow: var(--glass-shadow), var(--glass-highlight);
-  -webkit-backdrop-filter: blur(24px) saturate(170%);
-  backdrop-filter: blur(24px) saturate(170%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  backdrop-filter: blur(18px) saturate(160%);
+}
+/* Closed, it slides past the gutter and its shadow too. */
+aside.copilotKitSidebar[aria-hidden="true"] {
+  --tw-translate-x: calc(100% + 1.5rem);
+}
+@media (min-width: 768px) {
+  aside.copilotKitSidebar[data-copilot-sidebar] {
+    width: calc(var(--sidebar-width) - 0.75rem) !important;
+  }
 }
 .copilotKitSidebar .copilotKitHeader {
   background-color: transparent;
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
   border-color: var(--border);
-  padding-block: 0.875rem;
+  padding: 0.75rem 0.75rem 0.75rem 1rem;
 }
 .copilotKitSidebar .copilotKitHeader [class*="text-base"] {
   font-size: 0.875rem;
   font-weight: 600;
+}
+
+/*
+ * Messages scroll; the composer is a footer under them, not an overlay on
+ * top of them. CopilotKit floats it over the list and pads the list by its
+ * measured height; in the flow, that padding is just a gap.
+ */
+.copilotKitSidebar [data-testid="copilot-input-overlay"] {
+  position: relative;
+  inset: auto;
+  flex-shrink: 0;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+}
+.copilotKitSidebar [data-testid="copilot-scroll-content"] {
+  padding-bottom: 1rem !important;
+}
+/* One gutter for the footer on both the welcome screen and the thread. */
+.copilotKitSidebar .assistant-composer > [data-copilotkit] > div {
+  padding-inline: 0;
+}
+.copilotKitSidebar .assistant-composer {
+  padding-inline: 0.75rem;
+}
+.copilotKitSidebar [data-sidebar-chat] .cpk\:px-8:has(> .cpk\:max-w-3xl > .assistant-composer) {
+  padding-inline: 0;
+  padding-bottom: 0;
+}
+.copilotKitSidebar .assistant-composer > .cpk\:text-center {
+  padding-block: 0.5rem 0.625rem;
 }
 
 /* Welcome line: quiet, not a hero title. Markdown headings keep theirs. */
