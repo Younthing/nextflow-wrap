@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { _electron as electron, expect, test, type ElectronApplication, type Page } from "@playwright/test";
-import { addFileInput, extend, go, notebookModule, runWithShell, shot } from "../e2e/helpers";
+import { addFileInput, extend, go, notebookModule, runWithShell, shot, uploadToWorkspace } from "../e2e/helpers";
 import { SCHEMA_VERSION } from "../src/lib/server/schema";
 import { defaultSettings } from "../src/features/settings/types";
 import { resolveProductTheme } from "../src/lib/product-theme";
@@ -109,10 +109,12 @@ test.describe("packaged desktop app", () => {
       { source: ["# @output name=upper type=path pattern=upper.txt", "text = open(words).read().upper()", 'open("upper.txt", "w").write(text)', "print(text)"].join("\n"), role: "output" },
     ], [{ cell: 1 }, { cell: 2, text: /NEXTFLOW STUDIO/ }], { port: "words", path: input }, "e2e-desktop");
 
+    // Canvas runs accept workspace-relative paths; upload the fixture into the open project first.
+    const wordsInWorkspace = await uploadToWorkspace(page, input, `${name}-words.txt`);
     await go(page, "/workflows");
     await page.getByRole("button", { name: "新建", exact: true }).click();
     await page.waitForURL(/\/workflows\/(?!modules$)[^/]+$/);
-    const reference = await addFileInput(page, input);
+    const reference = await addFileInput(page, wordsInWorkspace);
     await extend(page, reference, "file", name);
     await expect(page.locator(".react-flow__edge")).toHaveCount(1);
     await expect(page.getByText("已保存", { exact: true })).toBeVisible({ timeout: 20_000 });
