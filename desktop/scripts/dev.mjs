@@ -9,6 +9,7 @@
 //   pnpm dev                  rebuild, then start
 //   pnpm dev --skip-server    only the shell; reuse the last server build (it may be older than the code)
 //   pnpm dev --fresh          Windows: also clear the WSL server's data
+//   pnpm dev --no-sandbox     forward to Electron (WSL/root; Chromium refuses root without it)
 import { spawn, spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
@@ -31,6 +32,8 @@ if (process.platform === "win32") {
     if (bundled.status !== 0) process.exit(bundled.status ?? 1);
   }
   const electronBinary = createRequire(import.meta.url)("electron");
-  const electron = spawn(electronBinary, [".", "--dev"], { cwd: desktop, stdio: "inherit" });
+  // Chromium flags such as --no-sandbox (needed when the WSL user is root).
+  const electronArgs = [".", "--dev", ...args.filter((arg) => arg === "--no-sandbox")];
+  const electron = spawn(electronBinary, electronArgs, { cwd: desktop, stdio: "inherit" });
   electron.on("exit", (code) => process.exit(code ?? 0));
 }
