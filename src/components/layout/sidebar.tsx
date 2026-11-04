@@ -9,6 +9,8 @@ import { AssistantButton } from "@/features/assistant/assistant-button";
 import { isActive, useRuns } from "@/features/runs/queries";
 import { ProjectChip } from "@/features/workspace/components/project-chip";
 import { usePref } from "@/lib/local-pref";
+import { getProductTheme } from "@/lib/product-theme";
+import { ProductMark } from "@/lib/product-theme/mark";
 import { useIsDesktop } from "@/lib/use-desktop";
 import { cn } from "@/lib/utils";
 import { BackendStatus } from "./backend-status";
@@ -16,6 +18,8 @@ import { useLayoutStore } from "./layout-store";
 import { FLOW_NAV, FLOW_SUMMARY, flowGroupOpen, isFlowRoute, isNavActive, SETTINGS_NAV, WORKBENCH_NAV, type FlowNavHref } from "./nav";
 import { sidebarItemClass as itemClass } from "./sidebar-item";
 import { ThemeToggle } from "./theme-toggle";
+
+const productTheme = getProductTheme();
 
 const FLOW_ICONS = {
   "/workflows": Waypoints,
@@ -89,8 +93,8 @@ export function Sidebar({ collapsed = false }: { collapsed?: boolean }) {
           className="flex min-w-0 items-center gap-2.5 rounded-lg px-1.5 py-1 focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-none"
           title="回到欢迎页"
         >
-          <span aria-hidden className="grid size-8 shrink-0 place-items-center rounded-[10px] bg-primary font-mono text-xs font-bold text-primary-foreground shadow-sm">nf</span>
-          <span className={cn("font-serif text-[15px] font-bold", collapsed && "sr-only")}>Studio<span className="sr-only">，回到欢迎页</span></span>
+          <span aria-hidden className="grid size-8 shrink-0 place-items-center rounded-[10px] bg-primary font-mono text-xs font-bold text-primary-foreground shadow-sm"><ProductMark theme={productTheme} className="size-6" /></span>
+          <span className={cn("font-serif text-[15px] font-bold", collapsed && "sr-only")}>{productTheme.displayName}<span className="sr-only">，回到欢迎页</span></span>
         </Link>
         <button
           type="button"
