@@ -45,6 +45,15 @@ export async function findJava(env: NodeJS.ProcessEnv = toolEnvironment()): Prom
   throw new Error("Nextflow needs a supported Java 17–26. Set NEXTFLOW_JAVA_HOME to an installed JDK, or install one from the setup page.");
 }
 
+/**
+ * Every Studio launch of Nextflow runs this release: the launcher on PATH (whatever version it is) fetches and
+ * runs the pinned runtime. The badge, setup page, try-run and pipeline runs must all use it, or they disagree.
+ */
+export const NEXTFLOW_PIN_ENV = { NXF_VER: TOOLCHAIN.nextflow.version } as const;
+
+/** The release number in `nextflow -version` output; undefined when it is not there. */
+export const parseNextflowVersion = (output: string) => output.match(/\bversion\s+(\d+\.\d+\.\d+\S*)/)?.[1];
+
 /** `NEXTFLOW_BIN`, then PATH, then the managed launcher. */
 export const findNextflow = (env: NodeJS.ProcessEnv = toolEnvironment()) => executable("nextflow", env.NEXTFLOW_BIN, [managedPaths().nextflow], env.PATH);
 
@@ -54,7 +63,7 @@ export async function preflight() {
   const dockerCli = await executable("docker", base.DOCKER_BIN, [], base.PATH).catch(() => undefined);
   const { home: javaHome, version: javaVersion } = await findJava(base);
   // Conda environments and container images go to the shared cache that the notebook try-run also uses.
-  const env: NodeJS.ProcessEnv = { ...base, ...nextflowCacheEnv(base), JAVA_HOME: javaHome, NXF_JAVA_HOME: javaHome, NXF_ANSI_LOG: "false", NXF_VER: TOOLCHAIN.nextflow.version };
+  const env: NodeJS.ProcessEnv = { ...base, ...nextflowCacheEnv(base), JAVA_HOME: javaHome, NXF_JAVA_HOME: javaHome, NXF_ANSI_LOG: "false", ...NEXTFLOW_PIN_ENV };
   // Append, never prepend: JAVA_HOME already picks the JVM, and a directory such as /usr/bin or /opt/homebrew/bin
   // in front would shadow the python3 or Rscript of the environment the user started the app from.
   env.PATH = [base.PATH, join(javaHome, "bin"), dockerCli ? join(dockerCli, "..") : ""].filter(Boolean).join(delimiter);
@@ -67,7 +76,13 @@ export async function preflight() {
     }
   }
   const check = (bin: string, args: string[]) => runCommand(bin, args, { env, quiet: true, timeoutMs: 30_000 });
-  const nextflowVersion = await check(nextflow, ["-version"]);
+  const nextflowVersion = parseNextflowVersion(await check(nextflow, ["-version"]));
+  if (!nextflowVersion) throw new Error(`${nextflow} -version did not report a Nextflow version`);
+  // The launcher's own release, which is what `nextflow -version` prints in the user's shell.
+  const unpinned = { ...env };
+  delete unpinned.NXF_VER;
+  const launcherVersion = await runCommand(nextflow, ["-version"], { env: unpinned, quiet: true, timeoutMs: 30_000 })
+    .then(parseNextflowVersion).catch(() => undefined);
   // Docker is optional. A CLI without a running daemon (Docker Desktop closed) counts as no Docker,
   // so the runner still starts and the shell, conda and other runtimes keep working.
   const dockerInfo = dockerCli
@@ -90,7 +105,8 @@ export async function preflight() {
   return {
     nextflow, docker, env, weblog,
     versions: {
-      nextflow: nextflowVersion.match(/version\s+([\d.]+)/)?.[1] ?? nextflowVersion.trim(),
+      nextflow: nextflowVersion,
+      ...(launcherVersion && launcherVersion !== nextflowVersion ? { nextflowLauncher: launcherVersion } : {}),
       java: javaVersion, ...(dockerInfo?.ServerVersion ? { docker: dockerInfo.ServerVersion } : {}),
     },
     resources: dockerInfo

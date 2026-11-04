@@ -8,7 +8,10 @@ export interface HealthStatus {
   /** Id of this server build (`BUILD` in the package, `app-server.build` in the desktop app). */
   build?: string;
   apiVersion?: number;
+  /** Release Studio runs (the launcher fetches the pinned `NXF_VER`). */
   nextflowVersion: string;
+  /** What `nextflow -version` prints in a plain shell, when that launcher is a different release. */
+  nextflowLauncherVersion?: string;
   mocked: boolean;
   runnerReady?: boolean;
   diagnostics?: string;

@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { listKernelSpecs } from "@/features/notebook/server/kernels";
 import { runCommand } from "@/features/project/server/command";
-import { findJava, findNextflow, toolEnvironment } from "@/features/project/server/preflight";
+import { findJava, findNextflow, NEXTFLOW_PIN_ENV, parseNextflowVersion, toolEnvironment } from "@/features/project/server/preflight";
 import { dataDirectory } from "@/lib/server/paths";
 import {
   appendInstallLog,
@@ -73,8 +73,8 @@ export async function setupStatus(): Promise<SetupStatus> {
   const nextflow = await findNextflow(env).catch(() => undefined);
   let nextflowVersion: string | undefined;
   if (nextflow && java) {
-    nextflowVersion = await quiet(nextflow, ["-version"], { ...env, JAVA_HOME: java.home, NXF_JAVA_HOME: java.home })
-      .then((out) => out.match(/version\s+([\d.]+)/)?.[1])
+    nextflowVersion = await quiet(nextflow, ["-version"], { ...env, JAVA_HOME: java.home, NXF_JAVA_HOME: java.home, ...NEXTFLOW_PIN_ENV })
+      .then(parseNextflowVersion)
       .catch(() => undefined);
   }
   tools.push({
