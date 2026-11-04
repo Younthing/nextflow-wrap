@@ -19,6 +19,10 @@ export function BackendStatus({ collapsed = false }: { collapsed?: boolean }) {
       : data.status === "degraded"
         ? { tone: "warning" as const, text: "Runner 未就绪 · 检查环境" }
         : { tone: data.mocked ? ("warning" as const) : ("success" as const), text: `Nextflow ${data.nextflowVersion}${data.mocked ? " · 模拟" : ""}` };
+  // The shell's `nextflow -version` can differ: Studio pins the release it runs and the launcher fetches it.
+  const pinned = !isPending && !isError && data.nextflowLauncherVersion
+    ? `Studio 运行 Nextflow ${data.nextflowVersion}（NXF_VER 固定）；PATH 上的 nextflow 启动器本身是 ${data.nextflowLauncherVersion}`
+    : undefined;
   const degraded = !isPending && !isError && data.status === "degraded";
 
   if (collapsed) {
@@ -26,7 +30,7 @@ export function BackendStatus({ collapsed = false }: { collapsed?: boolean }) {
       <span
         role="status"
         aria-label={state.text}
-        title={degraded ? `${state.text}：${data.diagnostics ?? ""}` : state.text}
+        title={degraded ? `${state.text}：${data.diagnostics ?? ""}` : pinned ?? state.text}
         className="flex h-9 w-full items-center justify-center"
       >
         <span
@@ -52,7 +56,7 @@ export function BackendStatus({ collapsed = false }: { collapsed?: boolean }) {
   );
 
   return (
-    <Badge variant={data.mocked ? "warning" : "success"} className="max-w-full font-mono" title={data.mocked ? "演示模式：不运行 Nextflow" : undefined}>
+    <Badge variant={data.mocked ? "warning" : "success"} className="max-w-full font-mono" title={data.mocked ? "演示模式：不运行 Nextflow" : pinned}>
       <span className="size-1.5 shrink-0 rounded-full bg-current" />
       <span className="truncate">Nextflow {data.nextflowVersion}</span>
       {data.mocked ? <span className="font-sans">· 模拟</span> : null}

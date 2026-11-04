@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 
 import { CommandError, runCommand } from "@/features/project/server/command";
-import { findJava, findNextflow, toolEnvironment } from "@/features/project/server/preflight";
+import { findJava, findNextflow, NEXTFLOW_PIN_ENV, toolEnvironment } from "@/features/project/server/preflight";
 import { nextflowCacheEnv } from "@/lib/server/paths";
 import { CELL_DRIVER } from "./cell-driver";
 import { cellsForKernelRun, cellsForRun } from "./cells";
@@ -69,6 +69,8 @@ export async function findTryRunNextflow(): Promise<NextflowLauncher> {
       NXF_JAVA_HOME: home,
       NXF_ANSI_LOG: "false",
       NXF_DISABLE_CHECK_LATEST: "true",
+      // Same release as pipeline runs and the sidebar badge; `module run` needs Nextflow ≥ 26.04.
+      ...NEXTFLOW_PIN_ENV,
       PATH: [base.PATH, join(home, "bin")].filter(Boolean).join(delimiter),
     },
   };
