@@ -59,6 +59,24 @@ describe("settings", () => {
     expect(settingsUpdateSchema.safeParse(bad).success).toBe(false);
   });
 
+  it("persists multiline Nextflow setup, normalizes line endings and can clear it", () => {
+    const dir = temp();
+    const env: Record<string, string | undefined> = {};
+    const update = settingsUpdateSchema.parse({ settings: {
+      ...defaultSettings(), runtime: { defaultEngine: "shell", nextflowSetup: "source ~/miniconda3/etc/profile.d/conda.sh\r\nconda activate bia-main" },
+    } });
+    const setup = "source ~/miniconda3/etc/profile.d/conda.sh\nconda activate bia-main";
+    expect(saveSettings(update, dir, env).runnerRestartNeeded).toBe(true);
+    expect(readSettings(dir).runtime.nextflowSetup).toBe(setup);
+    expect(env.NEXTFLOW_STUDIO_NEXTFLOW_SETUP).toBe(setup);
+    expect(saveSettings({ settings: defaultSettings() }, dir, env).runnerRestartNeeded).toBe(true);
+    expect(env.NEXTFLOW_STUDIO_NEXTFLOW_SETUP).toBeUndefined();
+    expect(readSettings(dir).runtime.nextflowSetup).toBeUndefined();
+    for (const nextflowSetup of ["echo bad\0", "x".repeat(10_001)]) {
+      expect(settingsUpdateSchema.safeParse({ settings: { ...defaultSettings(), runtime: { defaultEngine: "shell", nextflowSetup } } }).success).toBe(false);
+    }
+  });
+
   it("reads a settings file from before remote hosts and cloud settings existed", () => {
     const dir = temp();
     const old: Partial<ReturnType<typeof defaultSettings>> = defaultSettings();

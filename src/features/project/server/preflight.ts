@@ -6,6 +6,7 @@ import { ENGINE_LABELS, executorDef, isHostShell, launchTools, type LaunchConfig
 import { nextflowCacheEnv } from "@/lib/server/paths";
 import { managedPaths, managedToolEnv, nextflowPluginsDirectory, pluginInstalled, TOOLCHAIN, WEBLOG_PLUGIN } from "@/lib/server/toolchain";
 import { runCommand } from "./command";
+import { runtimeEnvironment } from "./runtime-environment";
 
 async function executable(name: string, override: string | undefined, fallbacks: string[] = [], path = process.env.PATH): Promise<string> {
   const candidates = override ? [override] : [
@@ -58,7 +59,7 @@ export const parseNextflowVersion = (output: string) => output.match(/\bversion\
 export const findNextflow = (env: NodeJS.ProcessEnv = toolEnvironment()) => executable("nextflow", env.NEXTFLOW_BIN, [managedPaths().nextflow], env.PATH);
 
 export async function preflight() {
-  const base = toolEnvironment();
+  const base = await runtimeEnvironment(toolEnvironment());
   const nextflow = await findNextflow(base);
   const dockerCli = await executable("docker", base.DOCKER_BIN, [], base.PATH).catch(() => undefined);
   const { home: javaHome, version: javaVersion } = await findJava(base);
@@ -103,7 +104,7 @@ export async function preflight() {
   }
   const hostArch = arch() === "x64" ? "x86_64" : arch() === "arm64" ? "aarch64" : arch();
   return {
-    nextflow, docker, env, weblog,
+    nextflow, docker, env, weblog, setup: process.env.NEXTFLOW_STUDIO_NEXTFLOW_SETUP,
     versions: {
       nextflow: nextflowVersion,
       ...(launcherVersion && launcherVersion !== nextflowVersion ? { nextflowLauncher: launcherVersion } : {}),

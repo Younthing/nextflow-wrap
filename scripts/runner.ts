@@ -332,9 +332,9 @@ async function execute(run: StoredExecution, tools: RuntimeTools, port: number, 
     if (run.resumeFrom) args.push("-resume", run.sessionId!);
     await writeFile(join(run.attemptDir, "params.json"), JSON.stringify(params, null, 2));
     await writeFile(join(run.attemptDir, "run.config"), runConfig);
-    await writeFile(join(run.attemptDir, "manifest.json"), JSON.stringify({ workflow: run.detail.workflow, versions: runtimeState.versions, resources: tools.resources, executable: tools.nextflow, args }, null, 2));
+    await writeFile(join(run.attemptDir, "manifest.json"), JSON.stringify({ workflow: run.detail.workflow, versions: runtimeState.versions, resources: tools.resources, executable: tools.nextflow, args, setup: tools.setup }, null, 2));
     if (stopping) throw new Error("Runner 正在停止");
-    const head = await spawnDetached(tools.nextflow, args, { cwd: run.projectDir, env: tools.env, logPath: join(run.attemptDir, "console.log") });
+    const head = await spawnDetached(tools.nextflow, args, { cwd: run.projectDir, env: tools.env, logPath: join(run.attemptDir, "console.log"), setup: tools.setup });
     db.updateRun(id, (record) => {
       record.detail.params = params;
       record.detail.launch = launch;

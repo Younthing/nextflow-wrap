@@ -33,6 +33,22 @@ export const Default: Story = {
   },
 };
 
+export const NextflowEnvironment: Story = {
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    const setup = canvas.getByRole("textbox", { name: "Nextflow 启动前命令（Bash）" });
+    await userEvent.type(setup, "source ~/miniconda3/etc/profile.d/conda.sh{Enter}conda activate bia-main");
+    await userEvent.click(canvas.getByRole("button", { name: /保存设置/ }));
+    await expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({
+      settings: expect.objectContaining({ runtime: expect.objectContaining({
+        nextflowSetup: "source ~/miniconda3/etc/profile.d/conda.sh\nconda activate bia-main",
+      }) }),
+    }));
+    await userEvent.clear(setup);
+    await expect(canvas.getByRole("button", { name: /保存设置/ })).toBeDisabled();
+  },
+};
+
 export const AssistantCodexReady: Story = {
   args: { assistantStatus: { status: { enabled: true, detail: "本机 Codex（gpt-5-codex）", backend: "codex", model: "gpt-5-codex" }, refresh: fn() } },
   play: async ({ canvasElement }) => {

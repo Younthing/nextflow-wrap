@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { listKernelSpecs } from "@/features/notebook/server/kernels";
 import { runCommand } from "@/features/project/server/command";
 import { findJava, findNextflow, NEXTFLOW_PIN_ENV, parseNextflowVersion, toolEnvironment } from "@/features/project/server/preflight";
+import { runtimeEnvironment } from "@/features/project/server/runtime-environment";
 import { dataDirectory } from "@/lib/server/paths";
 import {
   appendInstallLog,
@@ -58,7 +59,7 @@ function withJob(status: ToolStatus): ToolStatus {
 export async function setupStatus(): Promise<SetupStatus> {
   const paths = managedPaths();
   await seedBundledPlugins(process.env.NEXTFLOW_STUDIO_BUNDLED_PLUGINS, paths).catch(() => false);
-  const env = toolEnvironment();
+  const env = await runtimeEnvironment(toolEnvironment());
   const tools: ToolStatus[] = [];
 
   const java = await findJava(env).catch(() => undefined);

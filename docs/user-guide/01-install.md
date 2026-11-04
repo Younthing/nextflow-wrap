@@ -29,6 +29,23 @@
 已经装在系统里的 Java、Nextflow、conda 和 Jupyter 会被直接使用，向导显示「系统」。
 所有下载都核对 SHA-256，安装日志在设置 → 诊断导出的诊断包里。
 
+## 配置 Nextflow 执行环境
+
+在「设置 → 偏好 → Nextflow 执行环境」填写「Nextflow 启动前命令（Bash）」，例如使用已有的 `bia-main` Conda 环境：
+
+```bash
+source "$HOME/miniconda3/etc/profile.d/conda.sh"
+conda activate bia-main
+```
+
+将 `conda.sh` 路径替换为执行主机上实际的 Conda 安装位置。不要写成 `bash conda activate bia-main`；需要先加载 Conda 的 shell 初始化脚本，再在同一个 shell 中激活环境。
+
+保存后重启 Runner。运行环境检查时会先执行这些命令，以便找到激活后的 Java、Nextflow 和运行工具；每次工作流启动或 Nextflow 模块试跑时，也会在 Bash 中执行命令后启动 Nextflow。命令输出进入运行日志，失败则停止启动。支持多行命令，留空恢复原环境；不会自动加载 `.bashrc` 或登录 shell 配置，需要的初始化请显式写入。
+
+macOS/Linux 在当前执行主机运行；Windows 桌面连接 WSL/SSH 服务端时，在对应服务端的设置页填写该主机的路径和命令。运行提交到独立远程集群时，使用该集群设置中的「登录后执行」。也可通过 `NEXTFLOW_STUDIO_NEXTFLOW_SETUP` 环境变量配置，它优先于设置页。
+
+此设置改变 Nextflow 和本机 shell 任务继承的环境；`conda` profile 和容器中的任务仍使用模块声明的环境。笔记本 Python 内核继续使用「笔记本用的 Python」配置。
+
 ## 数据放在哪里
 
 | 系统 | 目录 |

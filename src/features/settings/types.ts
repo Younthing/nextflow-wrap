@@ -19,6 +19,8 @@ export interface StudioSettings {
     memory?: string;
     javaHome?: string;
     nextflowBin?: string;
+    /** Bash initialization before Nextflow launches and runtime environment checks. */
+    nextflowSetup?: string;
     jupyterPython?: string;
     httpProxy?: string;
   };

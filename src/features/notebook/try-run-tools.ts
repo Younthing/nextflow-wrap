@@ -23,8 +23,8 @@ export function condaKindFromBin(bin: string): CondaKind {
   return "conda";
 }
 
-async function findOnPath(names: readonly string[]): Promise<string | undefined> {
-  const dirs = (process.env.PATH ?? "").split(delimiter).filter(Boolean);
+async function findOnPath(names: readonly string[], env: NodeJS.ProcessEnv): Promise<string | undefined> {
+  const dirs = (env.PATH ?? "").split(delimiter).filter(Boolean);
   for (const name of names) {
     for (const dir of dirs) {
       const candidate = join(dir, name);
@@ -50,11 +50,11 @@ async function overridden(bin: string | undefined, label: string): Promise<strin
 }
 
 /** Locate conda and a container runtime. `TRY_RUN_*_BIN` overrides PATH lookup. */
-export async function discoverTryRunTools(): Promise<TryRunTools> {
-  const condaBin = await overridden(process.env.TRY_RUN_CONDA_BIN, "TRY_RUN_CONDA_BIN")
-    ?? await findOnPath(["micromamba", "mamba", "conda"]);
-  const containerBin = await overridden(process.env.TRY_RUN_CONTAINER_BIN, "TRY_RUN_CONTAINER_BIN")
-    ?? await findOnPath(["docker", "podman", "singularity", "apptainer"]);
+export async function discoverTryRunTools(env: NodeJS.ProcessEnv = process.env): Promise<TryRunTools> {
+  const condaBin = await overridden(env.TRY_RUN_CONDA_BIN, "TRY_RUN_CONDA_BIN")
+    ?? await findOnPath(["micromamba", "mamba", "conda"], env);
+  const containerBin = await overridden(env.TRY_RUN_CONTAINER_BIN, "TRY_RUN_CONTAINER_BIN")
+    ?? await findOnPath(["docker", "podman", "singularity", "apptainer"], env);
   const conda: CondaTool | undefined = condaBin ? { bin: condaBin, kind: condaKindFromBin(condaBin) } : undefined;
   const container: ContainerTool | undefined = containerBin
     ? { bin: containerBin, kind: containerKindFromBin(containerBin) }

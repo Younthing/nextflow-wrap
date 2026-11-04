@@ -4,6 +4,7 @@ import { delimiter, dirname, join } from "node:path";
 
 import { CommandError, runCommand } from "@/features/project/server/command";
 import { findJava, findNextflow, NEXTFLOW_PIN_ENV, toolEnvironment } from "@/features/project/server/preflight";
+import { runtimeEnvironment } from "@/features/project/server/runtime-environment";
 import { nextflowCacheEnv } from "@/lib/server/paths";
 import { CELL_DRIVER } from "./cell-driver";
 import { cellsForKernelRun, cellsForRun } from "./cells";
@@ -39,6 +40,7 @@ const inDir = (dir: string, name: string) => join(/* turbopackIgnore: true */ di
 export interface NextflowLauncher {
   bin: string;
   env: NodeJS.ProcessEnv;
+  setup?: string;
 }
 
 export interface TryRunExecOptions {
@@ -52,7 +54,7 @@ export interface TryRunExecOptions {
 
 /** Nextflow with a supported Java, the same lookup project runs use. */
 export async function findTryRunNextflow(): Promise<NextflowLauncher> {
-  const base = toolEnvironment();
+  const base = await runtimeEnvironment(toolEnvironment());
   let bin: string;
   try {
     bin = await findNextflow(base);
@@ -62,6 +64,7 @@ export async function findTryRunNextflow(): Promise<NextflowLauncher> {
   const { home } = await findJava(base);
   return {
     bin,
+    setup: process.env.NEXTFLOW_STUDIO_NEXTFLOW_SETUP,
     env: {
       ...base,
       ...nextflowCacheEnv(base),
@@ -176,11 +179,17 @@ export async function executeTryRun(
     const problem = await condaFileProblem(env.condaYaml);
     if (problem) return fail(problem);
   }
+  let launcher: NextflowLauncher;
+  try {
+    launcher = options.nextflow ?? await findTryRunNextflow();
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : "找不到 nextflow");
+  }
   let selection: TryRunSelection = { via: "host" };
   if (env.condaYaml || env.containerImage) {
     let tools: TryRunTools;
     try {
-      tools = options.tools ?? await discoverTryRunTools();
+      tools = options.tools ?? await discoverTryRunTools(launcher.env);
     } catch (error) {
       return fail(error instanceof Error ? error.message : "无法检查运行环境");
     }
@@ -189,13 +198,6 @@ export async function executeTryRun(
   }
   const via: TryRunVia = selection.via;
   const note = selection.via === "conda" || selection.via === "container" ? selection.note : undefined;
-
-  let launcher: NextflowLauncher;
-  try {
-    launcher = options.nextflow ?? await findTryRunNextflow();
-  } catch (error) {
-    return fail(error instanceof Error ? error.message : "找不到 nextflow");
-  }
 
   const dir = await mkdtemp(join(/* turbopackIgnore: true */ tmpdir(), "nb-try-"));
   try {
@@ -233,6 +235,7 @@ export async function executeTryRun(
       output = await run(launcher.bin, args, {
         cwd: dir,
         env: runEnv,
+        setup: launcher.setup,
         timeoutMs: via === "host" ? HOST_TIMEOUT_MS : ENV_TIMEOUT_MS,
         quiet: true,
       });

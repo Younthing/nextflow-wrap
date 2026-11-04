@@ -10,17 +10,34 @@ export interface CommandOptions {
   quiet?: boolean;
   signal?: AbortSignal;
   onSpawn?: (pid: number) => void;
+  /** Trusted, explicitly configured Bash initialization; argv remains positional, never interpolated. */
+  setup?: string;
 }
 
 export class CommandError extends Error {
   constructor(message: string, readonly exitCode: number | null, readonly output: string) { super(message); }
 }
 
-/** Run an argv array without a shell. Keep a bounded diagnostic tail. */
+/** exec preserves the detached head's PID/process group for cancellation and adoption. */
+export function commandWithSetup(executable: string, args: string[], setup?: string) {
+  if (!setup?.trim()) return { executable, args };
+  return {
+    executable: "/bin/bash",
+    args: ["--noprofile", "--norc", "-e", "-o", "pipefail", "-c", [
+      'trap \'echo "Nextflow 启动前命令执行失败" >&2\' ERR',
+      setup.replace(/\r\n?/g, "\n"),
+      "trap - ERR",
+      'exec "$@"',
+    ].join("\n"), "nextflow-studio", executable, ...args],
+  };
+}
+
+/** Run literal argv; use Bash only when initialization is explicitly configured. Keep a bounded diagnostic tail. */
 export async function runCommand(executable: string, args: string[], options: CommandOptions = {}): Promise<string> {
   options.signal?.throwIfAborted();
+  const command = commandWithSetup(executable, args, options.setup);
   const log = options.logPath ? createWriteStream(options.logPath, { flags: "a" }) : undefined;
-  const child = spawn(executable, args, {
+  const child = spawn(/* turbopackIgnore: true */ command.executable, command.args, {
     cwd: options.cwd,
     env: options.env,
     detached: process.platform !== "win32",
@@ -93,10 +110,11 @@ export interface DetachedProcess {
  * Start a long-lived command in its own process group with output going straight to a file.
  * No pipe ties it to this process, so it keeps running if this process exits and can be adopted later.
  */
-export async function spawnDetached(executable: string, args: string[], options: { cwd?: string; env?: NodeJS.ProcessEnv; logPath: string }): Promise<DetachedProcess> {
+export async function spawnDetached(executable: string, args: string[], options: { cwd?: string; env?: NodeJS.ProcessEnv; logPath: string; setup?: string }): Promise<DetachedProcess> {
+  const command = commandWithSetup(executable, args, options.setup);
   const fd = openSync(options.logPath, "a");
   try {
-    const child = spawn(executable, args, { cwd: options.cwd, env: options.env, detached: true, stdio: ["ignore", fd, fd] });
+    const child = spawn(/* turbopackIgnore: true */ command.executable, command.args, { cwd: options.cwd, env: options.env, detached: true, stdio: ["ignore", fd, fd] });
     const exited = new Promise<number | null>((resolve) => child.once("exit", (code) => resolve(code)));
     await new Promise<void>((resolve, reject) => { child.once("spawn", resolve); child.once("error", reject); });
     child.unref();

@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { PathInput } from "@/features/files/components/path-input";
 import { isDesktop } from "@/lib/desktop";
 import { ENGINES, type ContainerEngine } from "@/features/project/launch";
@@ -65,6 +66,28 @@ export function SettingsForm({ view, onSave, saving, assistantStatus }: {
           <FormField label="本机最多内存" htmlFor="default-memory">
             <Input id="default-memory" className="h-8 font-mono text-xs" value={draft.runtime.memory ?? ""} placeholder="2.GB" onChange={(event) => runtime({ memory: event.target.value || undefined })} />
           </FormField>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Nextflow 执行环境</CardTitle>
+          <CardDescription>在当前执行主机上初始化环境；Windows 连接 WSL 时在 WSL 内执行 · 保存后重启 Runner 生效</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <FormField label="Nextflow 启动前命令（Bash）" htmlFor="nextflow-setup" hint={overridden("NEXTFLOW_STUDIO_NEXTFLOW_SETUP") ?? "支持多行；留空时使用原环境。运行环境检查时也会执行，任一命令失败则停止启动。"}>
+            <Textarea
+              id="nextflow-setup"
+              aria-describedby="nextflow-setup-hint"
+              className="min-h-28 font-mono text-xs"
+              maxLength={10_000}
+              spellCheck={false}
+              placeholder={'source "$HOME/miniconda3/etc/profile.d/conda.sh"\nconda activate bia-main'}
+              value={draft.runtime.nextflowSetup ?? ""}
+              onChange={(event) => runtime({ nextflowSetup: event.target.value || undefined })}
+            />
+          </FormField>
+          <p className="text-xs text-muted-foreground">激活 Conda 前先加载安装目录里的 conda.sh。此设置影响 Nextflow 及本机任务继承的环境；容器和 Conda profile 仍使用各自配置的环境。远程集群请配置对应主机的「登录后执行」。</p>
         </CardContent>
       </Card>
 
