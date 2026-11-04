@@ -4,7 +4,7 @@ Thin Node client for a local [Codex](https://github.com/openai/codex) CLI. Impor
 
 Authentication stays in the user's existing `codex login` (`~/.codex`). This module never reads or writes `auth.json`, never copies tokens, and calls `account/read` with `refreshToken: false`. `probe()` returns only `installed`, a boolean `authed`, and model ids.
 
-ACP, Grok, Claude, and Cursor providers are out of scope. Steering, fork, and rollback are not implemented.
+Grok Build (ACP) lives in its own harness, [`../grok-harness`](../grok-harness/README.md), and shares only the stdio child (`process.ts`) and `AsyncQueue`. Claude and Cursor providers are out of scope. Steering, fork, and rollback are not implemented.
 
 ## API
 
@@ -53,6 +53,6 @@ pnpm codex:smoke --model gpt-test --approval never -- Say hello
 
 ## Assistant
 
-The CopilotKit route (`/api/copilotkit`) uses this harness when `COPILOT_BACKEND` is `auto` (the default) or `codex` and `probe()` reports an installed, authenticated CLI. That path does not read `OPENAI_API_KEY`. `auto` falls back to the API-key BuiltInAgent when Codex is missing or not logged in. Each chat run opens a short-lived read-only thread (`approvalPolicy: never`) with an empty temporary directory as its cwd, then closes the process and deletes that directory. The route accepts only allowlisted loopback hosts and same-origin browser requests. At most `CODEX_MAX_SESSIONS` Codex sessions run at once (default 2); another request gets HTTP 429.
+The CopilotKit route (`/api/copilotkit`) uses this harness when `COPILOT_BACKEND` is `auto` (the default) or `codex` and `probe()` reports an installed, authenticated CLI. That path does not read `OPENAI_API_KEY`. `auto` tries Grok Build next, then the API-key BuiltInAgent, when Codex is missing or not logged in. Each chat run opens a short-lived read-only thread (`approvalPolicy: never`) with an empty temporary directory as its cwd, then closes the process and deletes that directory. The route accepts only allowlisted loopback hosts and same-origin browser requests. At most `CODEX_MAX_SESSIONS` Codex sessions run at once (default 2); another request gets HTTP 429.
 
 A reply that is only `{"tool","arguments"}` for a known browser tool becomes one tool call. Any other reply is shown as text. An unknown tool name, or a tool JSON object with prose before or after it, fails the turn and does not run the tool. Prose-then-JSON is rejected rather than extracted: the prompt already requires a tool reply to be JSON alone, and executing a trailing object would hide the surrounding text. One user turn stops after 12 model replies, the same cap as the built-in agent's `maxSteps`.

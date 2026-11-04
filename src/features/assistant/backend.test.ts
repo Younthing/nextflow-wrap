@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createAssistantResolver, DEFAULT_COPILOT_MODEL, selectAssistantBackend } from "./backend";
+import { createAssistantResolver, DEFAULT_COPILOT_MODEL, readBackendMode, selectAssistantBackend } from "./backend";
 
 const KEY = { ANTHROPIC_API_KEY: "sk-test" };
 const authed = { installed: true, authed: true, models: ["gpt-test"] };
@@ -136,5 +136,99 @@ describe("createAssistantResolver", () => {
     env.COPILOT_BACKEND = "builtin";
     await resolve();
     expect(calls).toBe(2);
+  });
+});
+
+describe("Grok Build backend", () => {
+  const off = { installed: false };
+  const loggedOut = { installed: true, authed: false };
+
+  it("keeps Codex first in auto when Codex is authenticated", () => {
+    expect(selectAssistantBackend({
+      mode: "auto",
+      probe: authed,
+      grokProbe: authed,
+      model: DEFAULT_COPILOT_MODEL,
+      env: {},
+    })).toEqual({ enabled: true, backend: "codex" });
+  });
+
+  it("uses Grok in auto when Codex is missing and Grok is logged in, without an API key", () => {
+    expect(selectAssistantBackend({
+      mode: "auto",
+      probe: off,
+      grokProbe: authed,
+      model: DEFAULT_COPILOT_MODEL,
+      env: { GROK_MODEL: "grok-test" },
+    })).toEqual({ enabled: true, backend: "grok", model: "grok-test", codex: "not-installed" });
+  });
+
+  it("falls back to builtin and names both CLI blockers", () => {
+    expect(selectAssistantBackend({
+      mode: "auto",
+      probe: loggedOut,
+      grokProbe: off,
+      model: DEFAULT_COPILOT_MODEL,
+      env: KEY,
+    })).toEqual({
+      enabled: true,
+      backend: "builtin",
+      model: DEFAULT_COPILOT_MODEL,
+      codex: "unauthenticated",
+      grok: "not-installed",
+    });
+  });
+
+  it("tells the user to run grok login when that is the only local CLI", () => {
+    expect(selectAssistantBackend({
+      mode: "auto",
+      probe: off,
+      grokProbe: loggedOut,
+      model: DEFAULT_COPILOT_MODEL,
+      env: {},
+    })).toMatchObject({ enabled: false, reason: "grok-unauthenticated", missing: "ANTHROPIC_API_KEY" });
+  });
+
+  it("COPILOT_BACKEND=grok forces Grok and never reads API keys", () => {
+    expect(selectAssistantBackend({ mode: "grok", grokProbe: authed, model: DEFAULT_COPILOT_MODEL, env: {} }))
+      .toEqual({ enabled: true, backend: "grok" });
+    expect(selectAssistantBackend({ mode: "grok", grokProbe: loggedOut, model: DEFAULT_COPILOT_MODEL, env: KEY }))
+      .toMatchObject({ enabled: false, backend: "grok", reason: "grok-unauthenticated", message: "AI 助手未启用：请先运行 grok login" });
+    expect(selectAssistantBackend({ mode: "grok", grokProbe: off, model: DEFAULT_COPILOT_MODEL, env: KEY }))
+      .toMatchObject({ enabled: false, backend: "grok", reason: "grok-not-installed" });
+    expect(selectAssistantBackend({ mode: "grok", grokProbe: { installed: true }, model: DEFAULT_COPILOT_MODEL, env: KEY }))
+      .toMatchObject({ enabled: false, backend: "grok", reason: "grok-unavailable" });
+  });
+
+  it("parses grok as a backend mode", () => {
+    expect(readBackendMode(" Grok ")).toBe("grok");
+  });
+
+  it("probes Grok only when Codex is not ready or Grok is forced", async () => {
+    const calls = { codex: 0, grok: 0 };
+    const env: Record<string, string | undefined> = { COPILOT_BACKEND: "auto" };
+    let codex: { installed: boolean; authed?: boolean } = authed;
+    const resolve = createAssistantResolver({
+      env,
+      ttlMs: 0,
+      probe: async () => {
+        calls.codex += 1;
+        return codex;
+      },
+      probeGrok: async () => {
+        calls.grok += 1;
+        return authed;
+      },
+    });
+    await expect(resolve()).resolves.toMatchObject({ backend: "codex" });
+    expect(calls).toEqual({ codex: 1, grok: 0 });
+
+    codex = { installed: false };
+    await expect(resolve()).resolves.toMatchObject({ backend: "grok" });
+    expect(calls).toEqual({ codex: 2, grok: 1 });
+
+    env.COPILOT_BACKEND = "grok";
+    await expect(resolve()).resolves.toMatchObject({ backend: "grok" });
+    expect(calls).toEqual({ codex: 2, grok: 2 });
   });
 });
