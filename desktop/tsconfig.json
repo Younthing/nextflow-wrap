@@ -13,6 +13,6 @@
     "baseUrl": "..",
     "paths": { "@/*": ["src/*"] }
   },
-  "include": ["src/**/*.ts", "../src/features/desktop/*.ts", "../src/features/server/serve-config.ts", "../src/lib/desktop.ts", "../src/lib/api-types.ts"],
+  "include": ["src/**/*.ts", "../src/features/desktop/*.ts", "../src/features/server/serve-config.ts", "../src/lib/desktop.ts", "../src/lib/api-types.ts", "../src/lib/product-theme/index.ts"],
   "exclude": ["../src/**/*.test.ts"]
 }

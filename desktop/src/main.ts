@@ -9,12 +9,15 @@ import { readProjectMenuState } from "../../src/features/desktop/project-menu";
 import { SESSION_COOKIE } from "../../src/features/desktop/session-guard";
 import { parseEnvBlock, quitPrompt, RestartTracker, SHELL_ENV_KEYS } from "../../src/features/desktop/supervisor";
 import { clearRouteCache } from "../../src/features/server/serve-config";
+import { getProductTheme } from "../../src/lib/product-theme";
 import { dataDirectory } from "../../src/lib/server/paths";
 import { SCHEMA_VERSION } from "../../src/lib/server/schema";
 import type { DesktopBackendAction, DesktopBackendInfo, DesktopMenuAction, DesktopNotification, ProjectMenuState } from "../../src/lib/desktop";
 import { clearServerData, freePort, installWsl, runLogged, startBackend, stopServer, waitForHealth, wslDistros, type BackendContext, type RunningBackend } from "./backends";
 import { connectionToken, loadConnections, rememberLast, removeConnection, saveConnection } from "./connection-store";
 import { setupUpdates } from "./updates";
+
+const productName = getProductTheme().displayName;
 
 /**
  * Nextflow Studio desktop: a shell around a server that may run here, in WSL or on another machine.
@@ -153,7 +156,7 @@ function supervise(name: string, modulePath: string, args: string[], env: NodeJS
       if (delay !== undefined) { setTimeout(start, delay); return; }
       // The runner fails until Java and Nextflow exist; the setup page installs them, so keep checking.
       if (keepTrying) { restarts.healthy(); setTimeout(start, 30_000); return; }
-      dialog.showErrorBox(`Nextflow Studio：${name} 反复退出`, `最后一次退出码 ${code}。请在设置页导出诊断包，或重启应用。`);
+      dialog.showErrorBox(`${productName}：${name} 反复退出`, `最后一次退出码 ${code}。请在设置页导出诊断包，或重启应用。`);
     });
   };
   start();
@@ -255,7 +258,7 @@ function createWindow() {
     height: 900,
     minWidth: 1024,
     minHeight: 680,
-    title: "Nextflow Studio",
+    title: productName,
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
     backgroundColor: "#0b1020",
     webPreferences: { preload: join(__dirname, "preload.js"), contextIsolation: true, sandbox: true, nodeIntegration: false, additionalArguments: [`--studio-version=${app.getVersion()}`] },
@@ -331,11 +334,11 @@ function updateTray() {
     tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon);
     tray.on("click", showWindow);
   }
-  tray.setToolTip(activeRuns ? `Nextflow Studio：${activeRuns} 个运行中` : "Nextflow Studio");
+  tray.setToolTip(activeRuns ? `${productName}：${activeRuns} 个运行中` : productName);
   if (process.platform === "darwin") tray.setTitle(activeRuns ? `${activeRuns}` : "");
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: activeRuns ? `${activeRuns} 个运行中` : "没有运行中的流程", enabled: false },
-    { label: "打开 Nextflow Studio", click: showWindow },
+    { label: `打开 ${productName}`, click: showWindow },
     { label: "运行记录", enabled: Boolean(backend), click: () => openApp("/runs") },
     { type: "separator" },
     { label: "退出", click: () => app.quit() },
@@ -650,6 +653,6 @@ app.whenReady().then(async () => {
   if (!target) { showStart({ view: "pick" }); return; }
   await withStartScreen(target, () => connect(target));
 }).catch((error: unknown) => {
-  dialog.showErrorBox("Nextflow Studio 无法启动", error instanceof ConnectionError || error instanceof Error ? error.message : String(error));
+  dialog.showErrorBox(`${productName} 无法启动`, error instanceof ConnectionError || error instanceof Error ? error.message : String(error));
   app.exit(1);
 });

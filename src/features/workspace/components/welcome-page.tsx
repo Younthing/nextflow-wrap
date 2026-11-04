@@ -8,6 +8,7 @@ import { BookOpen, Boxes, FolderOpen, Loader2, MoreHorizontal, Plus, Settings, T
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { PanelLoading } from "@/components/ui/panel-notice";
+import { getProductTheme } from "@/lib/product-theme";
 import { SearchField } from "@/components/ui/search-field";
 import { PathBrowserDialog } from "@/features/files/components/path-input";
 import { useFsListing } from "@/features/files/queries";
@@ -21,6 +22,8 @@ import { cn } from "@/lib/utils";
 import { BackendCard } from "./backend-card";
 import { NewProjectDialog } from "./new-project-dialog";
 import { ProjectBadge } from "./project-badge";
+
+const productTheme = getProductTheme();
 
 export interface WelcomeViewProps {
   projects: Project[];
@@ -80,10 +83,10 @@ export function WelcomeView({ projects, home, busyId, backend, shortcuts, onNew,
     <div className="flex h-full gap-3 p-3">
       <aside className="flex w-80 shrink-0 flex-col px-5 pt-9 pb-5">
         <div className="flex items-center gap-3 px-2">
-          <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-primary font-mono text-base font-bold text-primary-foreground">nf</span>
+          <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-primary font-mono text-base font-bold text-primary-foreground">{productTheme.shortName}</span>
           <div className="min-w-0">
-            <h1 className="font-serif text-xl leading-tight font-bold">Nextflow Studio</h1>
-            <p className="text-xs text-muted-foreground">笔记本到流程的工作台</p>
+            <h1 className="font-serif text-xl leading-tight font-bold">{productTheme.displayName}</h1>
+            <p className="text-xs text-muted-foreground">{productTheme.tagline}</p>
           </div>
         </div>
 
