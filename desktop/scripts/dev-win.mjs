@@ -19,6 +19,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { bundleShell } from "./bundle-shell.mjs";
+import { loadProductTheme } from "./product-theme.mjs";
 
 const desktop = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const root = resolve(desktop, "..");
@@ -38,7 +39,7 @@ export async function devWin() {
     }
     const [command, commandArgs] = wslBuildCommand(process.env.NEXTFLOW_STUDIO_WSL_DISTRO);
     console.log("== 在 WSL 里构建服务端（输出也写在 WSL 的 ~/.local/share/nextflow-studio/logs/dev-build.log）");
-    const result = spawnSync(command, [...commandArgs, root, ...(args.includes("--fresh") ? ["--fresh"] : [])], {
+    const result = spawnSync(command, [...commandArgs, root, "--product-theme", loadProductTheme().id, ...(args.includes("--fresh") ? ["--fresh"] : [])], {
       input: wslBuildScript(),
       stdio: ["pipe", "inherit", "inherit"],
     });

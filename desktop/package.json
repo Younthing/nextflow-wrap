@@ -1,9 +1,8 @@
 {
   "name": "nextflow-studio-desktop",
-  "productName": "Nextflow Studio",
   "version": "0.2.0",
   "private": true,
-  "description": "Nextflow Studio desktop app: Electron shell around the Next.js app and the Nextflow runner",
+  "description": "Notebook workflow desktop app: Electron shell around the Next.js app and the Nextflow runner",
   "main": "dist/main.js",
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",

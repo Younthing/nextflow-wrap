@@ -22,6 +22,10 @@ on:
 permissions:
   contents: read
 
+# One brand selection for the Linux server, every desktop shell and the installers.
+env:
+  NEXT_PUBLIC_PRODUCT_THEME: ${{ vars.NEXT_PUBLIC_PRODUCT_THEME || 'nextflow-studio' }}
+
 concurrency:
   group: desktop-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}

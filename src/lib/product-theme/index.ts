@@ -1,3 +1,5 @@
+import themes from "./themes.json";
+
 /**
  * Product theme: the product's appearance identity (name, tagline, brand copy).
  * Appearance only — modules, workflows, example projects, appId and data paths
@@ -14,31 +16,23 @@ export interface ProductTheme {
   description: string;
   /** Tagline under the product name on the welcome page. */
   tagline: string;
+  /** Desktop installer filename prefix, independent of the stable application id. */
+  artifactPrefix: string;
+  copyright: string;
+  /** PNG assets under public/, also used by desktop packaging. */
+  icon: string;
+  trayIcon: string;
 }
 
-export const DEFAULT_PRODUCT_THEME: ProductTheme = {
-  id: "nextflow-studio",
-  displayName: "Nextflow Studio",
-  shortName: "nf",
-  description: "用笔记本、内置节点搭建并运行 Nextflow 流程",
-  tagline: "笔记本到流程的工作台",
-};
-
-export const FLUORA_PRODUCT_THEME: ProductTheme = {
-  id: "fluora",
-  displayName: "Fluora",
-  shortName: "Fl",
-  description: "Fluora · 用笔记本与内置节点完成免疫荧光图像分析",
-  tagline: "从荧光图像到定量结果",
-};
-
-export const PRODUCT_THEMES: readonly ProductTheme[] = [DEFAULT_PRODUCT_THEME, FLUORA_PRODUCT_THEME];
+export const PRODUCT_THEMES: readonly ProductTheme[] = themes;
+export const DEFAULT_PRODUCT_THEME = PRODUCT_THEMES[0];
+export const FLUORA_PRODUCT_THEME = PRODUCT_THEMES.find((theme) => theme.id === "fluora")!;
 
 /** Checks a theme against the contract; returns the problems found (empty when valid). */
 export function validateProductTheme(theme: Partial<ProductTheme>): string[] {
   const problems: string[] = [];
   if (!theme.id || !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(theme.id)) problems.push("id 必须是 kebab-case");
-  for (const key of ["displayName", "shortName", "description", "tagline"] as const) {
+  for (const key of ["displayName", "shortName", "description", "tagline", "artifactPrefix", "copyright", "icon", "trayIcon"] as const) {
     if (typeof theme[key] !== "string" || !theme[key]!.trim()) problems.push(`${key} 不能为空`);
   }
   return problems;

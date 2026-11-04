@@ -32,6 +32,7 @@ describe("product theme", () => {
   it("reports missing fields and bad ids", () => {
     expect(validateProductTheme({ id: "Bad Id", displayName: " " })).toEqual([
       "id 必须是 kebab-case", "displayName 不能为空", "shortName 不能为空", "description 不能为空", "tagline 不能为空",
+      "artifactPrefix 不能为空", "copyright 不能为空", "icon 不能为空", "trayIcon 不能为空",
     ]);
   });
 

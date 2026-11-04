@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
-<title>Nextflow Studio</title>
+<title>__PRODUCT_DISPLAY_NAME__</title>
 <!--
   The start page, bundled with the shell. Three views, picked by the main process (connect:state):
     splash   the backend is starting (status lines from connect:status)
@@ -88,8 +88,8 @@
 <body>
 
 <div id="splash" hidden role="status" aria-live="polite">
-  <div class="logo" aria-hidden="true">nf</div>
-  <h1 id="splash-name">Nextflow Studio</h1>
+  <div class="logo" aria-hidden="true">__PRODUCT_SHORT_NAME__</div>
+  <h1 id="splash-name">__PRODUCT_DISPLAY_NAME__</h1>
   <div class="target" id="splash-target"></div>
   <div class="bar" aria-hidden="true"></div>
   <div id="status" class="mono"></div>
@@ -97,7 +97,7 @@
 
 <main id="recover" class="card" hidden>
   <header>
-    <div class="logo" aria-hidden="true">nf</div>
+    <div class="logo" aria-hidden="true">__PRODUCT_SHORT_NAME__</div>
     <div><h1 style="font-size:18px">后端没有启动</h1><p id="recover-target"></p></div>
   </header>
   <p class="error" id="recover-error"></p>
@@ -110,7 +110,7 @@
 
 <main id="pick" class="card" hidden>
   <header>
-    <div class="logo" aria-hidden="true">nf</div>
+    <div class="logo" aria-hidden="true">__PRODUCT_SHORT_NAME__</div>
     <div><h1 style="font-size:18px">选择后端</h1><p>服务端运行的地方：WSL、远程机器或已有的地址</p></div>
   </header>
 

@@ -1,0 +1,24 @@
+[
+  {
+    "id": "nextflow-studio",
+    "displayName": "Nextflow Studio",
+    "shortName": "nf",
+    "description": "用笔记本、内置节点搭建并运行 Nextflow 流程",
+    "tagline": "笔记本到流程的工作台",
+    "artifactPrefix": "Nextflow-Studio",
+    "copyright": "Copyright © 2026 Nextflow Studio",
+    "icon": "/brands/nextflow-studio/icon.png",
+    "trayIcon": "/brands/nextflow-studio/trayTemplate.png"
+  },
+  {
+    "id": "fluora",
+    "displayName": "Fluora",
+    "shortName": "Fl",
+    "description": "Fluora · 用笔记本与内置节点完成免疫荧光图像分析",
+    "tagline": "从荧光图像到定量结果",
+    "artifactPrefix": "Fluora",
+    "copyright": "Copyright © 2026 Fluora",
+    "icon": "/brands/fluora/icon.png",
+    "trayIcon": "/brands/fluora/trayTemplate.png"
+  }
+]

@@ -364,11 +364,11 @@ export async function clearServerData(connection: Connection, context: BackendCo
  * status line. Used for wsl-bootstrap.sh in WSL (the server half of `pnpm dev:win`) and, on macOS and
  * Linux, for desktop/scripts/bundle.mjs.
  */
-export function runLogged(command: string, args: string[], options: { input?: string; cwd?: string }, context: BackendContext): Promise<void> {
+export function runLogged(command: string, args: string[], options: { input?: string; cwd?: string; env?: NodeJS.ProcessEnv }, context: BackendContext): Promise<void> {
   return new Promise((resolve, reject) => {
     const log = context.log("rebuild");
     log.write(`--- ${new Date().toISOString()} ${command} ${args.join(" ")}\n`);
-    const child = spawn(command, args, { cwd: options.cwd, stdio: ["pipe", "pipe", "pipe"], windowsHide: true, env: process.env });
+    const child = spawn(command, args, { cwd: options.cwd, stdio: ["pipe", "pipe", "pipe"], windowsHide: true, env: options.env ?? process.env });
     let tail = "";
     const onLine = (line: string) => {
       log.write(`${line}\n`);

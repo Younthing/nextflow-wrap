@@ -225,6 +225,7 @@ async function main() {
   const packageManager = String(packageJson.packageManager ?? "").replace(/\+.*$/, "");
   if (!packageManager.startsWith("pnpm@")) throw new StepError("package.json 没有指定 pnpm 版本（packageManager）");
   const env = { ...(await preparePnpm(options.tools, options.nodeDir, packageManager, log)), NEXTFLOW_STUDIO_BUILD_NODE: options.nodeDir };
+  if (options.productTheme) env.NEXT_PUBLIC_PRODUCT_THEME = options.productTheme;
 
   step(`同步源码到 ${work}`);
   const started = Date.now();

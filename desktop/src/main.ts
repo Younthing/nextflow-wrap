@@ -18,6 +18,11 @@ import { connectionToken, loadConnections, rememberLast, removeConnection, saveC
 import { setupUpdates } from "./updates";
 
 const productName = getProductTheme().displayName;
+// Branding must not move existing connections, encrypted tokens or the local server cache.
+const userDataPath = join(app.getPath("appData"), "Nextflow Studio");
+mkdirSync(userDataPath, { recursive: true });
+app.setPath("userData", userDataPath);
+app.setName(productName);
 
 /**
  * Nextflow Studio desktop: a shell around a server that may run here, in WSL or on another machine.
@@ -37,6 +42,7 @@ const dev = process.argv.includes("--dev");
 /** The checkout a development shell runs from (desktop/dist/main.js → repository root). */
 const repoRoot = join(__dirname, "..", "..");
 const resources = app.isPackaged ? process.resourcesPath : join(__dirname, "..", "resources");
+const brandResources = app.isPackaged ? join(resources, "brand") : join(__dirname, "brand");
 let backend: RunningBackend | undefined;
 /** Bumped on every start and stop of the local server, so its old processes are not restarted. */
 let localGeneration = 0;
@@ -259,6 +265,7 @@ function createWindow() {
     minWidth: 1024,
     minHeight: 680,
     title: productName,
+    icon: join(brandResources, "icon.png"),
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
     backgroundColor: "#0b1020",
     webPreferences: { preload: join(__dirname, "preload.js"), contextIsolation: true, sandbox: true, nodeIntegration: false, additionalArguments: [`--studio-version=${app.getVersion()}`] },
@@ -330,8 +337,10 @@ function showWindow() {
 
 function updateTray() {
   if (!tray) {
-    const icon = nativeImage.createFromPath(join(resources, "trayTemplate.png"));
-    tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon);
+    const icon = nativeImage.createFromPath(join(brandResources, process.platform === "darwin" ? "trayTemplate.png" : "icon.png"));
+    if (process.platform === "darwin") icon.setTemplateImage(true);
+    const size = process.platform === "darwin" ? 18 : 24;
+    tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon.resize({ width: size, height: size }));
     tray.on("click", showWindow);
   }
   tray.setToolTip(activeRuns ? `${productName}：${activeRuns} 个运行中` : productName);
@@ -561,10 +570,10 @@ async function rebuild(connection: Connection) {
     const script = readFileSync(join(repoRoot, "desktop", "scripts", "wsl-bootstrap.sh"), "utf8").replace(/\r\n/g, "\n");
     const distro = connection.kind === "wsl" ? connection.distro : process.env.NEXTFLOW_STUDIO_WSL_DISTRO;
     ctx.status("在 WSL 里用当前代码构建服务端…");
-    await runLogged("wsl.exe", [...(distro ? ["-d", distro] : []), "--exec", "/bin/sh", "-s", "--", repoRoot], { input: script }, ctx);
+    await runLogged("wsl.exe", [...(distro ? ["-d", distro] : []), "--exec", "/bin/sh", "-s", "--", repoRoot, "--product-theme", getProductTheme().id], { input: script }, ctx);
   } else {
     ctx.status("用当前代码构建服务端…");
-    await runLogged(process.env.NEXTFLOW_STUDIO_NODE || "node", [join(repoRoot, "desktop", "scripts", "bundle.mjs")], { cwd: repoRoot }, ctx);
+    await runLogged(process.env.NEXTFLOW_STUDIO_NODE || "node", [join(repoRoot, "desktop", "scripts", "bundle.mjs")], { cwd: repoRoot, env: { ...baseEnv, NEXT_PUBLIC_PRODUCT_THEME: getProductTheme().id } }, ctx);
   }
 }
 

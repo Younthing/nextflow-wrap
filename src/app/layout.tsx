@@ -15,6 +15,7 @@ export const metadata: Metadata = {
     template: `%s · ${productTheme.displayName}`,
   },
   description: productTheme.description,
+  icons: { icon: productTheme.icon, apple: productTheme.icon },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

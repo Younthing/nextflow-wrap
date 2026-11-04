@@ -44,6 +44,27 @@ macOS 上的 GUI 应用拿不到 shell 的 `PATH`，启动时会从登录 shell 
 
 ## 构建
 
+安装包和应用界面共用 `src/lib/product-theme/themes.json` 品牌配置：显示名、安装包文件名前缀、版权和图标都从这里读取。通过仓库根目录的 `.env.production.local` 设置一次：
+
+```dotenv
+NEXT_PUBLIC_PRODUCT_THEME=fluora
+```
+
+也可以在构建命令的环境变量中设置（优先于 `.env*`）：
+
+```powershell
+$env:NEXT_PUBLIC_PRODUCT_THEME = "fluora"
+pnpm --dir desktop dist:win
+```
+
+```bash
+NEXT_PUBLIC_PRODUCT_THEME=fluora pnpm --dir desktop dist:linux
+```
+
+不设置时使用 `nextflow-studio`。例如 Fluora 的 Windows 安装包为 `Fluora-<版本>-win-x64.exe`。修改品牌后需要重新构建服务端和外壳，不能用 `--skip-next` / `--skip-server` 沿用其他品牌的构建。直接调用 `electron-builder` 前也需要先按同一个品牌运行 `bundle` / `bundle:shell`；品牌不一致时打包会报错。CI 可在仓库 Actions 变量 `NEXT_PUBLIC_PRODUCT_THEME` 中设置，所有平台和服务端构建共用它。
+
+品牌图标位于 `public/brands/<id>/`。修改 `mark.svg` 后运行 `node scripts/build-brand-icons.mjs` 重新生成并提交 `icon.png`（1024×1024）和 macOS 托盘用的 `trayTemplate.png`；electron-builder 将 PNG 转成各平台所需的安装图标。品牌只改变外观：`appId`、包名、用户数据目录、服务端命令和 GitHub 更新渠道保持不变。
+
 ```bash
 pnpm install                         # 仓库根目录：web 应用依赖
 pnpm --dir desktop install           # 桌面外壳依赖（Electron 只装在这里）

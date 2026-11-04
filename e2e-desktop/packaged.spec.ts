@@ -6,6 +6,7 @@ import { _electron as electron, expect, test, type ElectronApplication, type Pag
 import { addFileInput, extend, go, notebookModule, runWithShell, shot } from "../e2e/helpers";
 import { SCHEMA_VERSION } from "../src/lib/server/schema";
 import { defaultSettings } from "../src/features/settings/types";
+import { resolveProductTheme } from "../src/lib/product-theme";
 
 /**
  * The packaged app end to end: incompatible data is reset on first start, and a notebook published as a
@@ -20,7 +21,9 @@ function packagedBinary(): string {
   const release = join(root, "desktop", "release");
   if (process.platform === "darwin") {
     const dir = existsSync(join(release, "mac-arm64")) ? "mac-arm64" : "mac";
-    return join(release, dir, "Nextflow Studio.app", "Contents", "MacOS", "Nextflow Studio");
+    const { id } = JSON.parse(readFileSync(join(root, "desktop", "dist", "brand", "theme.json"), "utf8")) as { id: string };
+    const name = resolveProductTheme(id).displayName;
+    return join(release, dir, `${name}.app`, "Contents", "MacOS", name);
   }
   return join(release, "linux-unpacked", "nextflow-studio-desktop");
 }
