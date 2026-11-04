@@ -24,7 +24,15 @@ export const DEFAULT_PRODUCT_THEME: ProductTheme = {
   tagline: "笔记本到流程的工作台",
 };
 
-const PRODUCT_THEMES: readonly ProductTheme[] = [DEFAULT_PRODUCT_THEME];
+export const IMMUNOFLUORESCENCE_PRODUCT_THEME: ProductTheme = {
+  id: "immunofluorescence",
+  displayName: "免疫荧光分析工作台",
+  shortName: "IF",
+  description: "用笔记本、内置节点搭建并运行免疫荧光图像分析流程",
+  tagline: "从荧光图像到定量结果",
+};
+
+export const PRODUCT_THEMES: readonly ProductTheme[] = [DEFAULT_PRODUCT_THEME, IMMUNOFLUORESCENCE_PRODUCT_THEME];
 
 /** Checks a theme against the contract; returns the problems found (empty when valid). */
 export function validateProductTheme(theme: Partial<ProductTheme>): string[] {
@@ -41,7 +49,11 @@ export function resolveProductTheme(id?: string | null): ProductTheme {
   return PRODUCT_THEMES.find((theme) => theme.id === id) ?? DEFAULT_PRODUCT_THEME;
 }
 
-/** The active product theme. P0: always the default pack. */
+/**
+ * The active product theme, selected by `NEXT_PUBLIC_PRODUCT_THEME=<id>` (e.g. `immunofluorescence`).
+ * Unset or unknown ids fall back to the default. NEXT_PUBLIC_ so Next inlines it into client
+ * components at build time; the desktop main process reads it at runtime.
+ */
 export function getProductTheme(): ProductTheme {
-  return resolveProductTheme();
+  return resolveProductTheme(process.env.NEXT_PUBLIC_PRODUCT_THEME);
 }
