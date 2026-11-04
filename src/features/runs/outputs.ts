@@ -5,6 +5,7 @@
  * directories instead.
  */
 import type { ModuleIndex } from "@/features/workflow/catalog";
+import { getProductTheme } from "@/lib/product-theme";
 import { resolveNodeDef } from "@/features/workflow/catalog";
 import { NEXTFLOW_VERSION } from "@/features/project/templates";
 import { projectMeta } from "@/features/project/generate";
@@ -154,7 +155,7 @@ function timelineReport(run: RunLike, tasks: TaskRecord[]): string {
 function genericText(path: string, task?: TaskRecord): string {
   const who = task ? `${task.name} [${task.hash}]` : "the pipeline";
   if (path.endsWith(".json")) return `${JSON.stringify({ generated_by: who, file: path, simulated: true }, null, 2)}\n`;
-  return `# ${path}\n# Written by ${who}.\n# This run was simulated by Nextflow Studio's mock backend, so the content is a placeholder.\n`;
+  return `# ${path}\n# Written by ${who}.\n# This run was simulated by ${getProductTheme().displayName}'s mock backend, so the content is a placeholder.\n`;
 }
 
 export interface ResultBody {

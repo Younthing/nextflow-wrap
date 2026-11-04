@@ -5,6 +5,7 @@ import { cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
+import nextEnv from "@next/env";
 
 export const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const WEBLOG = "nf-weblog@1.2.0";
@@ -22,6 +23,7 @@ export function buildStandalone(target, { skipBuild = false } = {}) {
 
 /** A script under scripts/ bundled to one ESM file with the @/ alias resolved (runner, serve). */
 export async function bundleScript(entry, outfile) {
+  const { combinedEnv } = nextEnv.loadEnvConfig(root, false);
   await build({
     entryPoints: [join(root, "scripts", entry)],
     outfile,
@@ -29,6 +31,7 @@ export async function bundleScript(entry, outfile) {
     platform: "node",
     format: "esm",
     target: "node22",
+    define: { "process.env.NEXT_PUBLIC_PRODUCT_THEME": JSON.stringify(combinedEnv.NEXT_PUBLIC_PRODUCT_THEME ?? "") },
     tsconfig: join(root, "tsconfig.json"),
     banner: { js: "import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);" },
     logLevel: "info",

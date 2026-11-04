@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { fixtureScriptModules } from "@/features/notebook/test-fixtures";
 import { FILE_ID } from "@/features/workflow/builtins";
@@ -15,6 +15,22 @@ const file = (doc: WorkflowDoc, path: string) => generate(doc).files.find((f) =>
 describe("generateProject", () => {
   const demo = fixtureWorkflow("wf");
   const reads = fixtureReadsWorkflow("qc");
+
+  it("brands generated project text with the product theme while keeping executable Nextflow commands", () => {
+    vi.stubEnv("NEXT_PUBLIC_PRODUCT_THEME", "fluora");
+    try {
+      const project = generate(demo);
+      expect(project.meta.author).toBe("Fluora");
+      for (const path of ["main.nf", "nextflow.config", "README.md"]) {
+        const content = project.files.find((entry) => entry.path === path)!.content;
+        expect(content).toContain("Fluora");
+        expect(content).not.toContain("Nextflow Studio");
+      }
+      expect(project.files.find((entry) => entry.path === "README.md")!.content).toContain("nextflow run .");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
 
   it("lays out a plain Nextflow project without nf-core pieces", () => {
     const paths = generate(demo).files.map((f) => f.path);

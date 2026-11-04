@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
+import { getProductTheme } from "@/lib/product-theme";
 
 /**
  * A workspace is one research project on disk: notebooks, installed modules, pipelines, sample sheets and runs.
@@ -11,7 +12,7 @@ export const WORKSPACE_MANIFEST = "studio.json";
 export const WORKSPACE_FOLDERS = ["notebooks", "modules", "pipelines", "samplesheets", "runs"] as const;
 
 const GITIGNORE = [
-  "# Written by Nextflow Studio. App state, work files and run results stay out of Git.",
+  `# Written by ${getProductTheme().displayName}. App state, work files and run results stay out of Git.`,
   ".studio/",
   "runs/*/results/",
   ".nextflow*",
@@ -50,7 +51,7 @@ async function readManifest(root: string): Promise<WorkspaceManifest | undefined
   }
   if (typeof value.formatVersion !== "number" || typeof value.id !== "string") throw new WorkspaceError(`${WORKSPACE_MANIFEST} 缺少 formatVersion 或 id`);
   if (value.formatVersion > WORKSPACE_FORMAT) {
-    throw new WorkspaceError(`这个工作区由更新版本的 Nextflow Studio 创建（格式 ${value.formatVersion}），请升级应用后再打开`);
+    throw new WorkspaceError(`这个工作区由更新版本的 ${getProductTheme().displayName} 创建（格式 ${value.formatVersion}），请升级应用后再打开`);
   }
   return {
     formatVersion: value.formatVersion,

@@ -221,6 +221,21 @@ describe("CopilotKit route with a fake Codex harness", () => {
     return harness;
   }
 
+  it("sends the active product identity to the assistant instead of the default brand", async () => {
+    const harness = use(new FakeCodexHarness({ turns: [[{ type: "text", text: "你好，我是 Fluora 的 AI 助手。" }]] }));
+    vi.stubEnv("NEXT_PUBLIC_PRODUCT_THEME", "fluora");
+    try {
+      const route = routeFor(harness, { COPILOT_BACKEND: "codex" });
+      const response = await route.POST(post("/api/copilotkit/agent/default/run", runBody(crypto.randomUUID(), [user("你好")])));
+      expect(response.status).toBe(200);
+      await readEvents(response);
+      expect(harness.prompts[0]).toContain("你是 Fluora 里的 AI 助手");
+      expect(harness.prompts[0]).not.toContain("Nextflow Studio");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("streams a plain text turn and closes the read-only session", async () => {
     const harness = use(new FakeCodexHarness({
       turns: [[{ type: "text", text: "你好" }, { type: "text", text: "，流程没问题。" }]],

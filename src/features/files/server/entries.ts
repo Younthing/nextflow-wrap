@@ -115,7 +115,8 @@ export async function pasteEntries(root: string, sources: string[], target: stri
       pasted.push(await toWorkspace(root, from));
       continue;
     }
-    const to = join(actualFolder, await freeName(actualFolder, basename(from), kind));
+    // User-selected workspace files exist at runtime; they are not application build dependencies.
+    const to = join(/* turbopackIgnore: true */ actualFolder, await freeName(actualFolder, basename(from), kind));
     if (mode === "copy") {
       await cp(from, to, { recursive: true, errorOnExist: true, force: false, verbatimSymlinks: true });
     } else {

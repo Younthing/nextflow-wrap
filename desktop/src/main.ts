@@ -141,7 +141,7 @@ function supervise(name: string, modulePath: string, args: string[], env: NodeJS
   const log = serviceLog(name);
   const start = () => {
     log.write(`--- ${new Date().toISOString()} start ${name} ${app.getVersion()}\n`);
-    const child = utilityProcess.fork(modulePath, args, { env, cwd, stdio: "pipe", serviceName: `Nextflow Studio ${name}` });
+    const child = utilityProcess.fork(modulePath, args, { env, cwd, stdio: "pipe", serviceName: `${productName} ${name}` });
     children.set(name, child);
     child.stdout?.on("data", (chunk: Buffer) => { log.write(chunk); if (dev) process.stdout.write(`[${name}] ${chunk}`); });
     child.stderr?.on("data", (chunk: Buffer) => { log.write(chunk); if (dev) process.stderr.write(`[${name}] ${chunk}`); });

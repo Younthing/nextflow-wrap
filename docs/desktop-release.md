@@ -11,6 +11,12 @@ The workflow follows [Electron Fiddle's release pattern](https://github.com/elec
 
 Manual runs on branches build Actions artifacts without publishing. Manual runs on a matching tag can publish. Ordinary branch pushes do not create a release. MSI, DEB and Linux/Windows arm64 packages are not configured.
 
+## Product theme
+
+Set `NEXT_PUBLIC_PRODUCT_THEME=fluora` before building, or in the root `.env` files. Desktop shell and server scripts use Next.js's production `.env*` precedence and inline only this public theme id. Startup screens, the web app, assistant identity, notifications and generated project attribution share the product theme. Rebuild the desktop shell and server after changing it. CI can set the variable explicitly; `.env` files and private values are not bundled into the shell.
+
+Existing assistant messages are conversation history and keep their original text. Start a new conversation after rebuilding to verify the updated identity. Names of the Nextflow engine, executable commands, and persistent storage/package identifiers keep their technical meanings.
+
 ## Signing
 
 Signing remains optional for beta builds; an unsigned package is not a signed production release.

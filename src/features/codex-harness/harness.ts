@@ -4,6 +4,7 @@ import { spawnCodexChild } from "./process";
 import { isRecord, readString } from "./record";
 import { CodexAppSession, type ResolvedSessionOptions } from "./session";
 import type { CodexHarness, CodexHarnessOptions, OpenSessionOptions, ProbeResult } from "./types";
+import { getProductTheme } from "@/lib/product-theme";
 
 /** Optional catalog lookup. A stall must not hide an auth result already in hand. */
 const MODEL_LIST_PROBE_MS = 400;
@@ -11,7 +12,7 @@ const MODEL_LIST_PROBE_MS = 400;
 const CLIENT_INFO = {
   clientInfo: {
     name: "nextflow_wrap",
-    title: "Nextflow Studio",
+    title: getProductTheme().displayName,
     version: "0.1.0",
   },
 };

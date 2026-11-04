@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { useHealthStatus } from "@/features/runs/queries";
 import { cn } from "@/lib/utils";
+import { getProductTheme } from "@/lib/product-theme";
 
 /**
  * Nextflow and runner health in the sidebar. Collapsed, it is a coloured dot with the same text as its tooltip.
@@ -21,7 +22,7 @@ export function BackendStatus({ collapsed = false }: { collapsed?: boolean }) {
         : { tone: data.mocked ? ("warning" as const) : ("success" as const), text: `Nextflow ${data.nextflowVersion}${data.mocked ? " · 模拟" : ""}` };
   // The shell's `nextflow -version` can differ: Studio pins the release it runs and the launcher fetches it.
   const pinned = !isPending && !isError && data.nextflowLauncherVersion
-    ? `Studio 运行 Nextflow ${data.nextflowVersion}（NXF_VER 固定）；PATH 上的 nextflow 启动器本身是 ${data.nextflowLauncherVersion}`
+    ? `${getProductTheme().displayName} 运行 Nextflow ${data.nextflowVersion}（NXF_VER 固定）；PATH 上的 nextflow 启动器本身是 ${data.nextflowLauncherVersion}`
     : undefined;
   const degraded = !isPending && !isError && data.status === "degraded";
 

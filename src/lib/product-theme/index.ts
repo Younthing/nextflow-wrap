@@ -52,7 +52,7 @@ export function resolveProductTheme(id?: string | null): ProductTheme {
 /**
  * The active product theme, selected by `NEXT_PUBLIC_PRODUCT_THEME=<id>` (e.g. `fluora`).
  * Unset or unknown ids fall back to the default. NEXT_PUBLIC_ so Next inlines it into client
- * components at build time; the desktop main process reads it at runtime.
+ * components at build time; the desktop bundler inlines the same id from the project's .env* files.
  */
 export function getProductTheme(): ProductTheme {
   return resolveProductTheme(process.env.NEXT_PUBLIC_PRODUCT_THEME);

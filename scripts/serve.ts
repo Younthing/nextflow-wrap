@@ -14,6 +14,7 @@ import {
 } from "@/features/server/serve-config";
 import { API_VERSION } from "@/lib/api-types";
 import { dataDirectory } from "@/lib/server/paths";
+import { getProductTheme } from "@/lib/product-theme";
 
 /**
  * `nextflow-studio serve`: runs the web server (UI, `/api`, notebook kernels) and the Nextflow runner, restarts
@@ -161,7 +162,7 @@ async function main(options: ServeOptions) {
   writeServerState(dataDir, { pid: process.pid, host: options.host, port, version, build, apiVersion: API_VERSION, startedAt: new Date().toISOString() });
   // Logs go to stderr, so stdout carries only this line (launchers read it) and the link for people.
   console.log(readyLine({ host: options.host, port, token, version, build, apiVersion: API_VERSION, pid: process.pid, reused: false }));
-  console.log(`Nextflow Studio ${version} 已启动：${browserLink(options.host, port, token)}`);
+  console.log(`${getProductTheme().displayName} ${version} 已启动：${browserLink(options.host, port, token)}`);
   console.log(`数据目录 ${dataDir}`);
 }
 

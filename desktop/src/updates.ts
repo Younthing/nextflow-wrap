@@ -1,5 +1,6 @@
 import { app, dialog } from "electron";
 import electronUpdater from "electron-updater";
+import { getProductTheme } from "../../src/lib/product-theme";
 
 /**
  * App updates come from GitHub Releases (electron-builder `publish: github`). The toolchain (JRE, Nextflow,
@@ -15,7 +16,7 @@ export function setupUpdates() {
   autoUpdater.on("update-downloaded", async (info) => {
     const { response } = await dialog.showMessageBox({
       type: "info",
-      message: `Nextflow Studio ${info.version} 已下载`,
+      message: `${getProductTheme().displayName} ${info.version} 已下载`,
       detail: "重启后生效。运行中的流程不受影响：它们在后台继续，重启后接着显示。",
       buttons: ["现在重启", "稍后"],
       defaultId: 0,

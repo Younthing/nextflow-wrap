@@ -9,13 +9,15 @@ import { AssistantChatInput, ComposerProvider } from "./composer";
 import { AssistantModuleHost } from "./modules/activation";
 import { ASSISTANT_MODULES_PROP } from "./modules/contract";
 import { useLayoutStore } from "@/components/layout/layout-store";
+import { getProductTheme } from "@/lib/product-theme";
 
 const RUNTIME_URL = "/api/copilotkit";
+const productName = getProductTheme().displayName;
 
 const LABELS = {
-  modalHeaderTitle: "AI 助手",
+  modalHeaderTitle: `${productName} AI 助手`,
   welcomeMessageText:
-    "搭建流程 · 启动运行 · 排查失败",
+    `${productName} · 搭建流程 · 启动运行 · 排查失败`,
   chatInputPlaceholder: "描述你想做的事…",
   chatDisclaimerText:
     "AI 可能出错，运行前请检查",

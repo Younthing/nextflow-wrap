@@ -4,6 +4,7 @@ import { chmod, cp, mkdir, readdir, rename, rm, writeFile } from "node:fs/promis
 import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
 import { dataDirectory, type PathEnv } from "./paths";
+import { getProductTheme } from "@/lib/product-theme";
 
 /**
  * The tools a desktop install needs, pinned to exact releases with their SHA-256.
@@ -201,7 +202,7 @@ export async function installTool(tool: InstallableTool, context: InstallContext
   const env = { ...context.env, MAMBA_ROOT_PREFIX: paths.mambaRoot };
   log(`micromamba create -n ${TOOLCHAIN.notebookEnv.name} ${TOOLCHAIN.notebookEnv.packages.join(" ")}`);
   await run(paths.micromamba, ["create", "-y", "-n", TOOLCHAIN.notebookEnv.name, "-c", "conda-forge", ...TOOLCHAIN.notebookEnv.packages], { env, timeoutMs: 1_800_000 });
-  await run(paths.notebookPython, ["-m", "ipykernel", "install", "--user", "--name", TOOLCHAIN.notebookEnv.name, "--display-name", "Python (Nextflow Studio)"], { env, timeoutMs: 120_000 });
+  await run(paths.notebookPython, ["-m", "ipykernel", "install", "--user", "--name", TOOLCHAIN.notebookEnv.name, "--display-name", `Python (${getProductTheme().displayName})`], { env, timeoutMs: 120_000 });
 }
 
 /** Writes a line-oriented install log next to the toolchain; the diagnostics bundle includes it. */
