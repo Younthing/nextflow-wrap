@@ -64,9 +64,9 @@ function NotebookTools() {
 
   useConfigureSuggestions({
     suggestions: [
-      { title: "解释这本笔记本", message: "用几句话解释这本笔记本每一格在做什么" },
+      { title: "解释笔记本", message: "用几句话解释这本笔记本每一格在做什么" },
       { title: "修复报错", message: "看看哪一格报错了，修好并重新运行" },
-      { title: "标出端口", message: "帮我把这本笔记本的输入和输出端口标出来" },
+      { title: "标注端口", message: "帮我把这本笔记本的输入和输出端口标出来" },
     ],
   });
 

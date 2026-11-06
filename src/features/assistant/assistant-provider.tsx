@@ -3,24 +3,24 @@
 import * as React from "react";
 import type { CliBlocker } from "./backend";
 import { useAssistantStatusQuery } from "./queries";
-import { CopilotKitProvider, CopilotSidebar } from "@copilotkit/react-core/v2";
+import { CopilotKitProvider } from "@copilotkit/react-core/v2";
 import "@copilotkit/react-core/v2/styles.css";
-import { AssistantChatInput, ComposerProvider } from "./composer";
+import { ComposerProvider } from "./composer";
 import { AssistantModuleHost } from "./modules/activation";
 import { ASSISTANT_MODULES_PROP } from "./modules/contract";
 import { useLayoutStore } from "@/components/layout/layout-store";
 import { getProductTheme } from "@/lib/product-theme";
+
+import { AssistantPanel } from "./assistant-panel";
 
 const RUNTIME_URL = "/api/copilotkit";
 const productName = getProductTheme().displayName;
 
 const LABELS = {
   modalHeaderTitle: `${productName} AI 助手`,
-  welcomeMessageText:
-    `${productName} · 搭建流程 · 启动运行 · 排查失败`,
-  chatInputPlaceholder: "描述你想做的事…",
-  chatDisclaimerText:
-    "AI 可能出错，运行前请检查",
+  welcomeMessageText: "想分析什么？",
+  chatInputPlaceholder: "输入问题或分析需求",
+  chatDisclaimerText: "运行前请核对",
   chatToggleOpenLabel: "打开 AI 助手",
   chatToggleCloseLabel: "关闭 AI 助手",
   chatInputToolbarSendButtonLabel: "发送",
@@ -64,9 +64,6 @@ const AssistantContext = React.createContext<AssistantContextValue>({
 export const useAssistantStatus = () =>
   React.useContext(AssistantContext).status;
 export const useAssistantPanel = () => React.useContext(AssistantContext);
-
-/** The sidebar opens from the header button, not CopilotKit's floating one. */
-const HIDDEN_TOGGLE = { style: { display: "none" } };
 
 /**
  * Wraps the app in CopilotKit when the server has a backend. The status is
@@ -120,16 +117,9 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
   ) : (
     <CopilotKitProvider runtimeUrl={RUNTIME_URL} properties={properties}>
       <ComposerProvider>
-        {children}
-        <CopilotSidebar
-          labels={LABELS}
-          open={open}
-          onOpenChange={setOpen}
-          toggleButton={HIDDEN_TOGGLE}
-          input={AssistantChatInput}
-          width={380}
-          className="assistant-chat"
-        />
+        <AssistantPanel open={open} onOpenChange={setOpen} labels={LABELS}>
+          {children}
+        </AssistantPanel>
       </ComposerProvider>
     </CopilotKitProvider>
   );

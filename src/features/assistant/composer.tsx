@@ -60,6 +60,9 @@ const MAX_CHIPS = 12;
 
 function ReferenceRow({ references, onPick }: { references: ComposerReferences; onPick: (text: string) => void }) {
   const shown = references.items.slice(0, MAX_CHIPS);
+  // Empty kernel status is already visible in the workbench. Offer context here
+  // only once there are variables the user can actually insert.
+  if (shown.length === 0) return null;
   return (
     <div className="pointer-events-auto flex w-full flex-wrap items-center gap-1.5 pt-2 text-xs" aria-label={references.title}>
       <span className="text-muted-foreground">{references.title}</span>
@@ -75,7 +78,6 @@ function ReferenceRow({ references, onPick }: { references: ComposerReferences; 
         </button>
       ))}
       {references.items.length > shown.length && <span className="text-muted-foreground">+{references.items.length - shown.length}</span>}
-      {shown.length === 0 && references.note && <span className="text-muted-foreground">{references.note}</span>}
       {references.onRefresh && (
         <button
           type="button"

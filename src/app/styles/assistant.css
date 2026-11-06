@@ -36,45 +36,74 @@ aside.copilotKitSidebar [data-copilotkit] {
   --cpk-font-mono: var(--font-jetbrains-mono), ui-monospace, monospace;
 }
 
-/*
- * The panel is a rail like the navigation, explorer and inspector: a `glass`
- * card on the radius-xl, inset by the shell's 0.75rem gutter instead of
- * running edge to edge. Its width still counts from the window edge, so the
- * page CopilotKit pushes aside keeps the same 0.75rem gap to it.
- *
- * CopilotKit's drawer chrome (border-l, bg-background, shadow-xl, fixed
- * top-0 right-0 h-[100dvh]) sits in its own @layer, so these unlayered rules
- * already outrank it; `!important` keeps it that way should CopilotKit ever
- * mark them important or ship them unlayered.
- */
-aside.copilotKitSidebar {
-  top: 0.75rem !important;
-  bottom: 0.75rem !important;
-  right: 0.75rem !important;
-  height: auto !important;
+/* Layout belongs to the host, not CopilotKit's body-margin side effect. */
+body:has(.assistant-workspace) { margin-inline-end: 0 !important; }
+.assistant-workspace { height: 100%; min-width: 0; }
+@media (min-width: 1100px) {
+  .assistant-workspace[data-docked="true"] {
+    padding-inline-end: calc(var(--assistant-width) + 0.75rem);
+  }
+}
+.assistant-surface {
+  position: fixed;
+  z-index: 1200;
+  top: 0.75rem;
+  right: 0.75rem;
+  bottom: 0.75rem;
+  width: var(--assistant-width);
+  max-width: calc(100vw - 1.5rem);
+}
+.assistant-surface[data-open="false"] { display: none; }
+.assistant-surface[data-mode="floating"] {
+  right: auto; bottom: auto;
+  left: clamp(12px, var(--assistant-x), max(12px, calc(100vw - var(--assistant-width) - 12px)));
+  top: clamp(12px, var(--assistant-y), max(12px, calc(100dvh - 480px)));
+  height: min(720px, calc(100dvh - 1.5rem));
+}
+.assistant-surface[data-mode="detached"] {
+  position: absolute; inset: 0; width: 100%; max-width: none; height: 100%;
+}
+aside.copilotKitSidebar[data-copilot-sidebar] {
+  position: relative !important;
+  inset: auto !important;
+  width: 100% !important;
+  max-width: none !important;
+  height: 100% !important;
   max-height: none !important;
+  transform: none !important;
   overflow: hidden;
   border: 1px solid var(--glass-border) !important;
   border-radius: var(--radius-xl) !important;
-  background-color: var(--glass) !important;
+  background-color: var(--glass-strong) !important;
+  background-image: var(--glass-sheen);
   box-shadow: var(--glass-shadow), var(--glass-highlight) !important;
-  -webkit-backdrop-filter: blur(18px) saturate(160%);
-  backdrop-filter: blur(18px) saturate(160%);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
 }
-/* Closed, it slides past the gutter and its shadow too. */
-aside.copilotKitSidebar[aria-hidden="true"] {
-  --tw-translate-x: calc(100% + 1.5rem);
+.assistant-surface[data-mode="detached"] aside.copilotKitSidebar { border-radius: 0 !important; }
+.assistant-panel-header {
+  display: flex; align-items: center; gap: 8px;
+  min-height: 52px; padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  cursor: grab; touch-action: none;
 }
-/*
- * CopilotKit pins `width: var(--sidebar-width) !important` inside
- * @layer base, and a layered !important beats an unlayered one, so the width
- * cannot be overridden; cap it instead, or the card would run 0.75rem into the
- * page it pushed aside.
- */
-@media (min-width: 768px) {
-  aside.copilotKitSidebar[data-copilot-sidebar] {
-    max-width: calc(var(--sidebar-width) - 0.75rem) !important;
-  }
+.assistant-panel-header:active { cursor: grabbing; }
+.assistant-header-action {
+  display: grid; place-items: center; width: 28px; height: 28px;
+  border-radius: var(--radius-sm); color: var(--muted-foreground);
+}
+.assistant-header-action:hover { background: var(--accent); color: var(--foreground); }
+.assistant-header-action:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.assistant-width-handle {
+  position: absolute; z-index: 1; left: -12px; top: 16px; bottom: 16px;
+  width: 12px; cursor: col-resize; touch-action: none;
+}
+.assistant-width-handle::after {
+  content: ""; position: absolute; inset: 0 5px; border-radius: 2px;
+}
+.assistant-width-handle:hover::after, .assistant-width-handle:focus-visible::after { background: var(--ring); }
+@media (max-width: 1099px) {
+  .assistant-surface[data-mode="docked"] { box-shadow: var(--glass-shadow); }
 }
 .copilotKitSidebar .copilotKitHeader {
   background-color: transparent;
@@ -110,7 +139,7 @@ aside.copilotKitSidebar[aria-hidden="true"] {
 .copilotKitSidebar .assistant-composer {
   padding-inline: 0.75rem;
 }
-.copilotKitSidebar [data-sidebar-chat] .cpk\:px-8:has(> .cpk\:max-w-3xl > .assistant-composer) {
+.copilotKitSidebar [data-sidebar-chat] .cpk\:px-8:has(.assistant-composer) {
   padding-inline: 0;
   padding-bottom: 0;
 }
@@ -120,10 +149,11 @@ aside.copilotKitSidebar[aria-hidden="true"] {
 
 /* Welcome line: quiet, not a hero title. Markdown headings keep theirs. */
 .copilotKitSidebar h1:not(.cpk\:prose *) {
-  padding-inline: 2rem;
-  font-size: 0.95rem;
-  line-height: 1.7;
-  color: var(--muted-foreground);
+  padding-inline: 1rem;
+  font-size: 1.25rem;
+  line-height: 1.5;
+  font-weight: 500;
+  color: var(--foreground);
 }
 
 /* Messages: markdown in app colours; the user bubble on the app radius. */
@@ -206,10 +236,84 @@ aside.copilotKitSidebar[aria-hidden="true"] {
   color: var(--muted-foreground);
 }
 
-/* The sidebar pushes the page aside on wide screens; below that the editor
-   would be too narrow, so it floats over the inspector instead. */
-@media (max-width: 1799px) {
-  body {
-    margin-inline-end: 0 !important;
-  }
+
+.assistant-surface[data-mode="floating"] .assistant-width-handle { left: auto; right: -12px; }
+.assistant-surface[data-mode="detached"] .assistant-panel-header { cursor: default; }
+.copilotKitSidebar [data-sidebar-chat] { background: transparent; }
+.copilotKitSidebar .copilotKitChat { background: transparent; }
+
+/* CopilotKit paints every [data-copilotkit] root with --background.
+   Structural message/composer wrappers must reveal the host glass surface;
+   keep the input, user bubbles, code blocks and popovers independently painted. */
+aside.copilotKitSidebar .copilotKitMessages,
+aside.copilotKitSidebar .copilotKitMessage,
+aside.copilotKitSidebar [data-testid="copilot-suggestions"],
+aside.copilotKitSidebar .assistant-composer > [data-copilotkit] {
+  background-color: transparent;
+}
+
+/* Give the prompt the full panel width, with a separate toolbar underneath.
+   Apply the same geometry to both of CopilotKit's measured input layouts so
+   its compact/expanded transitions do not squeeze the first line. */
+.copilotKitSidebar .assistant-composer {
+  padding-inline: 1rem;
+}
+.copilotKitSidebar .assistant-composer > [data-copilotkit] > div {
+  max-width: none;
+}
+.copilotKitSidebar .copilotKitInput {
+  background-image: var(--glass-sheen);
+  border-radius: var(--radius-xl);
+}
+.copilotKitSidebar .copilotKitInput > [data-layout] {
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: minmax(72px, auto) 36px;
+  gap: 8px;
+  padding: 12px;
+  align-items: stretch;
+}
+.copilotKitSidebar .copilotKitInput > [data-layout] > :first-child {
+  grid-column: 1;
+  grid-row: 2;
+}
+.copilotKitSidebar .copilotKitInput > [data-layout] > :nth-child(2) {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  min-height: 72px;
+  justify-content: flex-start;
+}
+.copilotKitSidebar .copilotKitInput > [data-layout] > :last-child {
+  grid-column: 2;
+  grid-row: 2;
+}
+.copilotKitSidebar .copilotKitInput textarea {
+  min-height: 72px;
+  max-height: min(240px, 30dvh);
+  padding: 4px;
+  line-height: 1.6;
+}
+.copilotKitSidebar [data-testid="copilot-suggestions"] {
+  gap: 8px;
+  margin-inline: 1rem;
+  padding-inline: 0;
+}
+.copilotKitSidebar [data-testid="copilot-suggestion"] {
+  height: auto;
+  min-height: 32px;
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  border-color: var(--glass-border);
+  background-color: var(--glass);
+  font-size: 0.75rem;
+  font-weight: 400;
+  line-height: 1.5;
+}
+.copilotKitSidebar [data-testid="copilot-suggestion"]:hover:not(:disabled) {
+  background-color: var(--glass-strong);
+}
+/* Streamdown emits unprefixed Tailwind dark classes, while CopilotKit's
+   bundled utilities are prefixed. Select the supplied Shiki dark token
+   explicitly so highlighted code remains readable inside night-mode glass. */
+.dark aside.copilotKitSidebar pre span[style*="--shiki-dark"] {
+  color: var(--shiki-dark) !important;
 }

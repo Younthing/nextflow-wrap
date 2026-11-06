@@ -23,7 +23,7 @@ import { Switch } from "../switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../tabs";
 
 const meta = {
-  title: "UI/Glass surfaces",
+  title: "UI/Liquid glass",
 } satisfies Meta;
 
 export default meta;
@@ -95,8 +95,8 @@ export const TabsPanel: Story = {
 export const Typography: Story = {
   render: () => (
     <div className="glass grid max-w-xl gap-3 rounded-xl p-6">
-      <p className="font-serif text-2xl font-semibold">思源宋体 · 流程标题</p>
-      <p className="font-sans">思源黑体 · 正文用于界面和说明文字。</p>
+      <p className="text-2xl font-semibold">项目与分析流程</p>
+      <p className="font-sans">思源黑体 · 用于标题、导航和说明文字。</p>
       <p className="font-mono text-sm">
         nextflow run main.nf -profile docker -resume
       </p>

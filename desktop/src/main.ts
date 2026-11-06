@@ -272,7 +272,15 @@ function createWindow() {
   });
   const inApp = (url: string) => Boolean(backend && (url === backend.origin || url.startsWith(`${backend.origin}/`)));
   // Links to other sites open in the default browser; the window stays on the app.
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+  mainWindow.webContents.setWindowOpenHandler(({ url, frameName }) => {
+    // The assistant is rendered by the opener into a same-origin blank window.
+    if (url === "about:blank" && frameName === "studio-assistant" && inApp(mainWindow?.webContents.getURL() ?? "")) {
+      return { action: "allow", overrideBrowserWindowOptions: {
+        title: `${productName} · AI 助手`, minWidth: 360, minHeight: 480,
+        autoHideMenuBar: true,
+        webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false },
+      } };
+    }
     if (!inApp(url)) void shell.openExternal(url);
     return { action: inApp(url) ? "allow" : "deny" };
   });
