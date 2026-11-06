@@ -10,16 +10,12 @@ import { versionNumber } from "@/features/workflow/origin";
  * Overwriting keeps the id, so workflows that use the module run the new version; the version label goes up.
  */
 export function exportTarget(name: string, existing: readonly ModuleDef[], overwrite?: string): { id: string; slug: string; version: string } {
-  if (overwrite) {
-    const current = existing.find((mod) => mod.id === overwrite && mod.id.startsWith("script/"));
-    if (!current) throw new Error("要覆盖的模块不存在");
-    return { id: current.id, slug: current.id.slice("script/".length), version: `v${versionNumber(current.version) + 1}` };
-  }
-  const slug = moduleSlug(name);
-  const id = `script/${slug}`;
-  const taken = existing.find((mod) => mod.id === id);
-  if (taken) throw new Error(`已有模块「${taken.name}」，选择覆盖它或换个名字`);
-  return { id, slug, version: "v1" };
+  const current = overwrite ? existing.find((mod) => mod.id === overwrite) : undefined;
+  if (overwrite && !current) throw new Error("来源模块不存在");
+  const slug = current ? moduleSlug(current.name) : moduleSlug(name);
+  const versions = existing.filter((mod) => moduleSlug(mod.name) === slug).map((mod) => versionNumber(mod.version));
+  const version = `v${Math.max(0, ...versions) + 1}`;
+  return { id: `modules/${slug}/${version}/module.json`, slug, version };
 }
 
 export function processName(name: string): string {

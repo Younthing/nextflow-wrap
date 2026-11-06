@@ -54,7 +54,7 @@ export function WorkflowLibrary() {
   const onCreate = () => {
     setActionError(null);
     create.mutate(emptyWorkflow(""), {
-      onSuccess: (doc) => router.push(`/workflows/${doc.id}`),
+      onSuccess: (doc) => router.push(`/workbench/workflow/${doc.id}`),
       onError: (err) => setActionError(err.message),
     });
   };
@@ -123,7 +123,7 @@ export function WorkflowLibrary() {
               {rows.map((workflow) => (
                 <TableRow key={workflow.id}>
                   <TableCell className="max-w-72">
-                    <Link href={`/workflows/${workflow.id}`} className="block truncate font-medium text-primary hover:underline">
+                    <Link href={`/workbench/workflow/${workflow.id}`} className="block truncate font-medium text-primary hover:underline">
                       {workflow.name}
                     </Link>
                     {workflow.description && (
@@ -139,7 +139,7 @@ export function WorkflowLibrary() {
                   <TableCell>
                     <div className="flex justify-end gap-1">
                       <Button asChild variant="ghost" size="sm">
-                        <Link href={`/workflows/${workflow.id}`}>
+                        <Link href={`/workbench/workflow/${workflow.id}`}>
                           <FolderOpen /> 打开
                         </Link>
                       </Button>

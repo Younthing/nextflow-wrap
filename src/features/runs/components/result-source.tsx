@@ -23,7 +23,7 @@ export function ResultSource({ file, fullPath, workflow, tasks }: { file: Result
         <>
           <span className="inline-flex items-center gap-1">
             <Workflow className="size-3.5" aria-hidden="true" />
-            <Link href={`/workflows/${workflow!.id}`} className="font-mono hover:underline">{source.alias}</Link>
+            <Link href={`/workbench/workflow/${workflow!.id}`} className="font-mono hover:underline">{source.alias}</Link>
             {source.moduleName && <span>· {source.moduleName}{source.version ? ` ${source.version}` : ""}</span>}
           </span>
           {source.tasks.length > 0 && (

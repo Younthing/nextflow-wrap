@@ -15,10 +15,10 @@ function segments(relative: string): string[] | undefined {
   const out: string[] = [];
   for (const part of relative.split(/[\\/]+/)) {
     if (!part || part === ".") continue;
-    if (part === "..") return undefined;
+    if (part === "..") { if (out.length && out.at(-1) !== "..") out.pop(); else out.push(part); continue; }
     out.push(part);
   }
-  return out.length ? out : undefined;
+  return out.length ? out : ["."];
 }
 
 export function dataPathKind(value: string): DataPathKind {

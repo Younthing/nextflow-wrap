@@ -26,7 +26,7 @@ import { validateWorkflow } from "@/features/workflow/validate";
 import { REMOTE_ID } from "@/features/remote/types";
 import { store, type StoredExecution } from "@/lib/server/database";
 import { readSettings } from "@/lib/server/settings";
-import { executionDirectory, pipelineDirectory } from "@/lib/server/paths";
+
 import { dataPathParams, resolveDataParams } from "../data-params";
 import type { RunProgress } from "../types";
 
@@ -42,6 +42,8 @@ const paramsSchema = z.record(z.string().regex(/^[a-z][a-z0-9_]*$/), scalar);
 const workflowSchema = z.object({
   version: z.literal(1), id: z.string().max(100), name: z.string().min(1).max(200), description: z.string().max(5000).optional(), updatedAt: z.string(),
   projectId: z.string().max(100).optional(),
+  filePath: z.string().max(4000).optional(),
+  fileVersion: z.string().max(100).optional(),
   project: z.object({ name: z.string().regex(/^[a-zA-Z0-9_/.-]+$/), version: z.string().regex(/^[\w.-]+$/), author: z.string().max(200) }).optional(),
   params: paramsSchema,
   nodes: z.array(z.object({ id: z.string().min(1).max(100), position: z.object({ x: z.number(), y: z.number() }), data: z.object({ moduleId: z.string(), alias: z.string().regex(/^[A-Z][A-Z0-9_]*$/), widgets: z.record(z.string(), scalar), config: z.object({ args: z.string().optional(), prefix: z.string().optional(), label: z.string().optional(), publish: z.boolean().optional(), errorStrategy: z.string().max(40).optional(), when: z.string().max(500).optional(), whenEmpty: z.boolean().optional(), skip: z.boolean().optional(), memory: z.string().max(500).optional(), cpus: z.string().max(200).optional(), optionalOutputs: z.string().max(500).optional(), publishPath: z.string().max(500).optional(), publishPattern: z.string().max(200).optional(), publishSaveAs: z.string().max(500).optional(), publishDirs: z.array(z.object({ path: z.string().max(500), pattern: z.string().max(200).optional(), saveAs: z.string().max(500).optional() })).max(20).optional() }), settings: z.record(z.string(), scalar).optional(), disabled: z.boolean().optional() }) })).max(500),
@@ -129,24 +131,27 @@ export function submitRun(body: unknown, idempotency?: string) {
   if (source) Object.assign(launch, { resume: true, workDir: source.detail.launch.workDir });
   // Data paths are relative to the workflow's project; the server turns them into paths Nextflow can open.
   const projectId = store().workflow(workflow.id)?.projectId;
-  const root = projectId ? store().project(projectId)?.path : undefined;
+  const root = store().projectRoot ?? (projectId ? store().project(projectId)?.path : undefined);
+  if (!root) throw new HttpError(400, "流程不属于项目");
+  const saved = store().workflow(workflow.id)!;
+  if (workflow.fileVersion !== saved.fileVersion) throw new HttpError(409, "流程已改变，请保存或重新载入后运行");
   const data = resolveDataParams(request.params, dataPathParams(workflow), { root, remote: Boolean(launch.remote), exists: existsSync });
   if (data.errors.length) throw new HttpError(400, data.errors.join("；"));
   const project = generateProject(workflow, index, { registry: launch.registry, scriptLayout: scriptLayoutFor(launch.executor) });
   const id = randomUUID();
   const lineageId = source?.lineageId ?? id;
-  const executionRoot = executionDirectory(lineageId);
+  const attemptDir = join(root, "runs", id);
   const now = new Date().toISOString();
   const run: StoredExecution = {
     // Every run of a workflow launches from one directory so `-resume` can reuse any earlier session's tasks.
-    lineageId, projectDir: pipelineDirectory(workflow.id), attemptDir: join(executionRoot, "attempts", id),
+    lineageId, projectRoot: root, inputParams: request.params, projectDir: join(root, ".studio/runtime/workflows", workflow.id), attemptDir,
     ...(source ? { resumeFrom: source.detail.id, sessionId: source.sessionId } : {}),
     detail: {
       ...(source ? { resumeFromRunId: source.detail.id, nextflowSessionId: source.sessionId } : {}),
       id, runName: launch.runName ?? `studio_${id.replaceAll("-", "").slice(0, 12)}`, workflowId: workflow.id, workflowName: workflow.name,
       ...(launch.remote ? { remoteHost: remoteHost(launch.remote)!.name } : {}),
       executor: launch.executor, profile: profileList(launch), status: "submitted", phase: "queued", submittedAt: now, progress: emptyProgress(),
-      command: launchCommand(launch), launch, params: { ...data.params, outdir: join(executionRoot, "attempts", id, "results") }, runConfig: renderRunConfig(launch),
+      command: launchCommand(launch), launch, params: { ...data.params, studio_project_root: launch.remote ? "" : root, outdir: join(attemptDir, "results") }, runConfig: renderRunConfig(launch),
       project: { name: project.meta.name, files: project.files.map(({ path, content, executable }) => ({ path, content, ...(executable ? { executable } : {}) })) }, workflow,
     },
   };
@@ -193,7 +198,7 @@ export function resumeRun(id: string) {
     next.detail = { ...source.detail, id: newId, runName: `studio_${newId.replaceAll("-", "").slice(0, 12)}`, status: "submitted", phase: "queued", progress: emptyProgress(), submittedAt: new Date().toISOString(), startedAt: undefined, completedAt: undefined, cancelledAt: undefined, errorMessage: undefined, exitCode: undefined };
     next.detail.launch = { ...source.detail.launch, resume: true };
     next.detail.resumeFromRunId = id;
-    next.attemptDir = join(executionDirectory(source.lineageId), "attempts", newId);
+    next.attemptDir = join(source.projectRoot!, "runs", newId);
     next.detail.params = { ...next.detail.params, outdir: join(next.attemptDir, "results") };
     next.resumeFrom = id;
     delete next.pid; delete next.pidStart; delete next.detail.remote; delete next.owner; delete next.cancelRequested;

@@ -44,7 +44,7 @@ export function PathBrowserDialog({
   onPick: (path: string) => void;
 }) {
   const { root } = options;
-  const start = options.defaultPath && withinRoot(options.defaultPath, root) ? options.defaultPath : root;
+  const start = options.defaultPath || root;
   const [path, setPath] = React.useState<string | undefined>(start || undefined);
   const [selected, setSelected] = React.useState<string>();
   const listing = useFsListing(path, open);
@@ -52,7 +52,7 @@ export function PathBrowserDialog({
   const fileInput = React.useRef<HTMLInputElement>(null);
   const entries = listing.data?.entries.filter((entry) => entry.kind === "directory" || (options.kind === "file" && matches(entry, options.extensions))) ?? [];
   const current = listing.data?.path;
-  const parent = listing.data?.parent && withinRoot(listing.data.parent, root) && current !== root ? listing.data.parent : undefined;
+  const parent = listing.data?.parent;
   const choice = options.kind === "directory" ? selected ?? current : selected;
   const go = (next: string | undefined) => { setPath(next); setSelected(undefined); };
   const pick = (picked: string) => { onPick(picked); onOpenChange(false); };

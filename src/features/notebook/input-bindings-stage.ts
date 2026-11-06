@@ -5,7 +5,7 @@ import { ConvertError } from "./convert";
 import { bindingLine, type InputPlan, safeUploadName } from "./input-bindings";
 import type { TryRunInputBinding } from "./types";
 
-export const MAX_COPY_BYTES = 32_000_000;
+export const MAX_COPY_BYTES = Number.POSITIVE_INFINITY;
 
 export interface StagedInputs {
   values: Record<string, string>;

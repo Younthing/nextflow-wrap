@@ -76,7 +76,7 @@ export function RunHeader({ run }: { run: RunDetail }) {
         <div className="ml-auto flex gap-2">
           <RunDiagnosticsButton runId={run.id} />
           <Button asChild variant="outline" size="sm">
-            <Link href={`/workflows/${run.workflowId}`}>
+            <Link href={`/workbench/workflow/${run.workflowId}`}>
               <PencilRuler /> 在编辑器中打开
             </Link>
           </Button>

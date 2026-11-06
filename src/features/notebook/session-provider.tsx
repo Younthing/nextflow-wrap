@@ -4,7 +4,8 @@ import * as React from "react";
 import { useStore } from "zustand";
 
 import { fetchNotebookVariable, fetchNotebookVariables, useKernelInfo, useNotebook, useRunNotebook, useSaveNotebook } from "./queries";
-import { createNotebookSession, type NotebookSession, type NotebookSessionState } from "./session";
+import { notebookSession } from "@/features/workbench/document-sessions";
+import { type NotebookSession, type NotebookSessionState } from "./session";
 
 const NotebookSessionContext = React.createContext<NotebookSession | null>(null);
 
@@ -22,7 +23,7 @@ export function NotebookSessionProvider({ notebookId, children }: { notebookId: 
     () => ({ save: saveAsync, run: runAsync, variables: fetchNotebookVariables, variable: fetchNotebookVariable }),
     [saveAsync, runAsync],
   );
-  const [session] = React.useState(() => createNotebookSession({ notebookId, saved: notebook.data ?? null, ports }));
+  const [session] = React.useState(() => notebookSession(notebookId));
   const language = notebook.data?.language;
   const kernel = useKernelInfo(notebookId, language === "python").data;
 
@@ -32,7 +33,7 @@ export function NotebookSessionProvider({ notebookId, children }: { notebookId: 
   React.useLayoutEffect(() => {
     if (notebook.data) session.setSaved(notebook.data);
   }, [session, notebook.data]);
-  React.useEffect(() => () => session.dispose(), [session]);
+
   // Re-read variables whenever the kernel settles: after a run, a restart, or a shutdown from the toolbar.
   const kernelState = kernel?.state;
   const kernelStarted = kernel?.startedAt;

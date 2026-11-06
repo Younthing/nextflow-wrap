@@ -36,7 +36,10 @@ export function resolveDataParams(
       if (kind === "workspace") errors.push(`--${name} 是工作区里的文件，集群上没有；集群运行请填集群上的绝对路径`);
       continue;
     }
-    if (kind === "absolute") { errors.push(`--${name} 不在工作区里：${value}。请先上传到工作区`); continue; }
+    if (kind === "absolute") {
+      if (!isGlob(value) && !options.exists(value)) errors.push(`找不到外部数据：${value}`);
+      continue;
+    }
     if (!options.root) { errors.push("流程不属于任何项目，无法解析工作区路径"); break; }
     const resolved = resolveWorkspacePath(value, options.root)!;
     if (!isGlob(value) && !options.exists(resolved)) { errors.push(`工作区里没有 ${value}`); continue; }

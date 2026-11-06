@@ -245,7 +245,7 @@ async function executeRemote(run: StoredExecution, tools: RuntimeTools, controll
     await mkdir(run.attemptDir, { recursive: true });
     const session = remoteSession(run, tools);
     await syncProject(run.detail.project, run.projectDir);
-    await materializeProject(run.detail.project, join(run.attemptDir, "project"));
+    await materializeProject(run.detail.project, join(run.attemptDir, "snapshot", "project"));
     if (stopping) throw new Error("Runner 正在停止");
     // The run's own outdir is the local folder results come back to; startRemoteRun sets the one on the host.
     const params = { ...run.detail.params };
@@ -292,7 +292,7 @@ async function execute(run: StoredExecution, tools: RuntimeTools, port: number, 
     // The runner owns one local work directory for every workflow; a cluster or cloud run keeps the shared path
     // the user chose. A resumed run keeps the work directory its source ran in, so its cached tasks are found.
     const workDir = run.resumeFrom && isAbsolute(requested.workDir) ? requested.workDir
-      : local || requested.workDir === "work" ? workDirectory() : requested.workDir;
+      : local || requested.workDir === "work" ? (run.projectRoot ? join(run.projectRoot, ".studio/runtime/work") : workDirectory()) : requested.workDir;
     const launch = { ...requested, settings: local ? { ...requested.settings, cpus, memory } : requested.settings, workDir, extraProfiles: [...new Set([...requested.extraProfiles, ...(emulate ? ["emulate_amd64"] : [])])] };
     await requireLaunchTools(launch, tools.env);
     const outdir = join(run.attemptDir, "results");
@@ -307,7 +307,7 @@ async function execute(run: StoredExecution, tools: RuntimeTools, port: number, 
     // It is written into the workflow's stable launch directory (unchanged files keep their mtime, so
     // their tasks stay cached) and copied next to the attempt as a read-only record of what ran.
     await syncProject(run.detail.project, run.projectDir);
-    await materializeProject(run.detail.project, join(run.attemptDir, "project"));
+    await materializeProject(run.detail.project, join(run.attemptDir, "snapshot", "project"));
     if (run.resumeFrom) {
       await access(join(run.projectDir, ".nextflow/cache", run.sessionId!));
       if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(workDir)) await access(workDir);

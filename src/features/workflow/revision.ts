@@ -53,5 +53,5 @@ export function keepLocalWorkflowEdits(
   local: { docId: string; updatedAt: string; dirty: boolean },
   server: { id: string; updatedAt: string },
 ): boolean {
-  return local.dirty && local.docId === server.id && local.updatedAt === server.updatedAt;
+  return local.dirty && local.docId === server.id;
 }

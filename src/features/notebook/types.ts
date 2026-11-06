@@ -7,9 +7,13 @@ export interface NotebookCell {
   id: string;
   role: NotebookCellRole;
   source: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface NotebookDoc {
+  filePath?: string;
+  fileVersion?: string;
+  metadata?: Record<string, unknown>;
   id: string;
   name: string;
   description: string;
@@ -40,6 +44,7 @@ export interface NotebookRevision {
 }
 
 export interface NotebookSummary {
+  filePath?: string;
   id: string;
   name: string;
   description: string;

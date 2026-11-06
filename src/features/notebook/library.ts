@@ -4,6 +4,7 @@ import type { ModuleDef } from "@/features/workflow/types";
 export function summarizeNotebook(doc: NotebookDoc): NotebookSummary {
   return {
     id: doc.id,
+    filePath: doc.filePath,
     name: doc.name,
     description: doc.description,
     kernel: doc.kernel,

@@ -1,8 +1,8 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useOpenDocument } from "@/features/workspace/document-queries";
 import {
   ChevronRight,
   ClipboardPaste,
@@ -34,17 +34,14 @@ import {
 } from "@/components/ui/context-menu";
 import { useFileIntake, useFsListing, useWorkspaceEntries, workspaceFileUrl } from "@/features/files/queries";
 import type { FsEntry } from "@/features/files/types";
-import { serializeIpynb } from "@/features/notebook/ipynb";
-import { notebookKeys, useDeleteNotebook, useDuplicateNotebook, useRenameNotebook } from "@/features/notebook/queries";
-import type { NotebookDoc, NotebookSummary } from "@/features/notebook/types";
+import { useDeleteNotebook, useRenameNotebook } from "@/features/notebook/queries";
+import type { NotebookSummary } from "@/features/notebook/types";
 import { formatBytes } from "@/features/runs/format";
 import type { Project } from "@/features/workspace/types";
-import { api } from "@/lib/api";
 import { mockingActive } from "@/lib/mocking";
-import { saveTextFile, saveUrl } from "@/lib/save-file";
+import { saveUrl } from "@/lib/save-file";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
-import { useQueryClient } from "@tanstack/react-query";
 import { setClip, useClip } from "../clipboard";
 import { ConfirmDeleteDialog, NameDialog, WorkspacePreviewDialog } from "./workbench-file-dialogs";
 
@@ -81,6 +78,7 @@ type Dialog =
 interface FileActions {
   project: Project;
   open: (dialog: Dialog) => void;
+  openFile: (entry: FsEntry) => void;
   /** Paste the clipped files into a folder (workspace path). */
   paste: (folder: string) => void;
   clip: (entry: FsEntry, mode: "copy" | "move") => void;
@@ -194,7 +192,7 @@ function FileRow({ entry, depth }: { entry: FsEntry; depth: number }) {
           className={rowClass}
           style={{ paddingLeft: `${26 + depth * 14}px` }}
           title={`${relativeToProject(actions.project, entry.path)} · ${formatBytes(entry.size)}\n单击预览，右键查看更多操作`}
-          onClick={() => actions.open({ kind: "preview", entry })}
+          onClick={() => actions.openFile(entry)}
           onKeyDown={entryKeys(actions, entry)}
         >
           <File className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
@@ -221,63 +219,9 @@ function Listing({ path, depth }: { path: string; depth: number }) {
   );
 }
 
-/** The right-click menu of a notebook in the list. */
-function NotebookMenu({
-  notebook,
-  children,
-  onOpen,
-  onDialog,
-  onPaste,
-  canPaste,
-  onDownload,
-}: {
-  notebook: NotebookSummary;
-  children: React.ReactElement;
-  onOpen: () => void;
-  onDialog: (dialog: Dialog) => void;
-  onPaste: () => void;
-  canPaste: boolean;
-  onDownload: () => void;
-}) {
-  return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
-      <ContextMenuContent className="min-w-44" aria-label={`${notebook.name} 的操作`}>
-        <ContextMenuItem onSelect={onOpen}>
-          <NotebookText /> 打开
-        </ContextMenuItem>
-        <ContextMenuItem onSelect={onDownload}>
-          <Download /> 下载 .ipynb
-        </ContextMenuItem>
-        <ContextMenuSeparator />
-        <ContextMenuItem
-          onSelect={() => {
-            setClip({ kind: "notebook", id: notebook.id, name: notebook.name });
-            toast.success(`已复制笔记本「${notebook.name}」，可粘贴到任一项目`);
-          }}
-        >
-          <Copy /> 复制 <ContextMenuShortcut>{mod}C</ContextMenuShortcut>
-        </ContextMenuItem>
-        <ContextMenuItem disabled={!canPaste} onSelect={onPaste}>
-          <ClipboardPaste /> 粘贴 <ContextMenuShortcut>{mod}V</ContextMenuShortcut>
-        </ContextMenuItem>
-        <ContextMenuSeparator />
-        <ContextMenuItem onSelect={() => onDialog({ kind: "rename-notebook", notebook })}>
-          <Pencil /> 重命名 <ContextMenuShortcut>F2</ContextMenuShortcut>
-        </ContextMenuItem>
-        <ContextMenuItem variant="destructive" onSelect={() => onDialog({ kind: "delete-notebook", notebook })}>
-          <Trash2 /> 删除 <ContextMenuShortcut>Del</ContextMenuShortcut>
-        </ContextMenuItem>
-      </ContextMenuContent>
-    </ContextMenu>
-  );
-}
-
 /** Left column, top: the project's notebooks, then its folder on disk. Both answer to right-click. */
 export function WorkbenchFiles({
   project,
-  notebooks,
-  loading,
   activeId,
   creating,
   onCreate,
@@ -290,12 +234,11 @@ export function WorkbenchFiles({
   onCreate: () => void;
 }) {
   const router = useRouter();
-  const qc = useQueryClient();
+  const openDocument = useOpenDocument();
   const intake = useFileIntake();
   const entries = useWorkspaceEntries(project.id);
   const deleteNotebook = useDeleteNotebook();
   const renameNotebook = useRenameNotebook();
-  const duplicateNotebook = useDuplicateNotebook();
   const clip = useClip();
   const fileInput = React.useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = React.useState(false);
@@ -303,7 +246,6 @@ export function WorkbenchFiles({
   const [busy, setBusy] = React.useState(false);
 
   const canPasteFiles = clip?.kind === "files" && clip.projectId === project.id;
-  const canPasteNotebook = clip?.kind === "notebook";
 
   const run = async (work: () => Promise<unknown>, done?: string) => {
     setBusy(true);
@@ -321,6 +263,17 @@ export function WorkbenchFiles({
   const actions: FileActions = {
     project,
     open: setDialog,
+    openFile: (entry) => {
+      const path = relativeToProject(project, entry.path);
+      if (/\.(ipynb|workflow\.json)$/.test(path)) {
+        openDocument.mutate(path, {
+          onSuccess: (doc) => router.push(path.endsWith(".ipynb") ? `/workbench/${doc.id}` : `/workbench/workflow/${doc.id}`),
+          onError: (error) => toast.error(error.message),
+        });
+      } else if (/\.(txt|md|json|csv|tsv|py|r|nf|config|yml|yaml|sh|toml)$/i.test(path)) {
+        router.push(`/workbench/file/${encodeURIComponent(path)}`);
+      } else setDialog({ kind: "preview", entry });
+    },
     canPaste: canPasteFiles,
     clip: (entry, mode) => {
       const path = relativeToProject(project, entry.path);
@@ -343,94 +296,15 @@ export function WorkbenchFiles({
     },
   };
 
-  const downloadNotebook = (notebook: NotebookSummary) => {
-    void qc
-      .fetchQuery({ queryKey: notebookKeys.detail(notebook.id), queryFn: () => api<NotebookDoc>(`/notebooks/${notebook.id}`), staleTime: 0 })
-      .then((doc) => saveTextFile(`${doc.name}.ipynb`, "application/x-ipynb+json", serializeIpynb(doc)))
-      .catch((error) => toast.error(`下载失败：${errorText(error)}`));
-  };
-
-  const pasteNotebook = () => {
-    if (clip?.kind !== "notebook") return;
-    duplicateNotebook.mutate(
-      { id: clip.id, projectId: project.id },
-      {
-        onSuccess: (doc) => {
-          toast.success(`已粘贴为「${doc.name}」`);
-          router.push(`/workbench/${doc.id}`);
-        },
-        onError: (error) => toast.error(errorText(error)),
-      },
-    );
-  };
-
-  const notebookKeysFor = (notebook: NotebookSummary) => (event: React.KeyboardEvent) => {
-    const command = event.ctrlKey || event.metaKey;
-    const key = event.key.toLowerCase();
-    let handled = true;
-    if (event.key === "F2") setDialog({ kind: "rename-notebook", notebook });
-    else if (event.key === "Delete" || (event.metaKey && event.key === "Backspace")) setDialog({ kind: "delete-notebook", notebook });
-    else if (command && key === "c") {
-      setClip({ kind: "notebook", id: notebook.id, name: notebook.name });
-      toast.success(`已复制笔记本「${notebook.name}」`);
-    } else if (command && key === "v") pasteNotebook();
-    else handled = false;
-    if (handled) event.preventDefault();
-  };
-
   return (
     <FileActionsContext.Provider value={actions}>
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="flex items-center gap-1 px-2 pb-1">
-          <h2 className="text-[11px] font-bold tracking-[0.1em] text-muted-foreground">笔记本</h2>
+          <h2 className="text-[11px] font-bold tracking-[0.1em] text-muted-foreground">{project.name}</h2>
           <Button type="button" size="icon-sm" variant="ghost" className="ml-auto size-6" aria-label="新建笔记本" disabled={creating} onClick={onCreate}>
             {creating ? <Loader2 className="animate-spin" /> : <Plus />}
           </Button>
         </div>
-        <ul aria-label="项目里的笔记本" className="grid gap-px px-1">
-          {loading ? <li className="px-2 py-1 text-xs text-muted-foreground">读取中…</li> : null}
-          {notebooks.map((nb) => (
-            <li key={nb.id}>
-              <NotebookMenu
-                notebook={nb}
-                onOpen={() => router.push(`/workbench/${nb.id}`)}
-                onDialog={setDialog}
-                onPaste={pasteNotebook}
-                canPaste={canPasteNotebook}
-                onDownload={() => downloadNotebook(nb)}
-              >
-                <Link
-                  href={`/workbench/${nb.id}`}
-                  aria-current={nb.id === activeId ? "page" : undefined}
-                  className={cn(rowClass, "gap-2 px-2", nb.id === activeId && "bg-primary/12 font-medium text-primary hover:bg-primary/15")}
-                  onKeyDown={notebookKeysFor(nb)}
-                >
-                  <NotebookText className="size-3.5 shrink-0 opacity-70" aria-hidden />
-                  <span className="truncate">{nb.name}</span>
-                </Link>
-              </NotebookMenu>
-            </li>
-          ))}
-        </ul>
-        {/* Empty-area menu only — never wraps rows (nested ContextMenu breaks left-clicks). */}
-        {!loading && notebooks.length === 0 ? (
-          <ContextMenu>
-            <ContextMenuTrigger asChild>
-              <div className="mx-1 rounded-md px-2 py-2 text-xs text-muted-foreground" aria-label="笔记本区空白处">
-                暂无笔记本，右键新建或粘贴
-              </div>
-            </ContextMenuTrigger>
-            <ContextMenuContent className="min-w-40" aria-label="笔记本区的操作">
-              <ContextMenuItem disabled={creating} onSelect={onCreate}>
-                <Plus /> 新建笔记本
-              </ContextMenuItem>
-              <ContextMenuItem disabled={!canPasteNotebook} onSelect={pasteNotebook}>
-                <ClipboardPaste /> 粘贴{clip?.kind === "notebook" ? `「${clip.name}」` : ""}
-              </ContextMenuItem>
-            </ContextMenuContent>
-          </ContextMenu>
-        ) : null}
-
         <div className="mt-4 flex items-center gap-1 px-2 pb-1">
           <h2 className="text-[11px] font-bold tracking-[0.1em] text-muted-foreground">文件</h2>
           <Button type="button" size="icon-sm" variant="ghost" className="ml-auto size-6" aria-label="上传到 data/" title="上传到 data/" onClick={() => fileInput.current?.click()}>

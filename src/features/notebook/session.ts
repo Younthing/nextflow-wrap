@@ -19,7 +19,7 @@ import type {
  * Shift+Enter does.
  */
 
-export const NOTEBOOK_AUTOSAVE_MS = 700;
+export const NOTEBOOK_AUTOSAVE_MS = 1500;
 
 export interface NotebookSessionState {
   /** Last copy the server confirmed. `null` until the notebook loads. */
@@ -145,7 +145,17 @@ export function createNotebookSession(options: {
     timer = undefined;
   };
 
-  async function save(snapshot: NotebookDoc): Promise<NotebookDoc> {
+  let saveQueue: Promise<unknown> = Promise.resolve();
+  function save(snapshot: NotebookDoc): Promise<NotebookDoc> {
+    const work = saveQueue.then(() => {
+      const saved = store.getState().saved;
+      return saveNow({ ...snapshot, fileVersion: saved?.fileVersion ?? snapshot.fileVersion });
+    });
+    saveQueue = work.catch(() => {});
+    return work;
+  }
+
+  async function saveNow(snapshot: NotebookDoc): Promise<NotebookDoc> {
     const key = notebookDraftKey(snapshot);
     store.setState((s) => ({ saving: s.saving + 1, saveError: null }));
     try {
@@ -153,7 +163,7 @@ export function createNotebookSession(options: {
       // Edits made while saving stay in the draft for the next autosave.
       store.setState((s) => ({
         saved,
-        draft: s.draft && notebookDraftKey(s.draft) !== key ? s.draft : null,
+        draft: s.draft && notebookDraftKey(s.draft) !== key ? { ...s.draft, fileVersion: saved.fileVersion, rev: saved.rev, updatedAt: saved.updatedAt } : null,
       }));
       return saved;
     } catch (err) {
@@ -166,6 +176,7 @@ export function createNotebookSession(options: {
 
   const scheduleAutosave = () => {
     cancelAutosave();
+    if (store.getState().saveError) return;
     timer = setTimeout(() => {
       timer = undefined;
       const draft = store.getState().draft;

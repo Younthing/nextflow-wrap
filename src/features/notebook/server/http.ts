@@ -12,7 +12,7 @@ import { exampleData, exampleLibraryCopies, exampleModules, exampleNotebooks, ex
 import { IF_EXAMPLE_IMAGE, IF_EXAMPLE_KEYWORDS, ifExampleNotebooks, ifExampleWorkflow } from "@/features/notebook/examples-if";
 import { IF_SIDE_FILES, ifSideNotebooks, ifSideWorkflow } from "@/features/notebook/examples-if-side";
 import { executeTryRun, runNotebookCells } from "@/features/notebook/execute";
-import { NotebookConflictError, notebookFiles } from "@/features/notebook/server/notebook-files";
+import { notebookFiles } from "@/features/notebook/server/notebook-files";
 import { readEnvironmentYml } from "@/features/notebook/server/environment-yml";
 import { existingKernel, kernelFor, kernelInfo, KernelUnavailableError, listKernelSpecs, shutdownKernel } from "@/features/notebook/server/kernels";
 import { listNotebookVariables, readNotebookVariable, VARIABLE_NAME } from "@/features/notebook/server/kernel-variables";
@@ -22,7 +22,7 @@ import { HttpError } from "@/features/runs/server/service";
 import type { StudioStore } from "@/lib/server/database";
 import { dataDirectory, store } from "@/lib/server/database";
 import { EXAMPLE_PROJECT_ID, IF_EXAMPLE_PROJECT_ID } from "@/features/workspace/projects";
-import { currentProjectId } from "@/features/workspace/server/projects";
+
 
 const json = (value: unknown, status = 200) => Response.json(value, { status, headers: { "cache-control": "no-store" } });
 
@@ -30,6 +30,7 @@ const cellSchema = z.object({
   id: z.string().min(1).max(80),
   role: z.enum(["code", "markdown", "input", "output", "explore"]),
   source: z.string().max(50_000),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 const writeSchema = z.object({
@@ -37,6 +38,9 @@ const writeSchema = z.object({
   description: z.string().max(2000).optional(),
   kernel: z.string().trim().min(1).max(80).refine((value) => !/[\u0000-\u001f]/.test(value), "内核名称不能包含换行"),
   cells: z.array(cellSchema).max(80),
+  filePath: z.string().max(4000).optional(),
+  fileVersion: z.string().max(100).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
   projectId: z.string().regex(/^[\w-]{1,80}$/).optional(),
 });
 
@@ -225,13 +229,14 @@ export async function deleteNotebooks(db: StudioStore, ids: string[]): Promise<v
     const doc = db.notebook(id);
     if (!doc) continue;
     shutdownKernel(id);
-    if (!doc.temporary) await (await notebookFiles(db, doc.projectId))?.remove(id);
+    if (!db.documents && !doc.temporary) await (await notebookFiles(db, doc.projectId))?.remove(id);
     db.deleteNotebook(id);
   }
 }
 
 /** Notebooks of a project whose `.ipynb` files are at, or under, these workspace-relative paths. */
 export async function notebooksAtPaths(db: StudioStore, projectId: string, paths: string[]): Promise<string[]> {
+  if (db.documents) return db.notebooks().filter((doc) => doc.filePath && paths.some((path) => doc.filePath === path || doc.filePath!.startsWith(`${path}/`))).map((doc) => doc.id);
   return (await notebookFiles(db, projectId))?.notebooksAt(paths) ?? [];
 }
 
@@ -244,33 +249,9 @@ function newNotebookId(db: StudioStore): string {
 }
 
 export async function handleNotebookApi(method: string, path: string[], request: Request, db: StudioStore = store()): Promise<Response> {
-  ensureExampleProject(db);
+  if (!db.projectRoot) ensureExampleProject(db);
   const [resource, id, action, extra] = path;
-  // Each project's notebooks live as `.ipynb` files in its folder. Pick up edits made outside the app before
-  // anything reads them; a save checks instead.
-  const filesOf = (doc: NotebookDoc) => notebookFiles(db, doc.projectId);
-  if (resource === "notebooks" && id && !(method === "PUT" && !action)) {
-    const doc = db.notebook(id);
-    if (doc) await (await filesOf(doc))?.refresh(db, id);
-  } else if (resource === "notebooks" && !id && method === "GET") {
-    const project = new URL(request.url).searchParams.get("project");
-    const ids = project ? [project] : [...new Set(db.notebooks().map((doc) => doc.projectId))];
-    for (const projectId of ids) await (await notebookFiles(db, projectId))?.refresh(db);
-  }
-  /** Save a notebook to the database and, unless it is temporary, to the file in its project folder. */
-  const saveNotebook = async (doc: NotebookDoc) => {
-    const files = doc.temporary ? undefined : await filesOf(doc);
-    if (files) {
-      try {
-        await files.write(doc);
-      } catch (error) {
-        if (error instanceof NotebookConflictError) throw new HttpError(409, error.message);
-        throw error;
-      }
-    }
-    // The database assigns rev and timestamps; the file only holds content, so it is already current.
-    return db.saveNotebook(doc);
-  };
+  const saveNotebook = async (doc: NotebookDoc) => db.saveNotebook(doc);
 
   if (resource === "kernels" && !id && method === "GET") return json(await listKernelSpecs());
 
@@ -303,7 +284,7 @@ export async function handleNotebookApi(method: string, path: string[], request:
     const body = editSchema.parse(await request.json());
     const copy = db.libraryCopy(body.moduleId);
     if (!copy) throw new HttpError(404, "这个模块没有可编辑的笔记本副本");
-    const projectId = currentProjectId(db);
+    const projectId = db.projectHandle;
     if (!projectId) throw new HttpError(400, "先打开一个项目");
     let doc: NotebookDoc;
     try {
@@ -325,12 +306,14 @@ export async function handleNotebookApi(method: string, path: string[], request:
   if (!id && method === "POST") {
     const body = writeSchema.parse(await request.json());
     // Notebooks belong to a project, as workflows do: their cells run in its folder.
-    const projectId = body.projectId ?? currentProjectId(db);
+    const projectId = body.projectId ?? db.projectHandle;
     if (!projectId || !db.project(projectId)) throw new HttpError(400, "先打开一个项目");
     const now = new Date().toISOString();
     const doc: NotebookDoc = {
       id: `nb_${randomUUID().slice(0, 8)}`,
       projectId,
+      filePath: body.filePath,
+      metadata: body.metadata,
       name: body.name,
       description: body.description?.trim() ?? "",
       kernel: body.kernel,
@@ -368,6 +351,8 @@ export async function handleNotebookApi(method: string, path: string[], request:
     const body = writeSchema.parse(await request.json());
     return json(await saveNotebook({
       ...current,
+      fileVersion: body.fileVersion,
+      metadata: body.metadata ?? current.metadata,
       name: body.name,
       description: body.description?.trim() ?? "",
       kernel: body.kernel,

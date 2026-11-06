@@ -16,6 +16,11 @@ import { NotebookSessionProvider } from "@/features/notebook/session-provider";
 import { PublishWizard } from "@/features/notebook/components/publish-wizard";
 import { useCreateNotebook, useNotebooks } from "@/features/notebook/queries";
 import type { NotebookSummary } from "@/features/notebook/types";
+import { WorkflowEditor } from "@/features/editor/components/workflow-editor";
+import { EditorProvider } from "@/features/editor/editor-provider";
+import { workflowSession } from "../document-sessions";
+import { useWorkflows } from "@/features/workflow/queries";
+import { TextEditor } from "./text-editor";
 import { closeTab, openTab, pruneTabs, tabsPrefKey, workbenchPathFromPathname, workbenchView } from "@/features/workbench/tabs";
 import { useCurrentProject } from "@/features/workspace/queries";
 import type { Project } from "@/features/workspace/types";
@@ -60,7 +65,8 @@ export function Workbench({ path }: { path?: string[] }) {
 function WorkbenchFrame({ project, path }: { project: Project; path?: string[] }) {
   const router = useRouter();
   const view = workbenchView(path);
-  const activeId = view.kind === "notebook" || view.kind === "publish" ? view.id : undefined;
+  const activeId = view.kind === "notebook" || view.kind === "publish" ? view.id : view.kind === "workflow" ? `workflow/${view.id}` : view.kind === "file" ? `file/${encodeURIComponent(view.id)}` : undefined;
+  const workflows = useWorkflows();
   const notebooks = useNotebooks(project.id);
   const create = useCreateNotebook();
   const [stored, setStored] = usePref<string[]>(tabsPrefKey(project.id));
@@ -68,7 +74,7 @@ function WorkbenchFrame({ project, path }: { project: Project; path?: string[] }
 
   // The route decides the active tab; opening a notebook by link adds it.
   let tabs = stored ?? [];
-  if (notebooks.data) tabs = pruneTabs(tabs, [...list.map((nb) => nb.id), ...(activeId ? [activeId] : [])]);
+  if (notebooks.data) tabs = pruneTabs(tabs, [...list.map((nb) => nb.id), ...(workflows.data ?? []).map((doc) => `workflow/${doc.id}`), ...tabs.filter((tab) => tab.startsWith("file/")), ...(activeId ? [activeId] : [])]);
   if (activeId) tabs = openTab(tabs, activeId);
   const tabsKey = tabs.join("|");
   React.useEffect(() => {
@@ -76,7 +82,7 @@ function WorkbenchFrame({ project, path }: { project: Project; path?: string[] }
     setStored(tabsKey ? tabsKey.split("|") : []);
   }, [tabsKey, stored, setStored]);
 
-  const names = Object.fromEntries(list.map((nb) => [nb.id, nb.name]));
+  const names = Object.fromEntries([...list.map((nb) => [nb.id, nb.name]), ...(workflows.data ?? []).map((doc) => [`workflow/${doc.id}`, doc.name])]);
   const active: NotebookSummary | undefined = list.find((nb) => nb.id === activeId);
 
   const createNotebook = (kernel = defaultKernel("python", mockingActive())) => {
@@ -131,7 +137,11 @@ function WorkbenchFrame({ project, path }: { project: Project; path?: string[] }
         ) : (
           <section className="glass flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl">
             <WorkbenchTabs tabs={tabs} names={names} active={activeId} onClose={close} />
-            {view.kind === "notebook" ? (
+            {view.kind === "workflow" ? (
+              <EditorProvider key={view.id} store={workflowSession(view.id)}><WorkflowEditor workflowId={view.id} /></EditorProvider>
+            ) : view.kind === "file" ? (
+              <TextEditor key={view.id} path={view.id} />
+            ) : view.kind === "notebook" ? (
               // The editor and the assistant both work on the open notebook's session.
               <NotebookSessionProvider key={view.id} notebookId={view.id}>
                 <NotebookAssistant />

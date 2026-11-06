@@ -15,17 +15,17 @@ import { handleStorageApi } from "@/features/storage/server/http";
 import { handleDiagnosticsApi } from "@/features/diagnostics/server/http";
 import { handleRemoteApi } from "@/features/remote/server/http";
 import { handleProjectsApi } from "@/features/workspace/server/http";
-import { currentProjectId } from "@/features/workspace/server/projects";
+import { ProjectFileError } from "@/features/workspace/server/project-files";
 import { remoteTaskLog } from "@/features/remote/server/remote-run";
 import { SshSession } from "@/features/remote/server/session";
 import { applyStoredSettings, readSettings } from "@/lib/server/settings";
 import { API_VERSION, type HealthStatus } from "@/lib/api-types";
-import { store } from "@/lib/server/database";
+import { store, withProject } from "@/lib/server/database";
 
 type Context = { params: Promise<{ path: string[] }> };
 const json = (value: unknown, status = 200) => Response.json(value, { status, headers: { "cache-control": "no-store" } });
 
-async function handle(request: Request, context: Context): Promise<Response> {
+async function handleScoped(request: Request, context: Context): Promise<Response> {
   try {
     const url = new URL(request.url);
     const path = (await context.params).path;
@@ -51,15 +51,25 @@ async function handle(request: Request, context: Context): Promise<Response> {
     if (resource === "remotes") return await handleRemoteApi(method, path, request);
     if (resource === "projects") return await handleProjectsApi(method, path, request);
     if (resource === "notebooks" || resource === "script-modules" || resource === "kernels") return await handleNotebookApi(method, path, request);
+    if (resource === "documents") {
+      const documents = store().documents!;
+      const file = url.searchParams.get("path") ?? "";
+      if (method === "GET") return json(action === "open" || id === "open" ? documents.open(file) : documents.files.read(file));
+      if (method === "PUT") {
+        const body = await request.json();
+        if (typeof body.content !== "string" || !(body.version === null || typeof body.version === "string")) throw new HttpError(400, "缺少内容或文件版本");
+        return json(documents.files.write(file, body.content, body.version));
+      }
+    }
     if (resource === "schemas" && id === "samplesheet" && method === "GET") return json(samplesheetSchema);
     if (resource === "workflows") {
       // Workflows belong to a project, as notebooks do: the list is the open project's.
       if (!id && method === "GET") {
-        const project = currentProjectId(store());
-        return json(store().workflows().filter((doc) => project && doc.projectId === project).map((doc) => ({ id: doc.id, name: doc.name, description: doc.description, updatedAt: doc.updatedAt, nodeCount: doc.nodes.length })));
+        const project = store().projectHandle;
+        return json(store().workflows().filter((doc) => project && doc.projectId === project).map((doc) => ({ id: doc.id, name: doc.name, filePath: doc.filePath, description: doc.description, updatedAt: doc.updatedAt, nodeCount: doc.nodes.length })));
       }
       if (!id && method === "POST") {
-        const projectId = currentProjectId(store());
+        const projectId = store().projectHandle;
         if (!projectId) throw new HttpError(400, "先打开一个项目");
         const doc = { ...workflowInput(await request.json()), id: randomUUID(), projectId, updatedAt: new Date().toISOString() };
         store().saveWorkflow(doc);
@@ -146,9 +156,23 @@ async function handle(request: Request, context: Context): Promise<Response> {
     throw new HttpError(404, "接口不存在");
   } catch (error) {
     const missing = (error as NodeJS.ErrnoException).code === "ENOENT";
-    const status = error instanceof HttpError ? error.status : error instanceof ZodError || error instanceof SyntaxError ? 400 : missing ? 404 : 500;
+    const status = error instanceof HttpError || error instanceof ProjectFileError ? error.status : error instanceof ZodError || error instanceof SyntaxError ? 400 : missing ? 404 : 500;
     if (status === 500) console.error(error);
     return json({ message: error instanceof ZodError ? error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join("；") : missing ? "文件尚未生成或不存在" : error instanceof Error ? error.message : "服务端错误" }, status);
+  }
+}
+
+async function handle(request: Request, context: Context): Promise<Response> {
+  const path = (await context.params).path;
+  const project = request.headers.get("x-project-id") ?? new URL(request.url).searchParams.get("project");
+  const scoped = ["notebooks", "workflows", "script-modules", "runs", "documents"].includes(path[0]);
+  try {
+    if (scoped && !project) return json({ message: "先打开一个项目" }, 400);
+    return scoped || (path[0] === "fs" && project)
+      ? await withProject(project!, () => handleScoped(request, context))
+      : await handleScoped(request, context);
+  } catch (error) {
+    return json({ message: error instanceof Error ? error.message : "项目不可用" }, error instanceof ProjectFileError ? error.status : 500);
   }
 }
 

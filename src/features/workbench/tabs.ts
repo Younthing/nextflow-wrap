@@ -10,7 +10,7 @@ export const tabsPrefKey = (projectId: string) => `nf-studio.workbench.tabs.${pr
 export function openTab(tabs: readonly string[], id: string): string[] {
   if (tabs.includes(id)) return [...tabs];
   const next = [...tabs, id];
-  return next.length > MAX_TABS ? next.slice(next.length - MAX_TABS) : next;
+  return next;
 }
 
 /** Close a tab. When it was the active one, the neighbour on the right (else the left) becomes active. */
@@ -28,9 +28,10 @@ export function pruneTabs(tabs: readonly string[], existing: readonly string[]):
 }
 
 /** Parse the `/workbench/[[...path]]` segments. */
-export function workbenchView(path: readonly string[] | undefined): { kind: "start" } | { kind: "notebook"; id: string } | { kind: "publish"; id: string } | { kind: "missing" } {
+export function workbenchView(path: readonly string[] | undefined): { kind: "start" } | { kind: "notebook"; id: string } | { kind: "publish"; id: string } | { kind: "workflow"; id: string } | { kind: "file"; id: string } | { kind: "missing" } {
   if (!path?.length) return { kind: "start" };
   const [id, action, ...rest] = path;
+  if ((id === "workflow" || id === "file") && action && !rest.length) return { kind: id, id: action };
   if (!/^[\w-]{1,80}$/.test(id) || rest.length) return { kind: "missing" };
   if (!action) return { kind: "notebook", id };
   if (action === "publish") return { kind: "publish", id };

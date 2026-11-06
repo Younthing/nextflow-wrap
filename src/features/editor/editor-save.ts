@@ -19,6 +19,7 @@ export function createEditorSaveSession() {
   let announce = false;
   /** Latest revision this editor itself stored, per workflow. Opening another workflow must not erase it. */
   const saveAck = new Map<string, string>();
+  const fileAck = new Map<string, string | undefined>();
 
   /** Record a revision this editor successfully wrote. */
   function noteEditorRevision(id: string, updatedAt: string) {
@@ -60,7 +61,7 @@ export function createEditorSaveSession() {
     const ack = snapshot.docId ? saveAck.get(snapshot.docId) : undefined;
     if (!ack || ack === snapshot.doc.updatedAt || ack < snapshot.doc.updatedAt)
       return snapshot;
-    return { ...snapshot, doc: { ...snapshot.doc, updatedAt: ack } };
+    return { ...snapshot, doc: { ...snapshot.doc, updatedAt: ack, fileVersion: fileAck.get(snapshot.docId) ?? snapshot.doc.fileVersion } };
   }
 
   function enqueueEditorSave(
@@ -113,6 +114,7 @@ export function createEditorSaveSession() {
         // follow-up for this id can send that revision. Do not mark the shared
         // store saved unless this document is still the one on screen.
         noteEditorRevision(saved.id, saved.updatedAt);
+        fileAck.set(saved.id, saved.fileVersion);
         if (!args.stillOpen(state.generation, saved.id)) return;
         args.markSaved(state.revision, saved.updatedAt);
         if (args.announce)
@@ -123,7 +125,7 @@ export function createEditorSaveSession() {
           const current = await args.fetchCurrent(state.docId);
           if (editorConflictIsOwnWrite(state.docId, current.updatedAt))
             continue;
-          if (args.stillOpen(state.generation, state.docId)) args.load(current);
+          args.toastError("文件在外部被修改，本地编辑已保留。请比较、重新载入或另存为。");
           return;
         }
         const message = err instanceof Error ? err.message : "保存失败";

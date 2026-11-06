@@ -24,7 +24,7 @@ const pasteSchema = z.object({ project, sources: z.array(workspacePath.min(1)).m
 const folderSchema = z.object({ project, parent: workspacePath, name: z.string().min(1).max(255) });
 
 /** A notebook stays one while its file is directly in `notebooks/`. */
-const notebookFile = (path: string) => /^notebooks\/[^/]+\.ipynb$/.test(path);
+const notebookFile = (path: string) => /\.ipynb$/.test(path);
 
 function crossSite(request: Request): boolean {
   const site = request.headers.get("sec-fetch-site");
@@ -74,7 +74,7 @@ export async function handleFsApi(method: string, path: string[], request: Reque
       const db = store();
       const notebooks = await notebooksAtPaths(db, body.project, [body.path]);
       const renamed = await renameEntry(projectPath(body.project), body.path, body.name);
-      if (!notebookFile(renamed)) await deleteNotebooks(db, notebooks);
+      if (!db.documents && !notebookFile(renamed)) await deleteNotebooks(db, notebooks);
       return json({ path: renamed });
     }
     if (method === "POST" && path[1] === "delete") {
@@ -90,7 +90,7 @@ export async function handleFsApi(method: string, path: string[], request: Reque
       const db = store();
       const moved = body.mode === "move" ? await notebooksAtPaths(db, body.project, body.sources) : [];
       const pasted = await pasteEntries(projectPath(body.project), body.sources, body.target, body.mode);
-      if (moved.length && !pasted.every(notebookFile)) await deleteNotebooks(db, moved);
+      if (!db.documents && moved.length && !pasted.every(notebookFile)) await deleteNotebooks(db, moved);
       return json({ paths: pasted });
     }
     if (method === "POST" && path[1] === "folder") {

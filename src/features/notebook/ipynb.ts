@@ -31,7 +31,7 @@ export interface Ipynb {
 }
 
 /** Notebook-level fields the file carries. `rev`, timestamps and kernel state stay in the database. */
-export type IpynbNotebook = Pick<NotebookDoc, "name" | "description" | "kernel" | "language" | "cells">
+export type IpynbNotebook = Pick<NotebookDoc, "name" | "description" | "kernel" | "language" | "cells" | "metadata">
   & Partial<Pick<NotebookDoc, "id">>;
 
 /** Split source the way Jupyter writes it: one string per line, each keeping its newline. */
@@ -40,7 +40,7 @@ function sourceLines(source: string): string[] {
 }
 
 function writeCell(cell: NotebookCell): IpynbCell {
-  const metadata = cell.role === "code" || cell.role === "markdown" ? {} : { [IPYNB_KEY]: { role: cell.role } };
+  const metadata = { ...cell.metadata, [IPYNB_KEY]: { role: cell.role } };
   if (cell.role === "markdown") return { cell_type: "markdown", id: cell.id, metadata, source: sourceLines(cell.source) };
   return { cell_type: "code", id: cell.id, metadata, source: sourceLines(cell.source), outputs: [], execution_count: null };
 }
@@ -52,6 +52,7 @@ export function notebookToIpynb(doc: IpynbNotebook): Ipynb {
     nbformat: 4,
     nbformat_minor: 5,
     metadata: {
+      ...doc.metadata,
       kernelspec: { name: doc.kernel, display_name: kernelLabel(doc.kernel), language: doc.language },
       language_info: { name: language },
       [IPYNB_KEY]: { ...studio, name: doc.name },
@@ -90,7 +91,7 @@ function readCell(raw: unknown, index: number, used: Set<string>): NotebookCell 
   let id = typeof cell.id === "string" && ID.test(cell.id) && !used.has(cell.id) ? cell.id : `c${index + 1}`;
   for (let n = 2; used.has(id); n += 1) id = `c${index + 1}_${n}`;
   used.add(id);
-  return { id, role, source };
+  return { id, role, source, metadata: record(cell.metadata) };
 }
 
 /**
@@ -118,6 +119,7 @@ export function notebookFromIpynb(raw: string, fallbackName: string): IpynbNoteb
   if (cells.length > CELL_MAX) throw new IpynbError(`单元格超过 ${CELL_MAX} 个`);
   const name = typeof studio.name === "string" && studio.name.trim() ? studio.name.trim().slice(0, 80) : fallbackName;
   const doc: IpynbNotebook = {
+    metadata,
     name,
     description: typeof studio.description === "string" ? studio.description.slice(0, 2000) : "",
     kernel,

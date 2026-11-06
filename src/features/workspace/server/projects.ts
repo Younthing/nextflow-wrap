@@ -1,4 +1,4 @@
-import { mkdir, readdir, stat } from "node:fs/promises";
+import { mkdir, readdir, stat, realpath } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 
 import { HttpError } from "@/features/runs/server/service";
@@ -27,8 +27,7 @@ async function directoryExists(path: string): Promise<boolean> {
 
 export async function listProjects(context: ProjectContext): Promise<ProjectList> {
   const projects = context.db.projects();
-  const current = context.db.meta(CURRENT_KEY);
-  return { projects, current: current && projects.some((project) => project.id === current) ? current : undefined };
+  return { projects };
 }
 
 function remember(context: ProjectContext, project: Project): Project {
@@ -36,7 +35,7 @@ function remember(context: ProjectContext, project: Project): Project {
   const next = touchProject(db.projects(), project, timestamp(context)).find((item) => item.id === project.id)!;
   db.transaction(() => {
     db.saveProject(next);
-    db.setMeta(CURRENT_KEY, next.id);
+
   });
   return next;
 }
@@ -66,7 +65,7 @@ export async function createProject(context: ProjectContext, request: CreateProj
 
 /** Open an existing folder as a project. The same folder always maps to the same project. */
 export async function openProject(context: ProjectContext, requested: string): Promise<Project> {
-  const path = absolute(requested, "目录");
+  const path = normalizeProjectPath(await realpath(absolute(requested, "目录")));
   const known = context.db.projects().find((project) => project.path === path);
   if (!(await directoryExists(path))) throw new HttpError(404, `目录不存在：${path}`);
   const now = timestamp(context);
@@ -83,8 +82,7 @@ export async function reopenProject(context: ProjectContext, id: string): Promis
 
 /** The open project, for new notebooks created without naming one. */
 export function currentProjectId(db: StudioStore): string | undefined {
-  const id = db.meta(CURRENT_KEY);
-  return id && db.project(id) ? id : undefined;
+  return db.projectHandle;
 }
 
 export function closeProject(context: ProjectContext) {

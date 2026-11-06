@@ -19,10 +19,10 @@ export function WorkbenchTabs({
 }) {
   if (!tabs.length) return null;
   return (
-    <nav aria-label="打开的笔记本" className="flex min-w-0 items-end gap-0.5 overflow-x-auto border-b border-border px-2 pt-1.5">
+    <nav aria-label="打开的文件" className="flex min-w-0 items-end gap-0.5 overflow-x-auto border-b border-border px-2 pt-1.5">
       {tabs.map((id) => {
         const selected = id === active;
-        const name = names[id] ?? "笔记本";
+        const name = names[id] ?? decodeURIComponent(id.split("/").slice(1).join("/") || id);
         return (
           <div
             key={id}

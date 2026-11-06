@@ -4,12 +4,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
 import type { CreateProjectRequest, Project, ProjectList } from "./types";
+import { selectWindowProject, windowProject } from "./window-project";
 
 export const projectKeys = { all: ["projects"] as const };
 
 export const projectsQuery = {
   queryKey: projectKeys.all,
-  queryFn: () => api<ProjectList>("/projects"),
+  queryFn: async () => ({ ...await api<ProjectList>("/projects"), current: windowProject() }),
   staleTime: 10_000,
 };
 
@@ -28,7 +29,12 @@ function useProjectMutation<TVariables>(request: (variables: TVariables) => Prom
   const qc = useQueryClient();
   return useMutation({
     mutationFn: request,
-    onSuccess: () => {
+    onSuccess: async (result, variables) => {
+      const project = result as Partial<Project> | undefined;
+      if (project?.id && project.path) selectWindowProject(project.id);
+      else if (variables === undefined) selectWindowProject();
+      await qc.cancelQueries();
+      qc.removeQueries({ predicate: (query) => query.queryKey[0] !== "projects" });
       void qc.invalidateQueries({ queryKey: projectKeys.all });
       // Notebook lists are per project.
       void qc.invalidateQueries({ queryKey: ["notebooks"] });

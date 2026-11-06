@@ -405,7 +405,7 @@ const SAMPLESHEET_CHANNEL = nf`def ch_samplesheet = channel.fromPath(params.inpu
     .map { row ->
         if (!row.sample) error("Samplesheet @{params.input}: every row needs a sample name")
         if (!row.fastq_1) error("Samplesheet @{params.input}: sample @{row.sample} has no fastq_1")
-        def reads = [ row.fastq_1, row.fastq_2 ].findAll { path -> path }.collect { path -> file(path, checkIfExists: true) }
+        def reads = [ row.fastq_1, row.fastq_2 ].findAll { path -> path }.collect { path -> file((path.startsWith('/') || path.contains('://') || !params.studio_project_root) ? path : "@{params.studio_project_root}/@{path}", checkIfExists: true) }
         [ row.sample, reads ]
     }
     .groupTuple()

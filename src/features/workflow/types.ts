@@ -164,6 +164,8 @@ export interface ProjectSettings {
 }
 
 export interface WorkflowDoc {
+  filePath?: string;
+  fileVersion?: string;
   id: string;
   name: string;
   description?: string;
@@ -180,4 +182,4 @@ export interface WorkflowDoc {
 export type WorkflowSummary = Pick<
   WorkflowDoc,
   "id" | "name" | "description" | "updatedAt"
-> & { nodeCount: number };
+> & { nodeCount: number; filePath?: string };

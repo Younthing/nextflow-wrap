@@ -30,6 +30,8 @@ export function parseWorkflowDoc(value: unknown): WorkflowDoc {
   }
   return {
     id: doc.id ?? "",
+    filePath: doc.filePath,
+    fileVersion: doc.fileVersion,
     name: doc.name ?? "导入的流程",
     description: doc.description,
     project: doc.project,

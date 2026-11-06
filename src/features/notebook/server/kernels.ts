@@ -1,3 +1,4 @@
+import { store } from "@/lib/server/database";
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
@@ -261,29 +262,29 @@ const sessions = (registry.__nfStudioKernels ??= new Map<string, KernelSession>(
  * project folder, so cells read workspace paths such as `data/reads.fq`; a notebook without one gets a scratch folder.
  */
 export async function kernelFor(notebookId: string, requested: string, language: "python" | "r" = "python", workspace?: string): Promise<KernelSession> {
-  const current = sessions.get(notebookId);
+  const current = sessions.get(`${store().projectHandle ?? "scratch"}:${notebookId}`);
   if (current && current.state !== "dead" && current.requested === requested && current.language === language) return current;
   current?.shutdown();
   const cwd = workspace ?? notebookWorkDir(notebookId);
   await mkdir(cwd, { recursive: true });
   const session: KernelSession = new KernelSession(notebookId, requested, cwd, () => {
-    if (sessions.get(notebookId) === session) sessions.delete(notebookId);
+    if (sessions.get(`${store().projectHandle ?? "scratch"}:${notebookId}`) === session) sessions.delete(`${store().projectHandle ?? "scratch"}:${notebookId}`);
   }, language);
-  sessions.set(notebookId, session);
+  sessions.set(`${store().projectHandle ?? "scratch"}:${notebookId}`, session);
   return session;
 }
 
 export function existingKernel(notebookId: string): KernelSession | undefined {
-  return sessions.get(notebookId);
+  return sessions.get(`${store().projectHandle ?? "scratch"}:${notebookId}`);
 }
 
 export function kernelInfo(notebookId: string): KernelInfo {
-  return sessions.get(notebookId)?.info() ?? { notebookId, state: "stopped" };
+  return sessions.get(`${store().projectHandle ?? "scratch"}:${notebookId}`)?.info() ?? { notebookId, state: "stopped" };
 }
 
 export function shutdownKernel(notebookId: string) {
-  const session = sessions.get(notebookId);
-  sessions.delete(notebookId);
+  const session = sessions.get(`${store().projectHandle ?? "scratch"}:${notebookId}`);
+  sessions.delete(`${store().projectHandle ?? "scratch"}:${notebookId}`);
   session?.shutdown();
 }
 

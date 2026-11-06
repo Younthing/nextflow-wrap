@@ -57,6 +57,9 @@ const HISTORY_LIMIT = 100;
 export interface EditorState {
   appliedWorkflow: { id: string | null; token: symbol | null };
   docId: string;
+  projectId?: string;
+  filePath?: string;
+  fileVersion?: string;
   name: string;
   description?: string;
   project?: ProjectSettings;
@@ -183,6 +186,9 @@ export const createEditorStore = () =>
         const doc = emptyWorkflow("");
         return {
           docId: doc.id,
+          projectId: doc.projectId,
+          filePath: doc.filePath,
+          fileVersion: doc.fileVersion,
           name: doc.name,
           params: doc.params,
           updatedAt: doc.updatedAt,
@@ -206,6 +212,9 @@ export const createEditorStore = () =>
         set((s) => ({
           generation: s.generation + 1,
           docId: doc.id,
+          projectId: doc.projectId,
+          filePath: doc.filePath,
+          fileVersion: doc.fileVersion,
           name: doc.name,
           description: doc.description,
           project: doc.project,
@@ -224,6 +233,9 @@ export const createEditorStore = () =>
         const s = get();
         return {
           id: s.docId,
+          projectId: s.projectId,
+          filePath: s.filePath,
+          fileVersion: s.fileVersion,
           name: s.name,
           description: s.description,
           project: s.project,
