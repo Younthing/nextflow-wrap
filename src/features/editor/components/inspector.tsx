@@ -228,6 +228,9 @@ function NodeInspector({ node }: { node: FlowNode }) {
     );
 
   const { config } = node.data;
+  const family = def.id.split("/").slice(0, -2).join("/");
+  const latest = def.id.startsWith("modules/") ? [...index.values()].filter((mod) => mod.id.split("/").slice(0, -2).join("/") === family)
+    .sort((a, b) => Number(b.version?.slice(1) ?? 0) - Number(a.version?.slice(1) ?? 0))[0] : undefined;
   const origin = moduleOrigin(def);
   const setConfig = (patch: Partial<typeof config>, key: string) =>
     update(
@@ -522,6 +525,7 @@ function NodeInspector({ node }: { node: FlowNode }) {
       )}
 
       <PortList ports={socketInputs(def)} title="输入" />
+      {latest && latest.id !== def.id ? <Section title="模块更新"><p className="text-xs text-muted-foreground">当前锁定 {def.version}，项目中已有 {latest.version}。升级后请检查端口和参数。</p><Button size="sm" variant="outline" onClick={() => update(node.id, { moduleId: latest.id })}>升级到 {latest.version}</Button></Section> : null}
       <PortList ports={def.outputs} title="输出" />
 
       <Button

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { StoredExecution } from "@/lib/server/database";
-import { historySession, historyStatus, nextQueued, slotLimits } from "./queue";
+import { StudioStore, type StoredExecution } from "@/lib/server/database";
+import { claimNextQueued, historySession, historyStatus, nextQueued, slotLimits } from "./queue";
 
 const run = (id: string, executor: string, status: string, phase: string | undefined, submittedAt: string, projectDir = `/pipelines/${id}`) => ({
   projectDir, detail: { id, status, phase, submittedAt, launch: { executor } },
@@ -9,6 +9,32 @@ const run = (id: string, executor: string, status: string, phase: string | undef
 const limits = { local: 1, remote: 2 };
 
 describe("nextQueued", () => {
+  it("keeps copied run IDs isolated by their owning project root", () => {
+    const original = new StudioStore(":memory:");
+    const copy = new StudioStore(":memory:");
+    try {
+      original.insertRun({ ...run("same", "local", "submitted", "queued", "2026-01-01"), projectRoot: "/original" });
+      copy.insertRun({ ...run("same", "local", "failed", undefined, "2026-01-01"), projectRoot: "/copy" });
+      const aggregate = {
+        runs: () => [...copy.runs(), ...original.runs()],
+        updateRun: (id: string, update: (record: StoredExecution) => void, root?: string) => (root === "/original" ? original : copy).updateRun(id, update),
+      };
+      expect(claimNextQueued(aggregate, limits, "runner")?.projectRoot).toBe("/original");
+      expect(original.run("same")?.detail.phase).toBe("preparing");
+      expect(copy.run("same")?.detail.status).toBe("failed");
+    } finally { original.close(); copy.close(); }
+  });
+  it("claims a project-local record once when the registry only aggregates project runs", () => {
+    const project = new StudioStore(":memory:");
+    const registry = new StudioStore(":memory:");
+    try {
+      project.insertRun(run("queued", "local", "submitted", "queued", "2026-01-01"));
+      const aggregate = { db: registry.db, runs: () => project.runs(), updateRun: project.updateRun.bind(project) };
+      expect(claimNextQueued(aggregate, limits, "runner")?.detail.phase).toBe("preparing");
+      expect(project.run("queued")?.detail.phase).toBe("preparing");
+      expect(claimNextQueued(aggregate, limits, "runner")).toBeUndefined();
+    } finally { project.close(); registry.close(); }
+  });
   it("takes the oldest queued run first", () => {
     const runs = [run("b", "local", "submitted", "queued", "2026-01-02"), run("a", "local", "submitted", "queued", "2026-01-01")];
     expect(nextQueued(runs, limits)?.detail.id).toBe("a");

@@ -20,7 +20,8 @@
     "codex:smoke": "tsx scripts/codex-smoke.ts",
     "grok:smoke": "tsx scripts/grok-smoke.ts",
     "test:storybook": "vitest run --config vitest.storybook.config.mts",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "smoke:project": "tsx scripts/smoke-project.ts"
   },
   "dependencies": {
     "@copilotkit/react-core": "1.83.0",

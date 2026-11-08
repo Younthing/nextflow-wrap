@@ -22,5 +22,21 @@ export function useWriteDocument(path: string) {
 }
 export function useOpenDocument() {
   const project = windowProject();
-  return useMutation({ mutationFn: (path: string) => api<NotebookDoc | WorkflowDoc>(`/documents/open?project=${project}&path=${encodeURIComponent(path)}`) });
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (path: string) => api<NotebookDoc | WorkflowDoc>(`/documents/open?project=${project}&path=${encodeURIComponent(path)}`),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ["notebooks"] }); void qc.invalidateQueries({ queryKey: ["workflows"] }); },
+  });
+}
+
+export function useCreateTextDocument() {
+  const qc = useQueryClient();
+  const project = windowProject();
+  return useMutation({
+    mutationFn: (input: string | { path: string; content: string }) => {
+      const { path, content } = typeof input === "string" ? { path: input, content: "" } : input;
+      return api<TextDocument>(`/documents?project=${project}&path=${encodeURIComponent(path)}`, { method: "PUT", body: JSON.stringify({ content, version: null }) });
+    },
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ["fs"] }); },
+  });
 }

@@ -16,9 +16,11 @@ import { defaultInputDraft, SOURCE_LABEL, type InputDraft } from "@/features/not
 import { useNotebook, usePublishNotebook, useScriptModules, useTryRunNotebook } from "@/features/notebook/queries";
 import type { TryRunRecord } from "@/features/notebook/types";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { versionNumber } from "@/features/workflow/origin";
 import { ModuleEnvFields, ModuleEnvPreview } from "./module-env-form";
 import { bindingsFromDrafts, TryRunBindingTable, TryRunInputs } from "./try-run-inputs";
+
+import { exportTarget } from "../publish";
+import { literalFileDependencies } from "../file-dependencies";
 
 const NEW_MODULE = "__new__";
 
@@ -114,7 +116,7 @@ function PublishWizardScreen({ notebookId }: { notebookId: string }) {
   }
 
   const overwriting = scripts.data?.modules.find((mod) => mod.id === target);
-  const version = overwriting ? `v${versionNumber(overwriting.version) + 1}` : "v1";
+  const version = exportTarget(name, scripts.data?.modules ?? [], overwriting?.id).version;
   const receipt = tryRun.data;
   const staged = stageModuleEnv({ condaYaml, containerImage });
   const envAligned = staged.ok && !!receipt && sameModuleEnv(receipt, staged);
@@ -156,7 +158,7 @@ function PublishWizardScreen({ notebookId }: { notebookId: string }) {
       if (record.passed) send();
     });
   };
-  const saveLabel = overwriting ? `覆盖 ${overwriting.name} → ${version}` : "新建模块";
+  const saveLabel = overwriting ? `发布 ${overwriting.name} ${version}` : "新建模块";
 
   return (
     <div className="flex size-full min-h-0 flex-col gap-3">
@@ -187,7 +189,7 @@ function PublishWizardScreen({ notebookId }: { notebookId: string }) {
                 <SelectItem value={NEW_MODULE} className="text-xs">新模块</SelectItem>
                 {(scripts.data?.modules ?? []).map((mod) => (
                   <SelectItem key={mod.id} value={mod.id} className="text-xs">
-                    覆盖 <span className="font-mono">{mod.name}</span> {mod.version}{mod.referenceCount ? ` · ${mod.referenceCount} 个流程在用` : ""}
+                    发布新版本 · <span className="font-mono">{mod.name}</span> {mod.version}{mod.referenceCount ? ` · ${mod.referenceCount} 个流程在用` : ""}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -205,6 +207,7 @@ function PublishWizardScreen({ notebookId }: { notebookId: string }) {
           <FormField label="更新说明" htmlFor="module-changelog">
             <Input id="module-changelog" value={changelog} onChange={(event) => setChangelog(event.target.value)} className="h-8 text-xs" />
           </FormField>
+          {doc && literalFileDependencies(doc).length ? <p className="text-xs text-muted-foreground">代码直接读取了路径：{literalFileDependencies(doc).join("、")}。请确认这些文件已声明为模块输入，或由运行环境提供。</p> : null}
           <ModuleEnvFields
             idPrefix="publish-env"
             condaYaml={condaYaml}

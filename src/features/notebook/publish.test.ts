@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { CATALOG_BUILTINS } from "@/features/workflow/catalog-builtins";
 import { modulesForCatalog, modulesForDrawer } from "@/features/workflow/origin";
 import { fixtureNotebooks, fixtureScriptModules } from "./test-fixtures";
-import { buildScriptModule } from "./publish";
+import { buildScriptModule, exportTarget } from "./publish";
 import type { TryRunRecord } from "./types";
 
 const passed = (notebookId: string, rev: number): TryRunRecord => ({
@@ -29,7 +29,7 @@ describe("publish", () => {
     })).toThrow(/试跑通过/);
   });
 
-  it("overwrites a chosen module in place: same id, next version, no link to the notebook", () => {
+  it("publishes a new immutable module version", () => {
     const notebook = fixtureNotebooks().find((doc) => doc.id === "hello_py")!;
     const existing = fixtureScriptModules();
     const mod = buildScriptModule({
@@ -41,7 +41,7 @@ describe("publish", () => {
       receipt: passed(notebook.id, notebook.rev),
     });
     expect(mod.origin).toBe("script");
-    expect(mod.id).toBe("script/hello_py");
+    expect(mod.id).toBe("modules/hello/v3/module.json");
     expect(mod.version).toBe("v3");
     expect(JSON.stringify(mod)).not.toContain("sourceNotebook");
     expect(mod.tryRun).toBe("passed");
@@ -97,15 +97,19 @@ describe("publish", () => {
 });
 
 describe("export target", () => {
+  it("retains the version family when a module's display name changes", () => {
+    const existing = [{ ...fixtureScriptModules()[0], id: "modules/original/v3/module.json", name: "renamed", version: "v3" }];
+    expect(exportTarget("renamed_again", existing, existing[0].id).id).toBe("modules/original/v4/module.json");
+  });
   const notebook = fixtureNotebooks().find((doc) => doc.id === "hello_py")!;
   const build = (name: string, overwrite?: string) => buildScriptModule({ notebook, name, description: "", existing: fixtureScriptModules(), overwrite, receipt: passed(notebook.id, notebook.rev) });
 
   it("makes a new module from an unused name", () => {
     const mod = build("hello_again");
-    expect([mod.id, mod.version]).toEqual(["script/hello_again", "v1"]);
+    expect([mod.id, mod.version]).toEqual(["modules/hello_again/v1/module.json", "v1"]);
   });
   it("refuses a name another module has, and an unknown module to overwrite", () => {
-    expect(() => build("hello_py")).toThrow(/选择覆盖它或换个名字/);
+    expect(build("hello_py").id).toMatch(/^modules\/hello_py\/v\d+\/module.json$/);
     expect(() => build("x", "script/missing")).toThrow(/不存在/);
   });
 });

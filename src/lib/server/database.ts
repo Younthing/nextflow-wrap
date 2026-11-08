@@ -19,6 +19,7 @@ export { dataDirectory };
 
 export interface StoredExecution {
   detail: RunDetail;
+  deleted?: boolean;
   projectRoot?: string;
   inputParams?: Record<string, unknown>;
   projectDir: string;
@@ -61,8 +62,12 @@ export class StudioStore {
           const file = join(this.documents.files.root, "runs", entry.name, "run.json");
           if (!existsSync(file)) continue;
           const run = JSON.parse(readFileSync(file, "utf8")) as StoredExecution;
-          if (!run.detail?.id || this.db.prepare("SELECT id FROM runs WHERE id=?").get(run.detail.id)) continue;
+          if (!run.detail?.id) continue;
           const moved = run.projectRoot !== this.documents.files.root;
+          const tasksPath = join(this.documents.files.root, "runs", entry.name, "tasks.json");
+          if (existsSync(tasksPath)) {
+            for (const task of JSON.parse(readFileSync(tasksPath, "utf8")) as TaskRecord[]) this.db.prepare("INSERT INTO tasks VALUES (?,?,?) ON CONFLICT(run_id,id) DO UPDATE SET data=excluded.data").run(run.detail.id, task.id ?? task.hash, JSON.stringify(task));
+          }
           if (moved) {
             run.projectRoot = this.documents.files.root;
             run.attemptDir = join(run.projectRoot, "runs", run.detail.id);
@@ -75,7 +80,7 @@ export class StudioStore {
               delete run.pid;
             }
           }
-          this.db.prepare("INSERT INTO runs(id,status,created,data) VALUES (?,?,?,?)").run(run.detail.id, run.detail.status, run.detail.submittedAt, JSON.stringify(run));
+          this.db.prepare("INSERT INTO runs(id,status,created,data,deleted) VALUES (?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET status=excluded.status,data=excluded.data,deleted=excluded.deleted").run(run.detail.id, run.detail.status, run.detail.submittedAt, JSON.stringify(run), run.deleted ? 1 : 0);
         }
       }
       const appVersion = process.env.NEXTFLOW_STUDIO_APP_VERSION;
@@ -108,6 +113,7 @@ export class StudioStore {
     return this.transaction(() => {
       const current = this.workflow(incoming.id);
       if (this.documents && current && incoming.fileVersion !== current.fileVersion) return { status: "stale" } as const;
+      if (this.documents && current) incoming = { ...incoming, filePath: current.filePath };
       const result = commitWorkflowPut(current, incoming);
       if (result.status === "ok") this.saveWorkflow(result.doc);
       return result;
@@ -115,11 +121,11 @@ export class StudioStore {
   }
   deleteWorkflow(id: string) { if (this.documents) return this.documents.remove(id, "workflow"); this.db.prepare("DELETE FROM workflows WHERE id=?").run(id); }
   runs(includeDeleted = false): StoredExecution[] {
-    if (this.dataDir && !this.projectRoot) return this.projectStores().flatMap((db) => db.runs(includeDeleted));
-    return this.db.prepare(`SELECT data FROM runs ${includeDeleted ? "" : "WHERE deleted=0"} ORDER BY created DESC`).all().map((r) => JSON.parse(String(r.data)) as StoredExecution);
+    const children = this.dataDir && !this.projectRoot ? this.projectStores().flatMap((db) => db.runs(includeDeleted)) : [];
+    return [...children, ...this.db.prepare(`SELECT data FROM runs ${includeDeleted ? "" : "WHERE deleted=0"} ORDER BY created DESC`).all().map((r) => JSON.parse(String(r.data)) as StoredExecution)];
   }
   run(id: string, includeDeleted = false): StoredExecution | undefined {
-    if (this.dataDir && !this.projectRoot) return this.projectStores().map((db) => db.run(id, includeDeleted)).find(Boolean);
+    if (this.dataDir && !this.projectRoot) { const child = this.projectStores().map((db) => db.run(id, includeDeleted)).find(Boolean); if (child) return child; }
     const row = this.db.prepare(`SELECT data FROM runs WHERE id=? ${includeDeleted ? "" : "AND deleted=0"}`).get(id);
     return row ? JSON.parse(String(row.data)) as StoredExecution : undefined;
   }
@@ -134,8 +140,8 @@ export class StudioStore {
     this.documents?.files.record(`runs/${run.detail.id}/snapshot/modules.json`, this.scriptModules());
     this.db.prepare("INSERT INTO runs(id,status,created,data,idempotency) VALUES (?,?,?,?,?)").run(run.detail.id, run.detail.status, run.detail.submittedAt, JSON.stringify(run), key ?? null);
   }
-  updateRun(id: string, update: (run: StoredExecution) => void): StoredExecution {
-    if (this.dataDir && !this.projectRoot) { const db = this.projectStores().find((candidate) => candidate.run(id, true)); if (!db) throw new Error("运行不存在"); return db.updateRun(id, update); }
+  updateRun(id: string, update: (run: StoredExecution) => void, projectRoot?: string): StoredExecution {
+    if (this.dataDir && !this.projectRoot) { const db = this.projectStores().find((candidate) => (!projectRoot || candidate.projectRoot === projectRoot) && candidate.run(id, true)); if (db) return db.updateRun(id, update); }
     return this.transaction(() => {
       const run = this.run(id, true);
       if (!run) throw new Error("运行不存在");
@@ -145,14 +151,18 @@ export class StudioStore {
       return run;
     });
   }
-  deleteRun(id: string) { this.db.prepare("UPDATE runs SET deleted=1 WHERE id=?").run(id); }
+  deleteRun(id: string) {
+    this.updateRun(id, (run) => { run.deleted = true; });
+    this.db.prepare("UPDATE runs SET deleted=1 WHERE id=?").run(id);
+  }
   tasks(id: string): TaskRecord[] {
-    if (this.dataDir && !this.projectRoot) return this.projectStores().find((db) => db.run(id, true))?.tasks(id) ?? [];
+    if (this.dataDir && !this.projectRoot) { const child = this.projectStores().find((db) => db.run(id, true)); if (child) return child.tasks(id); }
     return this.db.prepare("SELECT data FROM tasks WHERE run_id=? ORDER BY id").all(id).map((r) => JSON.parse(String(r.data)) as TaskRecord);
   }
   putTask(runId: string, task: TaskRecord): void {
-    if (this.dataDir && !this.projectRoot) { this.projectStores().find((db) => db.run(runId, true))?.putTask(runId, task); return; }
+    if (this.dataDir && !this.projectRoot) { const child = this.projectStores().find((db) => db.run(runId, true)); if (child) { child.putTask(runId, task); return; } }
     this.db.prepare("INSERT INTO tasks VALUES (?,?,?) ON CONFLICT(run_id,id) DO UPDATE SET data=excluded.data").run(runId, task.id ?? task.hash, JSON.stringify(task));
+    this.documents?.files.record(`runs/${runId}/tasks.json`, this.tasks(runId));
   }
   event(runId: string, digest: string, event: unknown): boolean {
     if (this.dataDir && !this.projectRoot) return this.projectStores().find((db) => db.run(runId, true))?.event(runId, digest, event) ?? false;
@@ -163,7 +173,10 @@ export class StudioStore {
     const row = this.db.prepare("SELECT data FROM runtime WHERE id=1").get();
     return row ? JSON.parse(String(row.data)) : undefined;
   }
-  setRuntime(value: NonNullable<ReturnType<StudioStore["runtime"]>>) { this.db.prepare("INSERT INTO runtime VALUES (1,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data").run(JSON.stringify(value)); }
+  setRuntime(value: NonNullable<ReturnType<StudioStore["runtime"]>>): void {
+    if (this.projectRoot) return registryStore().setRuntime(value);
+    this.db.prepare("INSERT INTO runtime VALUES (1,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data").run(JSON.stringify(value));
+  }
   notebooks(): NotebookDoc[] {
     if (this.documents) return this.documents.list("notebook");
     return this.db.prepare("SELECT data FROM notebooks").all().map((row) => JSON.parse(String(row.data)) as NotebookDoc).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
@@ -279,6 +292,7 @@ export class StudioStore {
     return this.db.prepare("SELECT data FROM projects ORDER BY opened DESC").all().map((row) => JSON.parse(String(row.data)) as Project);
   }
   project(id: string): Project | undefined {
+    if (this.projectRoot && id === this.projectHandle) return { id, path: this.projectRoot, name: this.projectRoot.split(/[\\/]/).at(-1) ?? id, createdAt: "", openedAt: "" };
     if (this.projectRoot) return registryStore().project(id);
     const row = this.db.prepare("SELECT data FROM projects WHERE id=?").get(id);
     return row ? JSON.parse(String(row.data)) as Project : undefined;

@@ -66,6 +66,7 @@ export interface NotebookSession {
   isBusy(): boolean;
   /** Server copy from the notebook query. */
   setSaved(doc: NotebookDoc): void;
+  reload(doc: NotebookDoc): void;
   connect(ports: NotebookSessionPorts): void;
   /** Applies one edit to the draft and schedules an autosave. */
   update(patch: Partial<NotebookDoc>): void;
@@ -88,6 +89,7 @@ export interface NotebookSession {
   flush(): Promise<void>;
   /** Drops a pending autosave. */
   dispose(): void;
+  pauseAutosave(paused: boolean): void;
 }
 
 function message(err: unknown): string {
@@ -110,6 +112,7 @@ export function createNotebookSession(options: {
   const { notebookId } = options;
   const clock = options.clock ?? (() => performance.now());
   const autosaveMs = options.autosaveMs ?? NOTEBOOK_AUTOSAVE_MS;
+  let autosavePaused = false;
   let ports = options.ports;
   /** Held from the start of a save-then-run or run until it settles, between store updates. */
   let lock: string | null = null;
@@ -146,10 +149,11 @@ export function createNotebookSession(options: {
   };
 
   let saveQueue: Promise<unknown> = Promise.resolve();
+  let acknowledgedVersion: string | undefined;
   function save(snapshot: NotebookDoc): Promise<NotebookDoc> {
     const work = saveQueue.then(() => {
-      const saved = store.getState().saved;
-      return saveNow({ ...snapshot, fileVersion: saved?.fileVersion ?? snapshot.fileVersion });
+      if (store.getState().saveError) throw new Error(store.getState().saveError!);
+      return saveNow({ ...snapshot, fileVersion: acknowledgedVersion ?? snapshot.fileVersion });
     });
     saveQueue = work.catch(() => {});
     return work;
@@ -160,6 +164,7 @@ export function createNotebookSession(options: {
     store.setState((s) => ({ saving: s.saving + 1, saveError: null }));
     try {
       const saved = await connected().save(snapshot);
+      acknowledgedVersion = saved.fileVersion;
       // Edits made while saving stay in the draft for the next autosave.
       store.setState((s) => ({
         saved,
@@ -176,7 +181,7 @@ export function createNotebookSession(options: {
 
   const scheduleAutosave = () => {
     cancelAutosave();
-    if (store.getState().saveError) return;
+    if (autosavePaused || store.getState().saveError) return;
     timer = setTimeout(() => {
       timer = undefined;
       const draft = store.getState().draft;
@@ -236,6 +241,7 @@ export function createNotebookSession(options: {
 
   return {
     notebookId,
+    pauseAutosave(paused) { autosavePaused = paused; cancelAutosave(); if (!paused && store.getState().draft) scheduleAutosave(); },
     store,
     doc,
     read() {
@@ -245,7 +251,19 @@ export function createNotebookSession(options: {
     },
     isBusy: () => lock !== null,
     setSaved(next) {
-      if (store.getState().saved !== next) store.setState({ saved: next });
+      const state = store.getState();
+      if (state.saving) return;
+      if (state.draft && state.saved?.fileVersion !== next.fileVersion) {
+        cancelAutosave();
+        store.setState({ saveError: "文件在外部被修改，本地编辑已保留" });
+        return;
+      }
+      if (state.saved !== next) store.setState({ saved: next });
+    },
+    reload(next) {
+      cancelAutosave();
+      acknowledgedVersion = next.fileVersion;
+      store.setState({ saved: next, draft: null, saveError: null });
     },
     connect(next) {
       ports = next;

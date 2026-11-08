@@ -10,13 +10,16 @@ describe("resolveDataParams", () => {
     expect(errors).toEqual([]);
     expect(params).toEqual({ reads: "/srv/proj/data/reads.fq", sheet: "s3://b/x.csv", glob: "/srv/proj/data/*.fq", threads: 4 });
   });
-  it("refuses paths outside the workspace, missing files and escapes on a local run", () => {
+  it("reports missing project and external inputs", () => {
     const { errors } = resolveDataParams({ a: "/home/me/x.fq", b: "data/missing.fq", c: "../x" }, ["a", "b", "c"], { root: "/srv/proj", remote: false, exists });
     expect(errors).toEqual([
-      "--a 不在工作区里：/home/me/x.fq。请先上传到工作区",
+      "找不到外部数据：/home/me/x.fq",
       "工作区里没有 data/missing.fq",
-      "--c 不是有效的路径：../x",
+      "工作区里没有 ../x",
     ]);
+  });
+  it("accepts existing absolute and parent-relative data", () => {
+    expect(resolveDataParams({ a: "/data/shared.csv", b: "../shared.csv" }, ["a", "b"], { root: "/project", remote: false, exists: () => true })).toEqual({ params: { a: "/data/shared.csv", b: "/project/../shared.csv" }, errors: [] });
   });
   it("needs cluster paths on a cluster run", () => {
     const { params, errors } = resolveDataParams({ a: "/scratch/x.fq", b: "data/reads.fq" }, ["a", "b"], { remote: true, exists });

@@ -9,8 +9,8 @@ describe("workspace paths", () => {
     expect(dataPathKind("s3://bucket/reads.fq")).toBe("uri");
     expect(dataPathKind("/scratch/me/reads.fq")).toBe("absolute");
     expect(dataPathKind("C:\\data\\x.csv")).toBe("absolute");
-    expect(dataPathKind("../etc/passwd")).toBe("invalid");
-    expect(dataPathKind("data/../../x")).toBe("invalid");
+    expect(dataPathKind("../etc/passwd")).toBe("workspace");
+    expect(dataPathKind("data/../../x")).toBe("workspace");
     expect(dataPathKind("  ")).toBe("invalid");
   });
   it("stores picks inside the workspace as relative paths", () => {
@@ -19,10 +19,10 @@ describe("workspace paths", () => {
     expect(toWorkspacePath("/home/me/project-b/x", "/home/me/proj")).toBe("/home/me/project-b/x");
     expect(toWorkspacePath("/x", undefined)).toBe("/x");
   });
-  it("resolves inside the workspace only", () => {
+  it("resolves data paths from the workspace including external relatives", () => {
     expect(normalizeWorkspacePath("./data//reads.fq")).toBe("data/reads.fq");
     expect(resolveWorkspacePath("data/reads.fq", "/srv/proj")).toBe("/srv/proj/data/reads.fq");
-    expect(resolveWorkspacePath("data/../../etc/passwd", "/srv/proj")).toBeUndefined();
+    expect(resolveWorkspacePath("data/../../etc/passwd", "/srv/proj")).toBe("/srv/proj/../etc/passwd");
     expect(resolveWorkspacePath("/etc/passwd", "/srv/proj")).toBeUndefined();
   });
 });

@@ -11,10 +11,10 @@ afterEach(async () => {
 });
 
 describe("publishMode", () => {
-  it("links when work and results share a filesystem", async () => {
+  it("copies even when work and results share a filesystem", async () => {
     const root = await mkdtemp(join(tmpdir(), "nf-publish-"));
     directories.push(root);
-    expect(await publishMode(join(root, "work"), join(root, "attempts/a/results"))).toBe("link");
+    expect(await publishMode(join(root, "work"), join(root, "attempts/a/results"))).toBe("copy");
   });
 
   it("copies for cloud or relative work directories", async () => {

@@ -60,6 +60,8 @@ export interface EditorState {
   projectId?: string;
   filePath?: string;
   fileVersion?: string;
+  conflict?: string;
+  autosavePaused?: boolean;
   name: string;
   description?: string;
   project?: ProjectSettings;
@@ -189,6 +191,7 @@ export const createEditorStore = () =>
           projectId: doc.projectId,
           filePath: doc.filePath,
           fileVersion: doc.fileVersion,
+          conflict: undefined,
           name: doc.name,
           params: doc.params,
           updatedAt: doc.updatedAt,
@@ -215,6 +218,7 @@ export const createEditorStore = () =>
           projectId: doc.projectId,
           filePath: doc.filePath,
           fileVersion: doc.fileVersion,
+          conflict: undefined,
           name: doc.name,
           description: doc.description,
           project: doc.project,

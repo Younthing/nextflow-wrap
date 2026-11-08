@@ -6,7 +6,7 @@ import { ArrowUp, File, Folder, FolderOpen, Home, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { toWorkspacePath } from "@/features/workspace/paths";
+import { dataPathKind, normalizeWorkspacePath, toWorkspacePath } from "@/features/workspace/paths";
 import { useCurrentProject } from "@/features/workspace/queries";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
@@ -30,7 +30,7 @@ export const withinRoot = (path: string, root?: string) => !root || path === roo
 
 /**
  * Picks a path on the server through `/api/fs/list`, the same in a browser and in the desktop app. With a `root`
- * (the workspace) it stays inside that folder and offers an upload, which lands in the project's `data/`.
+ * (the project) it starts there and offers an upload. External data can be selected on the same backend.
  */
 export function PathBrowserDialog({
   open,
@@ -149,6 +149,7 @@ export function PathInput({
   const store = (path: string) => onChange(workspace ? toWorkspacePath(path, root) : path);
   const shown = root && value && !value.startsWith("/") ? `${root}/${value}` : value;
   const options: PickOptions = { kind, extensions, defaultPath: shown || undefined, root };
+  const external = workspace && value && (dataPathKind(value) !== "workspace" || normalizeWorkspacePath(value)?.startsWith(".."));
   const intake = useFileIntake();
   const take = (transfer: DataTransfer) => {
     if (!workspace) { toast.warning("这里需要服务端上的路径，请点浏览选择"); return; }
@@ -178,6 +179,7 @@ export function PathInput({
       }}
     >
       <Input value={value} onChange={(event) => onChange(event.target.value)} className={cn("font-mono", className)} {...props} />
+      {external ? <span className="shrink-0 text-[10px] text-muted-foreground" title="此数据位于项目外，不会随项目文件夹一起复制">外部引用</span> : null}
       <Button type="button" size="icon-sm" variant="ghost" aria-label={kind === "directory" ? "浏览文件夹" : "浏览文件"} onClick={() => setBrowsing(true)}>
         <FolderOpen />
       </Button>

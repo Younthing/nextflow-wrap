@@ -89,19 +89,19 @@ function put(url: string, file: File, onProgress: (loaded: number) => void, sign
 const joinPath = (...parts: string[]) => parts.filter(Boolean).join("/");
 
 /** Reserves a free name in `data/` for each item, then uploads its files one after another. */
-export async function uploadItems(projectId: string, items: UploadItem[], onProgress: (progress: UploadProgress) => void, signal?: AbortSignal): Promise<UploadedItem[]> {
+export async function uploadItems(projectId: string, items: UploadItem[], onProgress: (progress: UploadProgress) => void, signal?: AbortSignal, parent = "data"): Promise<UploadedItem[]> {
   const total = items.reduce((sum, item) => sum + item.files.reduce((size, { file }) => size + file.size, 0), 0);
   let done = 0;
   const uploaded: UploadedItem[] = [];
   for (const [index, item] of items.entries()) {
-    const reserved = await api<{ name: string; path: string }>("/fs/reserve", { method: "POST", body: JSON.stringify({ project: projectId, name: item.name, kind: item.kind }), signal });
+    const reserved = await api<{ name: string; path: string }>("/fs/reserve", { method: "POST", body: JSON.stringify({ project: projectId, name: item.name, kind: item.kind, parent }), signal });
     for (const { path, file } of item.files) {
       const target = joinPath(reserved.name, path);
-      const url = `/api/fs/upload?project=${encodeURIComponent(projectId)}&path=${encodeURIComponent(target)}`;
+      const url = `/api/fs/upload?project=${encodeURIComponent(projectId)}&path=${encodeURIComponent(target)}&parent=${encodeURIComponent(parent)}`;
       await put(url, file, (loaded) => onProgress({ loaded: done + loaded, total, item: index + 1, items: items.length }), signal);
       done += file.size;
     }
-    uploaded.push({ path: `data/${reserved.name}`, kind: item.kind });
+    uploaded.push({ path: joinPath(parent, reserved.name), kind: item.kind });
   }
   onProgress({ loaded: total, total, item: items.length, items: items.length });
   return uploaded;

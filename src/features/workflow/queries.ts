@@ -1,5 +1,7 @@
 "use client";
 
+import { windowProject } from "@/features/workspace/window-project";
+
 import {
   type QueryClient,
   queryOptions,
@@ -18,7 +20,7 @@ import type { ModuleDef, WorkflowDoc, WorkflowSummary } from "./types";
 
 export const workflowKeys = {
   all: ["workflows"] as const,
-  detail: (id: string) => ["workflows", id] as const,
+  detail: (id: string, project = windowProject()) => ["workflows", project, id] as const,
 };
 
 export interface ModuleCatalog {
@@ -36,7 +38,7 @@ const withIndex = (list: ScriptModuleList): ModuleCatalog => ({
 /** The published modules a canvas can use. Shares its cache with the notebook library, so a publish refreshes it. */
 export const moduleCatalogQueryOptions = () =>
   queryOptions({
-    queryKey: scriptModuleKey,
+    queryKey: [...scriptModuleKey, windowProject()],
     queryFn: () => api<ScriptModuleList>("/script-modules"),
   });
 
@@ -86,20 +88,21 @@ export interface JsonSchema {
 
 export function useWorkflows() {
   return useQuery({
-    queryKey: workflowKeys.all,
+    queryKey: [...workflowKeys.all, windowProject()],
     queryFn: () => api<WorkflowSummary[]>("/workflows"),
   });
 }
 
-export const fetchWorkflow = (id: string) =>
-  api<WorkflowDoc>(`/workflows/${id}`);
+export const fetchWorkflow = (id: string, project = windowProject()) =>
+  api<WorkflowDoc>(`/workflows/${id}`, { headers: { "x-project-id": project ?? "" } });
 
 export function useWorkflow(id: string | undefined) {
+  const project = windowProject();
   return useQuery({
     queryKey: workflowKeys.detail(id ?? ""),
     // A missing workflow resolves to null so the editor can fall back to a new one.
     queryFn: () =>
-      fetchWorkflow(id!).catch((err: unknown) => {
+      fetchWorkflow(id!, project).catch((err: unknown) => {
         if (err instanceof ApiError && err.status === 404) return null;
         throw err;
       }),
@@ -127,12 +130,13 @@ export function useSaveWorkflow(store?: EditorStore) {
         getEditorSaveSession(store).noteEditorRevision(doc.id, doc.updatedAt);
         store.setState({ fileVersion: doc.fileVersion, filePath: doc.filePath, projectId: doc.projectId });
       }
-      await qc.cancelQueries({ queryKey: workflowKeys.detail(doc.id) });
+      await qc.cancelQueries({ queryKey: workflowKeys.detail(doc.id, doc.projectId) });
       qc.setQueryData(workflowKeys.detail(doc.id), doc);
-      void qc.invalidateQueries({ queryKey: workflowKeys.all, exact: true });
+      void qc.invalidateQueries({ queryKey: workflowKeys.all });
     },
     onError: (err, doc) => {
       if (!(err instanceof ApiError) || err.status !== 409 || !doc.id) return;
+      store?.setState({ conflict: err.message });
       void qc.invalidateQueries({ queryKey: workflowKeys.detail(doc.id) });
       void qc.invalidateQueries({ queryKey: workflowKeys.all, exact: true });
     },

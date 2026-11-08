@@ -6,21 +6,22 @@ import { z } from "zod";
 import { ConvertError } from "@/features/notebook/convert";
 import { EnvFieldError, patchModuleEnv } from "@/features/notebook/env";
 import { PercentError } from "@/features/notebook/jupytext";
+import { serializeIpynb } from "@/features/notebook/ipynb";
 import { notebookFromLibrary } from "@/features/notebook/library-copy";
 import { publishScriptModule } from "@/features/notebook/publish";
 import { exampleData, exampleLibraryCopies, exampleModules, exampleNotebooks, exampleWorkflow } from "@/features/notebook/examples";
-import { IF_EXAMPLE_IMAGE, IF_EXAMPLE_KEYWORDS, ifExampleNotebooks, ifExampleWorkflow } from "@/features/notebook/examples-if";
+import { IF_EXAMPLE_IMAGE, ifExampleNotebooks, ifExampleWorkflow } from "@/features/notebook/examples-if";
 import { IF_SIDE_FILES, ifSideNotebooks, ifSideWorkflow } from "@/features/notebook/examples-if-side";
 import { executeTryRun, runNotebookCells } from "@/features/notebook/execute";
-import { notebookFiles } from "@/features/notebook/server/notebook-files";
 import { readEnvironmentYml } from "@/features/notebook/server/environment-yml";
 import { existingKernel, kernelFor, kernelInfo, KernelUnavailableError, listKernelSpecs, shutdownKernel } from "@/features/notebook/server/kernels";
 import { listNotebookVariables, readNotebookVariable, VARIABLE_NAME } from "@/features/notebook/server/kernel-variables";
 import { referenceCounts, scriptModuleViews, summarizeNotebook } from "@/features/notebook/library";
 import { languageForKernel, type NotebookDoc } from "@/features/notebook/types";
 import { HttpError } from "@/features/runs/server/service";
-import type { StudioStore } from "@/lib/server/database";
-import { dataDirectory, store } from "@/lib/server/database";
+import { StudioStore } from "@/lib/server/database";
+import { shareModule, installModule } from "./shared-modules";
+import { dataDirectory, registryStore, store } from "@/lib/server/database";
 import { EXAMPLE_PROJECT_ID, IF_EXAMPLE_PROJECT_ID } from "@/features/workspace/projects";
 
 
@@ -38,6 +39,7 @@ const writeSchema = z.object({
   description: z.string().max(2000).optional(),
   kernel: z.string().trim().min(1).max(80).refine((value) => !/[\u0000-\u001f]/.test(value), "内核名称不能包含换行"),
   cells: z.array(cellSchema).max(80),
+  folder: z.string().max(4000).optional(),
   filePath: z.string().max(4000).optional(),
   fileVersion: z.string().max(100).optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
@@ -75,7 +77,7 @@ const trySchema = z.object({
 const publishSchema = z.object({
   name: z.string().trim().min(1).max(80),
   /** Module id to overwrite; a new module when unset. */
-  overwrite: z.string().trim().max(200).regex(/^script\/[\w.-]+$/).optional(),
+  overwrite: z.string().trim().max(200).regex(/^modules\/[\w.-]+\/v\d+\/module\.json$/).optional(),
   description: z.string().max(2000).optional(),
   changelog: z.string().max(2000).optional(),
   condaYaml: envField.optional(),
@@ -97,116 +99,47 @@ const editSchema = z.object({
  * the example data in `data/`. Once: removing the project or any of its content later does not bring it back.
  */
 export function ensureExampleProject(db: StudioStore = store()) {
-  ensureIfExampleProject(db);
-  if (db.meta(EXAMPLE_SEEDED)) return;
-  const folder = db.workspace ?? join(dataDirectory(), "projects", "example");
-  mkdirSync(folder, { recursive: true });
-  const notebooks = exampleNotebooks(EXAMPLE_PROJECT_ID);
-  const modules = exampleModules(notebooks);
-  const copies = exampleLibraryCopies(notebooks, modules);
-  db.transaction(() => {
-    if (db.meta(EXAMPLE_SEEDED)) return;
+  if (db.projectRoot || db.meta("fileExamplesV2")) return;
+  const base = join(db.dataDir ?? dataDirectory(), "example-projects-v2");
+  const presets = [
+    { id: EXAMPLE_PROJECT_ID, name: "示例项目", notebooks: exampleNotebooks(EXAMPLE_PROJECT_ID), workflows: [exampleWorkflow(EXAMPLE_PROJECT_ID)], assets: [] as { path: string; asset: readonly string[] }[] },
+    { id: IF_EXAMPLE_PROJECT_ID, name: "免疫荧光分析示例", notebooks: [...ifExampleNotebooks(IF_EXAMPLE_PROJECT_ID), ...ifSideNotebooks(IF_EXAMPLE_PROJECT_ID)], workflows: [ifExampleWorkflow(IF_EXAMPLE_PROJECT_ID), ifSideWorkflow(IF_EXAMPLE_PROJECT_ID)], assets: [IF_EXAMPLE_IMAGE, ...IF_SIDE_FILES] },
+  ];
+  for (const preset of presets) {
+    const folder = join(base, preset.id);
+    mkdirSync(folder, { recursive: true });
     const now = new Date().toISOString();
-    if (!db.project(EXAMPLE_PROJECT_ID)) db.saveProject({ id: EXAMPLE_PROJECT_ID, name: "示例项目", path: folder, createdAt: now, openedAt: now });
-    for (const doc of notebooks) {
-      db.insertNotebookSnapshot(doc);
-      db.saveRevision({ notebookId: doc.id, rev: doc.rev, cells: doc.cells, savedAt: doc.updatedAt });
-    }
-    for (const mod of modules) db.saveScriptModule(mod);
-    for (const copy of copies) db.saveLibraryCopy(copy);
-    db.saveWorkflow(exampleWorkflow(EXAMPLE_PROJECT_ID));
-    db.setMeta(EXAMPLE_SEEDED, new Date().toISOString());
-  });
-  // The data the notebooks and the workflow read. Existing files are kept.
-  for (const file of exampleData()) {
-    const path = join(folder, file.path);
+    db.saveProject({ id: preset.id, name: preset.name, path: folder, createdAt: now, openedAt: now });
+    const project = new StudioStore(join(folder, ".studio", "state.sqlite"), folder, preset.id);
     try {
-      mkdirSync(dirname(path), { recursive: true });
-      writeFileSync(path, file.content, { flag: "wx" });
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-    }
+      if (project.meta("seeded")) continue;
+      for (const notebook of preset.notebooks) if (!project.notebook(notebook.id)) project.saveNotebook(notebook);
+      const modules = exampleModules(preset.notebooks);
+      for (const mod of modules) if (!project.scriptModule(mod.id)) project.saveScriptModule(mod);
+      for (const [index, copy] of exampleLibraryCopies(preset.notebooks, modules).entries()) {
+        if (!project.libraryCopy(copy.moduleId)) project.saveLibraryCopy(copy);
+        const source = `${copy.moduleId.slice(0, -"module.json".length)}source.ipynb`;
+        if (!existsSync(project.documents!.files.resolve(source))) project.documents!.files.write(source, serializeIpynb(preset.notebooks[index]), null);
+      }
+      for (const workflow of preset.workflows) if (!project.workflow(workflow.id)) project.saveWorkflow(workflow);
+      for (const file of preset.id === EXAMPLE_PROJECT_ID ? exampleData() : []) {
+        const path = join(folder, file.path);
+        mkdirSync(dirname(path), { recursive: true });
+        if (!existsSync(path)) writeFileSync(path, file.content);
+      }
+      for (const file of preset.assets) {
+        const path = join(folder, file.path);
+        mkdirSync(dirname(path), { recursive: true });
+        if (!existsSync(path)) copyFileSync(join(/* turbopackIgnore: true */ process.cwd(), ...file.asset), path);
+      }
+      mkdirSync(join(folder, "results"), { recursive: true });
+      project.setMeta("seeded", now);
+    } finally { project.close(); }
   }
+  db.setMeta("fileExamplesV2", new Date().toISOString());
 }
 
-const EXAMPLE_SEEDED = "exampleSeeded";
-
-/**
- * The immunofluorescence example project, seeded once like the first one, in `<data>/projects/example-if`: five
- * notebooks, their modules, the workflow and `data/image.tif` copied from the image shipped under `public/`; then
- * its side branches.
- */
-export function ensureIfExampleProject(db: StudioStore) {
-  ensureIfMainExample(db);
-  ensureIfSideExample(db);
-}
-
-function ensureIfMainExample(db: StudioStore) {
-  if (db.meta(IF_EXAMPLE_SEEDED)) return;
-  const folder = join(db.dataDir ?? dataDirectory(), "projects", IF_EXAMPLE_PROJECT_ID);
-  mkdirSync(join(folder, "results"), { recursive: true });
-  const notebooks = ifExampleNotebooks(IF_EXAMPLE_PROJECT_ID);
-  const modules = exampleModules(notebooks, IF_EXAMPLE_KEYWORDS);
-  const copies = exampleLibraryCopies(notebooks, modules);
-  db.transaction(() => {
-    if (db.meta(IF_EXAMPLE_SEEDED)) return;
-    const now = new Date().toISOString();
-    if (!db.project(IF_EXAMPLE_PROJECT_ID)) db.saveProject({ id: IF_EXAMPLE_PROJECT_ID, name: "免疫荧光分析示例", path: folder, createdAt: now, openedAt: now });
-    for (const doc of notebooks) {
-      db.insertNotebookSnapshot(doc);
-      db.saveRevision({ notebookId: doc.id, rev: doc.rev, cells: doc.cells, savedAt: doc.updatedAt });
-    }
-    for (const mod of modules) db.saveScriptModule(mod);
-    for (const copy of copies) db.saveLibraryCopy(copy);
-    db.saveWorkflow(ifExampleWorkflow(IF_EXAMPLE_PROJECT_ID));
-    db.setMeta(IF_EXAMPLE_SEEDED, now);
-  });
-  copyExampleAsset(folder, IF_EXAMPLE_IMAGE);
-}
-
-/**
- * The IF side branches (eight more notebooks and modules, the `example_if_side` workflow and their images), added
- * once to the IF example project, including one seeded before they existed. Skipped when that project was removed.
- */
-function ensureIfSideExample(db: StudioStore) {
-  if (db.meta(IF_SIDE_EXAMPLE_SEEDED)) return;
-  const project = db.project(IF_EXAMPLE_PROJECT_ID);
-  const now = new Date().toISOString();
-  if (!project) {
-    db.setMeta(IF_SIDE_EXAMPLE_SEEDED, now);
-    return;
-  }
-  const notebooks = ifSideNotebooks(IF_EXAMPLE_PROJECT_ID);
-  const modules = exampleModules(notebooks, IF_EXAMPLE_KEYWORDS);
-  const copies = exampleLibraryCopies(notebooks, modules);
-  db.transaction(() => {
-    if (db.meta(IF_SIDE_EXAMPLE_SEEDED)) return;
-    for (const doc of notebooks) {
-      if (db.notebook(doc.id)) continue;
-      db.insertNotebookSnapshot(doc);
-      db.saveRevision({ notebookId: doc.id, rev: doc.rev, cells: doc.cells, savedAt: doc.updatedAt });
-    }
-    for (const mod of modules) if (!db.scriptModule(mod.id)) db.saveScriptModule(mod);
-    for (const copy of copies) if (!db.libraryCopy(copy.moduleId)) db.saveLibraryCopy(copy);
-    if (!db.workflow("example_if_side")) db.saveWorkflow(ifSideWorkflow(IF_EXAMPLE_PROJECT_ID));
-    db.setMeta(IF_SIDE_EXAMPLE_SEEDED, now);
-  });
-  for (const file of IF_SIDE_FILES) copyExampleAsset(project.path, file);
-}
-
-/** Copies a file shipped under `public/` into the project, unless it is already there. */
-function copyExampleAsset(folder: string, file: { path: string; asset: readonly string[] }) {
-  // The server runs from the folder that holds `public/` (the checkout, or the packaged app server).
-  const source = join(/* turbopackIgnore: true */ process.cwd(), ...file.asset);
-  const target = join(folder, file.path);
-  if (existsSync(source) && !existsSync(target)) {
-    mkdirSync(dirname(target), { recursive: true });
-    copyFileSync(source, target);
-  }
-}
-
-const IF_EXAMPLE_SEEDED = "ifExampleSeeded";
-const IF_SIDE_EXAMPLE_SEEDED = "ifSideExampleSeeded";
+export const ensureIfExampleProject = ensureExampleProject;
 
 function requireNotebook(db: StudioStore, id: string): NotebookDoc {
   const doc = db.notebook(id);
@@ -229,7 +162,6 @@ export async function deleteNotebooks(db: StudioStore, ids: string[]): Promise<v
     const doc = db.notebook(id);
     if (!doc) continue;
     shutdownKernel(id);
-    if (!db.documents && !doc.temporary) await (await notebookFiles(db, doc.projectId))?.remove(id);
     db.deleteNotebook(id);
   }
 }
@@ -237,7 +169,7 @@ export async function deleteNotebooks(db: StudioStore, ids: string[]): Promise<v
 /** Notebooks of a project whose `.ipynb` files are at, or under, these workspace-relative paths. */
 export async function notebooksAtPaths(db: StudioStore, projectId: string, paths: string[]): Promise<string[]> {
   if (db.documents) return db.notebooks().filter((doc) => doc.filePath && paths.some((path) => doc.filePath === path || doc.filePath!.startsWith(`${path}/`))).map((doc) => doc.id);
-  return (await notebookFiles(db, projectId))?.notebooksAt(paths) ?? [];
+  return [];
 }
 
 function newNotebookId(db: StudioStore): string {
@@ -249,11 +181,16 @@ function newNotebookId(db: StudioStore): string {
 }
 
 export async function handleNotebookApi(method: string, path: string[], request: Request, db: StudioStore = store()): Promise<Response> {
-  if (!db.projectRoot) ensureExampleProject(db);
   const [resource, id, action, extra] = path;
   const saveNotebook = async (doc: NotebookDoc) => db.saveNotebook(doc);
 
   if (resource === "kernels" && !id && method === "GET") return json(await listKernelSpecs());
+
+  if (resource === "script-modules" && id === "shared" && method === "GET") return json(registryStore().scriptModules());
+  if (resource === "script-modules" && (id === "share" || id === "install") && method === "POST") {
+    const body = editSchema.parse(await request.json());
+    return json(id === "share" ? shareModule(db, registryStore(), body.moduleId) : installModule(registryStore(), db, body.moduleId), 201);
+  }
 
   if (resource === "script-modules" && !id && method === "GET") {
     return json({
@@ -264,9 +201,10 @@ export async function handleNotebookApi(method: string, path: string[], request:
 
   if (resource === "script-modules" && method === "PUT") {
     const moduleId = path.slice(1).join("/");
-    if (!/^script\/[\w.-]+$/.test(moduleId)) throw new HttpError(400, "无效的模块 id");
+    if (!/^modules\/[\w.-]+\/v\d+\/module\.json$/.test(moduleId)) throw new HttpError(400, "无效的模块 id");
     const current = db.scriptModule(moduleId);
     if (!current) throw new HttpError(404, "模块不存在");
+    if (db.documents) throw new HttpError(409, "已发布版本不可修改，请从来源笔记本发布新版本");
     const body = envSchema.parse(await request.json());
     let next;
     try {
@@ -289,6 +227,7 @@ export async function handleNotebookApi(method: string, path: string[], request:
     let doc: NotebookDoc;
     try {
       doc = notebookFromLibrary(copy, newNotebookId(db), projectId);
+      delete doc.temporary;
     } catch (error) {
       if (error instanceof PercentError) throw new HttpError(400, error.message);
       throw error;
@@ -312,7 +251,7 @@ export async function handleNotebookApi(method: string, path: string[], request:
     const doc: NotebookDoc = {
       id: `nb_${randomUUID().slice(0, 8)}`,
       projectId,
-      filePath: body.filePath,
+      filePath: body.filePath ?? (body.folder !== undefined ? db.documents?.files.available(body.folder, body.name, ".ipynb") : undefined),
       metadata: body.metadata,
       name: body.name,
       description: body.description?.trim() ?? "",
@@ -421,6 +360,7 @@ export async function handleNotebookApi(method: string, path: string[], request:
         condaYaml: body.condaYaml,
         containerImage: body.containerImage,
       }, { workspace: workspaceOf(db, notebook) });
+      record.fileVersion = notebook.fileVersion;
       db.saveTryRun(record);
       return json(record);
     } catch (error) {
@@ -452,6 +392,7 @@ export async function handleNotebookApi(method: string, path: string[], request:
     db.transaction(() => {
       db.saveScriptModule(published.module);
       db.saveLibraryCopy(published.library);
+      db.documents?.files.write(`${published.module.id.slice(0, -"module.json".length)}source.ipynb`, serializeIpynb(notebook), null);
     });
     return json(scriptModuleViews([published.module], db.workflows())[0], 201);
   }

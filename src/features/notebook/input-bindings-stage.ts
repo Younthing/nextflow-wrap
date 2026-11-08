@@ -1,4 +1,5 @@
 import { copyFile, stat, writeFile } from "node:fs/promises";
+import { constants } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 
 import { ConvertError } from "./convert";
@@ -72,7 +73,7 @@ async function copyHostFile(
     throw error;
   }
   try {
-    await copyFile(source, inDir(dir, name));
+    await copyFile(source, inDir(dir, name), constants.COPYFILE_FICLONE);
   } catch (error) {
     const code = error instanceof Error && "code" in error ? String((error as NodeJS.ErrnoException).code) : "";
     throw new ConvertError(`无法读取路径 ${token}${code ? `（${code}）` : ""}`);

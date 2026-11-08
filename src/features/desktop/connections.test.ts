@@ -125,10 +125,10 @@ describe("remote scripts", () => {
     home = mkdtempSync(join(tmpdir(), "nfs-home-"));
     const data = join(home, ".local/share/nextflow-studio");
     for (const dir of ["workspaces/default", "executions/x", "work/ab", "toolchain/jre", "server/current", "logs"]) mkdirSync(join(data, dir), { recursive: true });
-    for (const file of ["studio.sqlite", "studio.sqlite-wal", "settings.json", "secrets.json", "server-token"]) writeFileSync(join(data, file), "x");
+    for (const file of ["workspace-registry.sqlite", "workspace-registry.sqlite-wal", "studio.sqlite", "studio.sqlite-wal", "settings.json", "secrets.json", "server-token"]) writeFileSync(join(data, file), "x");
     execFileSync("sh", ["-s"], { input: CLEAR_DATA_SCRIPT, env: { ...process.env, HOME: home } });
     const left = execFileSync("ls", ["-A", data]).toString().split("\n").filter(Boolean).sort();
-    expect(left).toEqual(["logs", "secrets.json", "server", "server-token", "settings.json", "toolchain"]);
+    expect(left).toEqual(["executions", "logs", "secrets.json", "server", "server-token", "settings.json", "studio.sqlite", "studio.sqlite-wal", "toolchain", "work", "workspaces"]);
   });
 
   it("stops the server recorded in server.json", () => {

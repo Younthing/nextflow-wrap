@@ -62,8 +62,8 @@ describe("keepLocalWorkflowEdits", () => {
     expect(keepLocalWorkflowEdits({ docId: "wf", updatedAt: "t1", dirty: true }, server)).toBe(true);
   });
 
-  it("drops a dirty editor once the server revision moved", () => {
-    expect(keepLocalWorkflowEdits({ docId: "wf", updatedAt: "t0", dirty: true }, server)).toBe(false);
+  it("keeps dirty edits when the server revision moves", () => {
+    expect(keepLocalWorkflowEdits({ docId: "wf", updatedAt: "t0", dirty: true }, server)).toBe(true);
     expect(keepLocalWorkflowEdits({ docId: "wf", updatedAt: "t1", dirty: false }, server)).toBe(false);
     expect(keepLocalWorkflowEdits({ docId: "other", updatedAt: "t0", dirty: true }, server)).toBe(false);
   });

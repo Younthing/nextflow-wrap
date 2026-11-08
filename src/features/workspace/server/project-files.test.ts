@@ -11,6 +11,24 @@ const root = () => { const path = mkdtempSync(join(tmpdir(), "studio-files-")); 
 afterEach(() => { for (const path of roots.splice(0)) rmSync(path, { recursive: true, force: true }); });
 
 describe("project files", () => {
+  it("restores known documents in data folders and follows their application-managed moves", () => {
+    const path = root();
+    const docs = new ProjectDocuments(path, "project");
+    docs.write({ ...emptyWorkflow("nested"), filePath: "data/analysis.workflow.json" }, "workflow");
+    const reopened = new ProjectDocuments(path, "project");
+    expect(reopened.get("nested", "workflow")?.filePath).toBe("data/analysis.workflow.json");
+    renameSync(join(path, "data/analysis.workflow.json"), join(path, "data/renamed.workflow.json"));
+    reopened.moved([{ from: "data/analysis.workflow.json", to: "data/renamed.workflow.json" }]);
+    expect(new ProjectDocuments(path, "project").get("nested", "workflow")?.filePath).toBe("data/renamed.workflow.json");
+  });
+  it("does not let a malformed document prevent opening other project files", () => {
+    const docs = new ProjectDocuments(root(), "project");
+    docs.write({ ...emptyWorkflow("valid"), filePath: "valid.workflow.json" }, "workflow");
+    writeFileSync(docs.files.resolve("broken.workflow.json"), "{");
+    expect(docs.get("valid", "workflow")?.id).toBe("valid");
+    expect(() => docs.open("broken.workflow.json")).toThrow();
+    expect(docs.files.read("broken.workflow.json").content).toBe("{");
+  });
   it("rejects a stale save and never resurrects an externally deleted file", () => {
     const files = new ProjectFiles(root());
     const first = files.write("analysis/结果.txt", "first", null);
@@ -47,9 +65,10 @@ describe("project files", () => {
   it("assigns copied documents distinct identities", () => {
     const docs = new ProjectDocuments(root(), "project");
     docs.write({ ...emptyWorkflow("same"), filePath: "a.workflow.json" }, "workflow");
-    writeFileSync(docs.files.resolve("b.workflow.json"), docs.files.read("a.workflow.json").content);
+    writeFileSync(docs.files.resolve("0-copy.workflow.json"), docs.files.read("a.workflow.json").content);
     const documents = docs.list("workflow");
     expect(new Set(documents.map((doc) => doc.id)).size).toBe(2);
-    expect(new ProjectDocuments(docs.files.root, "project").list("workflow").map((doc) => doc.id)).toEqual(documents.map((doc) => doc.id));
+    expect(docs.get("same", "workflow")?.filePath).toBe("a.workflow.json");
+    expect(new ProjectDocuments(docs.files.root, "project").list("workflow").map((doc) => doc.id).sort()).toEqual(documents.map((doc) => doc.id).sort());
   });
 });

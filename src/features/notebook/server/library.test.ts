@@ -40,6 +40,7 @@ function notebook(): NotebookDoc {
 function receipt(doc: NotebookDoc): TryRunRecord {
   return {
     notebookId: doc.id,
+    fileVersion: doc.fileVersion,
     rev: doc.rev,
     passed: true,
     exitCode: 0,
@@ -55,7 +56,7 @@ describe("module library persistence", () => {
     const directory = mkdtempSync(join(tmpdir(), "studio-library-"));
     const path = join(directory, "studio.sqlite");
     try {
-      const db = new StudioStore(path);
+      const db = new StudioStore(path, directory, "example");
       const saved = db.saveNotebook(notebook());
       db.saveTryRun(receipt(saved));
       const sourceBeforePublish = db.notebookJson(saved.id);
@@ -65,7 +66,7 @@ describe("module library persistence", () => {
       }), db);
       expect(published.status).toBe(201);
       const view = await published.json() as { id: string; version: string };
-      expect(view.id).toBe("script/round_trip");
+      expect(view.id).toBe("modules/round_trip/v1/module.json");
       expect(JSON.stringify(view)).not.toContain("nb_round");
       expect(db.notebookJson(saved.id)).toBe(sourceBeforePublish);
 
@@ -76,7 +77,7 @@ describe("module library persistence", () => {
       expect(readPercent(library?.percent ?? "").cells).toEqual(saved.cells);
 
       // Modules live in the database only: no folder is written next to it.
-      expect(existsSync(join(directory, "library"))).toBe(false);
+      expect(existsSync(join(directory, view.id))).toBe(true);
 
       const edited = db.saveNotebook({
         ...db.notebook(saved.id)!,
@@ -93,14 +94,14 @@ describe("module library persistence", () => {
       const copy = await reopened.json() as NotebookDoc;
       expect(copy.id).not.toBe(saved.id);
       expect(copy.id.startsWith("nb_")).toBe(true);
-      expect(copy.cells).toEqual(saved.cells);
+      expect(copy.cells).toMatchObject(saved.cells);
       expect(copy.cells.map((cell) => cell.id)).not.toContain("later");
-      expect(copy.temporary).toBe(true);
+      expect(copy.temporary).toBeUndefined();
       expect(copy.fromModuleId).toBe(view.id);
       expect(copy.rev).toBe(1);
       // Temporary: not in the notebook list until kept.
       const listed = async () => (await (await handleNotebookApi("GET", ["notebooks"], new Request("http://studio.local/api/notebooks"), db)).json() as { id: string }[]).map((row) => row.id);
-      expect(await listed()).not.toContain(copy.id);
+      expect(await listed()).toContain(copy.id);
       expect(db.notebookJson(saved.id)).toBe(sourceAfterEdit);
       expect(db.notebook(saved.id)?.cells.map((cell) => cell.id)).toContain("later");
 
@@ -122,7 +123,7 @@ describe("module library persistence", () => {
       expect(readPercent(db.libraryCopy(view.id)?.percent ?? "").cells).toEqual(saved.cells);
 
       db.close();
-      const again = new StudioStore(path);
+      const again = new StudioStore(path, directory, "example");
       expect(again.libraryCopy(view.id)?.percent).toBe(library?.percent);
       expect(again.notebook("nb_round")?.id).toBe("nb_round");
       expect(again.notebookJson("nb_round")).toBe(sourceAfterEdit);

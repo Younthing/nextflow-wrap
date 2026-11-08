@@ -1,3 +1,4 @@
+import { ProjectFiles } from "@/features/workspace/server/project-files";
 import { randomBytes } from "node:crypto";
 import { createWriteStream } from "node:fs";
 import { mkdir, open, realpath, rename, rm } from "node:fs/promises";
@@ -41,8 +42,8 @@ export function numberedName(name: string, n: number, kind: "file" | "directory"
   return `${name.slice(0, name.length - ext.length)} (${n})${ext}`;
 }
 
-async function dataRoot(projectPath: string): Promise<string> {
-  const root = join(projectPath, UPLOAD_FOLDER);
+async function dataRoot(projectPath: string, parent = UPLOAD_FOLDER): Promise<string> {
+  const root = new ProjectFiles(projectPath).resolve(parent);
   await mkdir(root, { recursive: true });
   return realpath(root);
 }
@@ -57,11 +58,11 @@ async function inside(root: string, segments: string[]): Promise<string> {
 }
 
 /** Claims a free top-level name in `data/`: an empty file or folder, created exclusively. */
-export async function reserveUpload(projectPath: string, name: string, kind: "file" | "directory"): Promise<{ name: string; path: string }> {
+export async function reserveUpload(projectPath: string, name: string, kind: "file" | "directory", parent = UPLOAD_FOLDER): Promise<{ name: string; path: string }> {
   const segments = uploadSegments(name);
   const requested = segments[0]!;
   if (segments.length !== 1) throw new UploadError(400, "只能保留一个顶层名称");
-  const root = await dataRoot(projectPath);
+  const root = await dataRoot(projectPath, parent);
   for (let n = 0; n < 1000; n++) {
     const candidate = numberedName(requested, n, kind);
     const path = join(root, candidate);
@@ -80,10 +81,10 @@ export async function reserveUpload(projectPath: string, name: string, kind: "fi
  * Streams `body` to `data/<path>`. The top-level entry must have been reserved first, so an upload never lands
  * on a name the user did not just claim. Bytes go to a temporary sibling that is renamed into place on success.
  */
-export async function writeUpload(projectPath: string, path: string, body: ReadableStream<Uint8Array> | null, limit = uploadLimit()): Promise<{ path: string; bytes: number }> {
+export async function writeUpload(projectPath: string, path: string, body: ReadableStream<Uint8Array> | null, limit = uploadLimit(), parent = UPLOAD_FOLDER): Promise<{ path: string; bytes: number }> {
   if (!body) throw new UploadError(400, "缺少文件内容");
   const segments = uploadSegments(path);
-  const root = await dataRoot(projectPath);
+  const root = await dataRoot(projectPath, parent);
   const top = join(root, segments[0]!);
   // A symlinked top-level entry resolves elsewhere and is refused like a missing reservation.
   const reserved = await realpath(top).catch(() => undefined);

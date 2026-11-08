@@ -130,7 +130,7 @@ describe("editor save queue", () => {
     expect(session.editorConflictIsOwnWrite("wf", "t2")).toBe(true);
   });
 
-  it("reloads when a 409 is a newer server revision", async () => {
+  it("preserves local edits when a 409 is a newer server revision", async () => {
     session.noteEditorRevision("wf", "t0");
     const load = vi.fn();
     const server = doc("t1", "壳复验改名");
@@ -147,7 +147,7 @@ describe("editor save queue", () => {
       toastError: vi.fn(),
     });
     expect(save).toHaveBeenCalledOnce();
-    expect(load).toHaveBeenCalledWith(server);
+    expect(load).not.toHaveBeenCalled();
   });
 
   it("keeps dirty local edits when the cache echoes this editor's own save", () => {

@@ -187,6 +187,7 @@ export interface KernelSpecList {
 }
 
 export interface TryRunRecord {
+  fileVersion?: string;
   nextflowVersion?: string;
   notebookId: string;
   rev: number;

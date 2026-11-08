@@ -517,7 +517,7 @@ const IF_SIDE_STEPS: ExampleStep[] = [
   { id: "if_timelapse_intensity", name: "if_timelapse_intensity", description: "免疫荧光旁支：逐帧分割与强度随时间变化", cells: ifTimelapse },
 ];
 
-export const IF_SIDE_MODULE_IDS = IF_SIDE_STEPS.map((step) => `script/${step.id}`);
+export const IF_SIDE_MODULE_IDS = IF_SIDE_STEPS.map((step) => `modules/${step.id}/v1/module.json`);
 
 /** Extra images the side branches read, copied from `public/` into the project's `data/`. */
 export const IF_SIDE_FILES = [

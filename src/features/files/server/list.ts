@@ -29,10 +29,10 @@ export async function listDirectory(requested: string | null, options: { home?: 
       if (kind === "file") size = target.size;
     }
     if (!kind) continue;
-    entries.push({ name: item.name, path: full, kind, ...(size !== undefined ? { size } : {}) });
+    entries.push({ name: item.name, path: full.replaceAll("\\", "/"), kind, ...(size !== undefined ? { size } : {}) });
     if (entries.length >= MAX_ENTRIES) break;
   }
   entries.sort((a, b) => (a.kind === b.kind ? a.name.localeCompare(b.name) : a.kind === "directory" ? -1 : 1));
   const parent = dirname(folder);
-  return { path: folder, parent: parent === folder ? undefined : parent, entries, home };
+  return { path: folder.replaceAll("\\", "/"), parent: parent === folder ? undefined : parent.replaceAll("\\", "/"), entries, home: home.replaceAll("\\", "/") };
 }

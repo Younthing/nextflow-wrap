@@ -6,14 +6,13 @@ import type { ModuleDef } from "@/features/workflow/types";
 import { versionNumber } from "@/features/workflow/origin";
 
 /**
- * Where an export goes: a new module (`script/<slug>`, from the name), or an existing one it overwrites in place.
- * Overwriting keeps the id, so workflows that use the module run the new version; the version label goes up.
+ * Each publication creates an immutable project-local version. Existing workflow references stay locked.
  */
 export function exportTarget(name: string, existing: readonly ModuleDef[], overwrite?: string): { id: string; slug: string; version: string } {
   const current = overwrite ? existing.find((mod) => mod.id === overwrite) : undefined;
   if (overwrite && !current) throw new Error("来源模块不存在");
-  const slug = current ? moduleSlug(current.name) : moduleSlug(name);
-  const versions = existing.filter((mod) => moduleSlug(mod.name) === slug).map((mod) => versionNumber(mod.version));
+  const slug = current?.id.startsWith("modules/") ? current.id.split("/")[1] : moduleSlug(current?.name ?? name);
+  const versions = existing.filter((mod) => mod.id.startsWith(`modules/${slug}/`) || moduleSlug(mod.name) === slug).map((mod) => versionNumber(mod.version));
   const version = `v${Math.max(0, ...versions) + 1}`;
   return { id: `modules/${slug}/${version}/module.json`, slug, version };
 }
@@ -40,7 +39,7 @@ export function buildScriptModule(input: {
   if (!/^[A-Za-z_][\w.-]{0,80}$/.test(name)) throw new Error("模块名需要以字母或下划线开头");
   const converted = convertNotebook(input.notebook);
   if (!converted.outputs.length) throw new Error("至少标一个输出端口才能发布");
-  if (!input.receipt || input.receipt.notebookId !== input.notebook.id || input.receipt.rev !== input.notebook.rev || !input.receipt.passed) {
+  if (!input.receipt || input.receipt.notebookId !== input.notebook.id || input.receipt.rev !== input.notebook.rev || !input.receipt.passed || (input.notebook.fileVersion && input.receipt.fileVersion !== input.notebook.fileVersion)) {
     throw new Error("试跑通过后才能保存");
   }
   const condaYaml = cleanEnvField(input.condaYaml, "Conda yaml 路径");

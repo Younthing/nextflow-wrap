@@ -1,5 +1,7 @@
 "use client";
 
+import { windowProject } from "@/features/workspace/window-project";
+
 import * as React from "react";
 import {
   type QueryClient,
@@ -24,8 +26,8 @@ import type {
 
 export const runKeys = {
   all: ["runs"] as const,
-  list: (workflowId?: string) => ["runs", "list", workflowId ?? ""] as const,
-  detail: (id: string) => ["runs", "detail", id] as const,
+  list: (workflowId?: string) => ["runs", "list", windowProject(), workflowId ?? ""] as const,
+  detail: (id: string) => ["runs", "detail", windowProject(), id] as const,
 };
 
 export const isActive = (status: RunStatus) =>
@@ -240,7 +242,7 @@ export function useAnnDataSummaryAt(key: readonly unknown[], url: string | null)
 }
 
 const resultUrl = (id: string, path: string | null, kind = "content") =>
-  path ? `/api/runs/${id}/results/${kind}?path=${encodeURIComponent(path)}` : null;
+  path ? `/api/runs/${id}/results/${kind}?path=${encodeURIComponent(path)}&project=${encodeURIComponent(windowProject() ?? "")}` : null;
 
 export function useResultBlob(id: string, path: string | null) {
   return useFileBlob(runKeys.detail(id), resultUrl(id, path));

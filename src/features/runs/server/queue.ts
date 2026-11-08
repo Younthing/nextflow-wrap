@@ -1,4 +1,4 @@
-import type { StoredExecution } from "@/lib/server/database";
+import type { StudioStore, StoredExecution } from "@/lib/server/database";
 
 /**
  * Runs share slots by where their tasks execute.
@@ -37,6 +37,23 @@ export function nextQueued(runs: readonly StoredExecution[], limits: SlotLimits)
     .filter(queued)
     .sort((a, b) => a.detail.submittedAt.localeCompare(b.detail.submittedAt))
     .find((run) => used[slotClass(run)] < limits[slotClass(run)] && !busyProjects.has(run.projectDir));
+}
+
+/** Claim a queued run in its owning store before starting asynchronous preparation. */
+export function claimNextQueued(db: Pick<StudioStore, "runs" | "updateRun">, limits: SlotLimits, owner: string): StoredExecution | undefined {
+  const next = nextQueued(db.runs(), limits);
+  if (!next) return;
+  const unavailable = new Error("运行已被领取或取消");
+  try {
+    return db.updateRun(next.detail.id, (record) => {
+      if (!queued(record)) throw unavailable;
+      record.owner = owner;
+      record.detail.phase = "preparing";
+    }, next.projectRoot);
+  } catch (error) {
+    if (error !== unavailable) throw error;
+    return undefined;
+  }
 }
 
 /**

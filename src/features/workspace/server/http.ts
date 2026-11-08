@@ -1,3 +1,4 @@
+import { ensureExampleProject } from "@/features/notebook/server/http";
 import { join } from "node:path";
 import { z } from "zod";
 
@@ -22,6 +23,7 @@ const idPattern = /^[\w-]{1,80}$/;
 export async function handleProjectsApi(method: string, path: string[], request: Request, db: StudioStore = store()): Promise<Response> {
   // The example project is seeded on first use; doing it here makes it show up on a fresh install.
 
+  ensureExampleProject(db);
   const context: ProjectContext = { db, exampleDir: db.workspace ?? join(dataDirectory(), "projects", "example") };
   const [, id, action] = path;
   if (!id && method === "GET") return json(await listProjects(context));

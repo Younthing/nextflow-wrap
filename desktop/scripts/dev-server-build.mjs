@@ -24,7 +24,7 @@ import { fileURLToPath } from "node:url";
  * src/features/desktop/connections.ts; a test keeps the two equal). Settings, the toolchain, logs and installed
  * servers stay.
  */
-export const DATA_ENTRIES = ["studio.sqlite", "studio.sqlite-wal", "studio.sqlite-shm", "workspaces", "executions", "pipelines", "work"];
+export const DATA_ENTRIES = ["workspace-registry.sqlite", "workspace-registry.sqlite-wal", "workspace-registry.sqlite-shm"];
 
 /** Top-level paths of the checkout that are not copied (and are kept in the copy: node_modules, .next). */
 export const EXCLUDED = new Set([
@@ -245,7 +245,7 @@ async function main() {
   step("停止 WSL 里正在运行的服务端");
   console.log(await stopServer(data) ? "   已停止" : "   没有在运行");
   const want = Number(/export const SCHEMA_VERSION = (\d+);/.exec(readFileSync(join(work, "src", "lib", "server", "schema.ts"), "utf8"))?.[1]);
-  const have = await databaseVersion(join(data, "studio.sqlite"));
+  const have = await databaseVersion(join(data, "workspace-registry.sqlite"));
   if (options.fresh || (have !== undefined && have !== want)) {
     console.log(`   清除数据 ${data}（数据格式 ${have ?? "无"} → ${want}；设置、工具链和日志保留）`);
     for (const entry of DATA_ENTRIES) rmSync(join(data, entry), { recursive: true, force: true });

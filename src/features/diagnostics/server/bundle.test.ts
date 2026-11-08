@@ -15,10 +15,11 @@ function fixture() {
   dirs.push(root);
   const db = new StudioStore(join(root, "studio.sqlite"));
   const attemptDir = join(root, "executions", "r1", "attempts", "r1");
-  mkdirSync(join(attemptDir, "project"), { recursive: true });
-  writeFileSync(join(attemptDir, "console.log"), "N E X T F L O W\nERROR ~ boom\n");
+  mkdirSync(join(attemptDir, "snapshot", "project"), { recursive: true });
+  mkdirSync(join(attemptDir, "logs"), { recursive: true });
+  writeFileSync(join(attemptDir, "logs/console.log"), "N E X T F L O W\nERROR ~ boom\n");
   writeFileSync(join(attemptDir, "run.config"), "aws.secretKey = 'abc'\n");
-  writeFileSync(join(attemptDir, "project", "main.nf"), "workflow {}\n");
+  writeFileSync(join(attemptDir, "snapshot", "project", "main.nf"), "workflow {}\n");
   const run = {
     lineageId: "r1", projectDir: join(root, "pipelines", "wf"), attemptDir, sessionId: "s1",
     detail: {
@@ -45,7 +46,7 @@ describe("diagnostics bundle", () => {
 
     expect([...byPath.keys()]).toEqual(expect.arrayContaining([
       "summary.json", "environment.json", "setup.json", "settings.json", "logs/app/web.log",
-      "run/r1/detail.json", "run/r1/console.log", "run/r1/run.config", "run/r1/project/main.nf", "run/r1/tasks.json",
+      "run/r1/detail.json", "run/r1/logs/console.log", "run/r1/run.config", "run/r1/snapshot/project/main.nf", "run/r1/tasks.json",
     ]));
     const environment = JSON.parse(byPath.get("environment.json")!);
     expect(environment).toMatchObject({ PATH: "/usr/bin", NXF_VER: "26.10.4", NEXTFLOW_STUDIO_SESSION_TOKEN: "‹已隐藏›" });

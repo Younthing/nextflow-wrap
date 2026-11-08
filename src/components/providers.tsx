@@ -8,6 +8,14 @@ import { EditorProvider } from "@/features/editor/editor-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AssistantProvider } from "@/features/assistant/assistant-provider";
 import { startMocking } from "@/lib/mocking";
+import { useCurrentProject } from "@/features/workspace/queries";
+import { useProjectChanges } from "@/features/workspace/use-project-changes";
+
+function ProjectConnection() {
+  const { project } = useCurrentProject();
+  useProjectChanges(project?.id);
+  return null;
+}
 
 function makeQueryClient() {
   return new QueryClient({
@@ -51,6 +59,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <MockingGate>
+          <ProjectConnection />
           <EditorProvider>
             <AssistantProvider>{children}</AssistantProvider>
           </EditorProvider>

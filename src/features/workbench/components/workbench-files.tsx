@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { useOpenDocument } from "@/features/workspace/document-queries";
+import { useCreateTextDocument, useOpenDocument } from "@/features/workspace/document-queries";
 import {
   ChevronRight,
   ClipboardPaste,
@@ -14,7 +14,7 @@ import {
   FolderPlus,
   Link2,
   Loader2,
-  NotebookText,
+  Workflow,
   Pencil,
   Plus,
   RefreshCw,
@@ -71,6 +71,7 @@ type Dialog =
   | { kind: "preview"; entry: FsEntry }
   | { kind: "rename-file"; entry: FsEntry }
   | { kind: "delete-file"; entry: FsEntry }
+  | { kind: "new-file"; parent: string }
   | { kind: "new-folder"; parent: string }
   | { kind: "rename-notebook"; notebook: NotebookSummary }
   | { kind: "delete-notebook"; notebook: NotebookSummary };
@@ -79,6 +80,7 @@ interface FileActions {
   project: Project;
   open: (dialog: Dialog) => void;
   openFile: (entry: FsEntry) => void;
+  selectFolder: (path: string) => void;
   /** Paste the clipped files into a folder (workspace path). */
   paste: (folder: string) => void;
   clip: (entry: FsEntry, mode: "copy" | "move") => void;
@@ -169,7 +171,7 @@ function Directory({ entry, depth }: { entry: FsEntry; depth: number }) {
           aria-expanded={open}
           className={rowClass}
           style={{ paddingLeft: `${6 + depth * 14}px` }}
-          onClick={() => setOpen(!open)}
+          onClick={() => { actions.selectFolder(relativeToProject(actions.project, entry.path)); setOpen(!open); }}
           onKeyDown={entryKeys(actions, entry)}
         >
           <ChevronRight className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-90")} aria-hidden />
@@ -225,17 +227,21 @@ export function WorkbenchFiles({
   activeId,
   creating,
   onCreate,
+  onCreateWorkflow,
 }: {
   project: Project;
   notebooks: NotebookSummary[];
   loading?: boolean;
   activeId?: string;
   creating?: boolean;
-  onCreate: () => void;
+  onCreate: (folder?: string) => void;
+  onCreateWorkflow?: (folder?: string) => void;
 }) {
   const router = useRouter();
   const openDocument = useOpenDocument();
-  const intake = useFileIntake();
+  const createText = useCreateTextDocument();
+  const [selectedFolder, selectFolder] = React.useState("");
+  const intake = useFileIntake(selectedFolder);
   const entries = useWorkspaceEntries(project.id);
   const deleteNotebook = useDeleteNotebook();
   const renameNotebook = useRenameNotebook();
@@ -262,6 +268,7 @@ export function WorkbenchFiles({
 
   const actions: FileActions = {
     project,
+    selectFolder,
     open: setDialog,
     openFile: (entry) => {
       const path = relativeToProject(project, entry.path);
@@ -301,13 +308,15 @@ export function WorkbenchFiles({
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="flex items-center gap-1 px-2 pb-1">
           <h2 className="text-[11px] font-bold tracking-[0.1em] text-muted-foreground">{project.name}</h2>
-          <Button type="button" size="icon-sm" variant="ghost" className="ml-auto size-6" aria-label="新建笔记本" disabled={creating} onClick={onCreate}>
+          <Button type="button" size="icon-sm" variant="ghost" className="ml-auto size-6" aria-label="新建笔记本" disabled={creating} onClick={() => onCreate(selectedFolder)}>
             {creating ? <Loader2 className="animate-spin" /> : <Plus />}
           </Button>
         </div>
+        {onCreateWorkflow ? <Button variant="ghost" size="sm" onClick={() => onCreateWorkflow(selectedFolder)}><Workflow />新建流程</Button> : null}
+        <p className="truncate px-2 text-xs text-muted-foreground" title={selectedFolder}>{selectedFolder || "项目根目录"}</p>
         <div className="mt-4 flex items-center gap-1 px-2 pb-1">
           <h2 className="text-[11px] font-bold tracking-[0.1em] text-muted-foreground">文件</h2>
-          <Button type="button" size="icon-sm" variant="ghost" className="ml-auto size-6" aria-label="上传到 data/" title="上传到 data/" onClick={() => fileInput.current?.click()}>
+          <Button type="button" size="icon-sm" variant="ghost" className="ml-auto size-6" aria-label="上传到选中文件夹" title="上传到选中文件夹" onClick={() => fileInput.current?.click()}>
             <Upload />
           </Button>
           <input
@@ -346,11 +355,12 @@ export function WorkbenchFiles({
             <ContextMenuItem disabled={!canPasteFiles} onSelect={() => actions.paste("")}>
               <ClipboardPaste /> 粘贴到项目文件夹
             </ContextMenuItem>
-            <ContextMenuItem onSelect={() => setDialog({ kind: "new-folder", parent: "" })}>
+            <ContextMenuItem onSelect={() => setDialog({ kind: "new-file", parent: selectedFolder })}><File />新建文件</ContextMenuItem>
+            <ContextMenuItem onSelect={() => setDialog({ kind: "new-folder", parent: selectedFolder })}>
               <FolderPlus /> 新建文件夹
             </ContextMenuItem>
             <ContextMenuItem onSelect={() => fileInput.current?.click()}>
-              <Upload /> 上传到 data/
+              <Upload /> 上传到选中文件夹
             </ContextMenuItem>
             <ContextMenuItem onSelect={entries.refresh}>
               <RefreshCw /> 刷新
@@ -367,8 +377,8 @@ export function WorkbenchFiles({
         onDownload={actions.download}
       />
       <NameDialog
-        open={dialog?.kind === "rename-file" || dialog?.kind === "rename-notebook" || dialog?.kind === "new-folder"}
-        title={dialog?.kind === "new-folder" ? "新建文件夹" : dialog?.kind === "rename-notebook" ? "重命名笔记本" : "重命名"}
+        open={dialog?.kind === "new-file" || dialog?.kind === "rename-file" || dialog?.kind === "rename-notebook" || dialog?.kind === "new-folder"}
+        title={dialog?.kind === "new-file" ? "新建文件" : dialog?.kind === "new-folder" ? "新建文件夹" : dialog?.kind === "rename-notebook" ? "重命名笔记本" : "重命名"}
         description={
           dialog?.kind === "new-folder"
             ? `在 ${dialog.parent || "项目文件夹"} 里`
@@ -385,7 +395,10 @@ export function WorkbenchFiles({
         submitLabel={dialog?.kind === "new-folder" ? "创建" : "重命名"}
         onClose={() => setDialog(null)}
         onSubmit={(name) => {
-          if (dialog?.kind === "rename-file") {
+          if (dialog?.kind === "new-file") {
+            const path = [dialog.parent, name].filter(Boolean).join("/");
+            void run(async () => { await createText.mutateAsync(path); router.push(`/workbench/file/${encodeURIComponent(path)}`); });
+          } else if (dialog?.kind === "rename-file") {
             const path = relativeToProject(project, dialog.entry.path);
             void run(() => entries.rename(path, name), `已重命名为 ${name}`);
           } else if (dialog?.kind === "new-folder") {

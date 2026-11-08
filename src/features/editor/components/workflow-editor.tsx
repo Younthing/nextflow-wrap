@@ -39,6 +39,7 @@ import {
   type SearchPick,
   type SearchRequest,
 } from "./node-search-dialog";
+import { WorkflowConflict } from "@/features/workbench/components/document-conflict";
 import { WorkflowCanvas } from "./workflow-canvas";
 
 function BackToLibrary() {
@@ -74,12 +75,20 @@ function Editor({ workflowId }: { workflowId: string }) {
 
   React.useEffect(() => {
     const doc = workflow.data;
+    if (doc === null && store.getState().docId === workflowId && selectIsDirty(store.getState())) {
+      store.setState({ conflict: "流程文件已删除，本地编辑已保留，请另存为副本" });
+      return;
+    }
     if (!doc || doc.id !== workflowId) return;
     const state = store.getState();
     const appliedThisMount =
       applied.id === workflowId && applied.token === mountToken;
     // A save echo for the revision we already have must not reload the canvas.
-    if (appliedThisMount && state.updatedAt === doc.updatedAt) return;
+    if (appliedThisMount && state.updatedAt === doc.updatedAt && state.fileVersion === doc.fileVersion) return;
+    if (state.docId === doc.id && selectIsDirty(state) && state.fileVersion !== doc.fileVersion) {
+      store.setState({ conflict: "文件在外部被修改，本地编辑已保留", appliedWorkflow: { id: workflowId, token: mountToken } });
+      return;
+    }
     // A background GET can still resolve with the revision from before this save.
     if (
       state.docId === doc.id &&
@@ -244,7 +253,7 @@ function Editor({ workflowId }: { workflowId: string }) {
       </PanelNotice>
     );
   }
-  if (workflow.data === null) {
+  if (workflow.data === null && !selectIsDirty(store.getState())) {
     return (
       <PanelNotice message="这个流程不存在或已被删除">
         <BackToLibrary />
@@ -262,6 +271,7 @@ function Editor({ workflowId }: { workflowId: string }) {
         className="w-60 shrink-0"
       />
       <div className="flex min-w-0 flex-1 flex-col gap-3">
+        <WorkflowConflict id={workflowId} />
         <EditorToolbar
           saving={saving}
           onFit={fitWorkflow}

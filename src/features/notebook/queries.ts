@@ -1,5 +1,7 @@
 "use client";
 
+import { windowProject } from "@/features/workspace/window-project";
+
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
@@ -21,9 +23,9 @@ import type {
 export const notebookKeys = {
   all: ["notebooks"] as const,
   list: (project?: string) => ["notebooks", { project: project ?? null }] as const,
-  detail: (id: string) => ["notebooks", id] as const,
-  revision: (id: string, rev: string) => ["notebooks", id, "rev", rev] as const,
-  kernel: (id: string) => ["notebooks", id, "kernel"] as const,
+  detail: (id: string, project = windowProject()) => ["notebooks", project, id] as const,
+  revision: (id: string, rev: string) => ["notebooks", windowProject(), id, "rev", rev] as const,
+  kernel: (id: string) => ["notebooks", windowProject(), id, "kernel"] as const,
 };
 
 export const kernelSpecsKey = ["kernels"] as const;
@@ -62,13 +64,13 @@ export function useNotebookRevision(id: string | undefined, rev: string | null) 
 
 export function useScriptModules() {
   return useQuery({
-    queryKey: scriptModuleKey,
+    queryKey: [...scriptModuleKey, windowProject()],
     queryFn: () => api<ScriptModuleList>("/script-modules"),
   });
 }
 
 function refreshNotebooks(qc: ReturnType<typeof useQueryClient>, doc?: NotebookDoc) {
-  if (doc) qc.setQueryData(notebookKeys.detail(doc.id), doc);
+  if (doc) qc.setQueryData(notebookKeys.detail(doc.id, doc.projectId), doc);
   void qc.invalidateQueries({ queryKey: notebookKeys.all });
   void qc.invalidateQueries({ queryKey: scriptModuleKey });
 }
@@ -76,7 +78,7 @@ function refreshNotebooks(qc: ReturnType<typeof useQueryClient>, doc?: NotebookD
 export function useCreateNotebook() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: Pick<NotebookDoc, "name" | "description" | "kernel" | "cells" | "projectId">) =>
+    mutationFn: (body: Pick<NotebookDoc, "name" | "description" | "kernel" | "cells" | "projectId" | "filePath" | "metadata"> & { folder?: string }) =>
       api<NotebookDoc>("/notebooks", { method: "POST", body: JSON.stringify(body) }),
     onSuccess: (doc) => refreshNotebooks(qc, doc),
   });

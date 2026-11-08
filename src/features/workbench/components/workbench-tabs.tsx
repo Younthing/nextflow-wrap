@@ -1,9 +1,16 @@
 "use client";
 
+import { useSyncExternalStore } from "react";
+import { dirtyDocument, subscribeDocument } from "../document-sessions";
 import Link from "next/link";
 import { X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+
+function DirtyMark({ id }: { id: string }) {
+  const dirty = useSyncExternalStore((listener) => subscribeDocument(id, listener), () => dirtyDocument(id), () => false);
+  return dirty ? <span aria-label="未保存">●</span> : null;
+}
 
 /** Open notebooks as tabs. Middle click or × closes one. */
 export function WorkbenchTabs({
@@ -33,7 +40,7 @@ export function WorkbenchTabs({
             onAuxClick={(event) => { if (event.button === 1) { event.preventDefault(); onClose(id); } }}
           >
             <Link href={`/workbench/${id}`} aria-current={selected ? "page" : undefined} className="truncate outline-none focus-visible:underline" title={name}>
-              {name}
+              {name} <DirtyMark id={id} />
             </Link>
             <button
               type="button"

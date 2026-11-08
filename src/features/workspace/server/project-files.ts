@@ -20,13 +20,20 @@ export class ProjectFiles {
 
   initialize(): { id: string; formatVersion: number } {
     if (existsSync(join(this.root, "studio.json"))) {
-      const manifest = JSON.parse(this.read("studio.json").content);
+      let manifest;
+      try { manifest = JSON.parse(this.read("studio.json").content); }
+      catch { throw new ProjectFileError(422, "studio.json 不是有效的 JSON"); }
       if (manifest.formatVersion !== 2 || typeof manifest.id !== "string") throw new ProjectFileError(422, "studio.json 格式无效或版本不受支持");
       return manifest;
     }
     const manifest = { formatVersion: 2, id: randomUUID(), name: this.root.split(/[\\/]/).at(-1) };
     this.write("studio.json", `${JSON.stringify(manifest, null, 2)}\n`, null);
     return manifest;
+  }
+
+  immutable(path: string, value: unknown) {
+    if (existsSync(this.resolve(path))) return;
+    this.write(path, `${JSON.stringify(value, null, 2)}\n`, null);
   }
 
   resolve(path: string): string {

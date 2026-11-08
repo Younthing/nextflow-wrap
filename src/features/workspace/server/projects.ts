@@ -1,12 +1,13 @@
 import { mkdir, readdir, stat, realpath } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 
+import { existsSync } from "node:fs";
+import { ProjectFiles } from "./project-files";
 import { HttpError } from "@/features/runs/server/service";
 import type { StudioStore } from "@/lib/server/database";
 import { folderName, joinProjectPath, normalizeProjectPath, PROJECT_SCAFFOLD, projectIdForPath, projectNameError, touchProject } from "../projects";
 import type { CreateProjectRequest, Project, ProjectList } from "../types";
 
-const CURRENT_KEY = "currentProject";
 
 export interface ProjectContext {
   db: StudioStore;
@@ -26,7 +27,7 @@ async function directoryExists(path: string): Promise<boolean> {
 }
 
 export async function listProjects(context: ProjectContext): Promise<ProjectList> {
-  const projects = context.db.projects();
+  const projects = context.db.projects().filter((project) => context.db.meta(`hiddenProject:${project.id}`) !== "1");
   return { projects };
 }
 
@@ -35,6 +36,7 @@ function remember(context: ProjectContext, project: Project): Project {
   const next = touchProject(db.projects(), project, timestamp(context)).find((item) => item.id === project.id)!;
   db.transaction(() => {
     db.saveProject(next);
+    db.setMeta(`hiddenProject:${next.id}`, "");
 
   });
   return next;
@@ -65,7 +67,11 @@ export async function createProject(context: ProjectContext, request: CreateProj
 
 /** Open an existing folder as a project. The same folder always maps to the same project. */
 export async function openProject(context: ProjectContext, requested: string): Promise<Project> {
-  const path = normalizeProjectPath(await realpath(absolute(requested, "目录")));
+  const requestedPath = absolute(requested, "目录");
+  if (!(await directoryExists(requestedPath))) throw new HttpError(404, `目录不存在：${requestedPath}`);
+  const path = normalizeProjectPath(await realpath(requestedPath));
+  const files = new ProjectFiles(path);
+  if (existsSync(files.resolve("studio.json"))) files.initialize();
   const known = context.db.projects().find((project) => project.path === path);
   if (!(await directoryExists(path))) throw new HttpError(404, `目录不存在：${path}`);
   const now = timestamp(context);
@@ -80,21 +86,14 @@ export async function reopenProject(context: ProjectContext, id: string): Promis
   return remember(context, project);
 }
 
-/** The open project, for new notebooks created without naming one. */
-export function currentProjectId(db: StudioStore): string | undefined {
-  return db.projectHandle;
-}
-
-export function closeProject(context: ProjectContext) {
-  context.db.setMeta(CURRENT_KEY, "");
-}
+/** Project selection belongs to the window; closing never changes another window. */
+export function closeProject(context: ProjectContext) { void context; }
 
 /** Remove from the recent list. The folder on disk is never touched. */
 export function forgetProject(context: ProjectContext, id: string) {
   const { db } = context;
-  if (!db.project(id)) throw new HttpError(404, "项目不在最近列表里");
+  if (!db.project(id) || db.meta(`hiddenProject:${id}`) === "1") throw new HttpError(404, "项目不在最近列表里");
   db.transaction(() => {
-    db.deleteProject(id);
-    if (db.meta(CURRENT_KEY) === id) db.setMeta(CURRENT_KEY, "");
+    db.setMeta(`hiddenProject:${id}`, "1");
   });
 }

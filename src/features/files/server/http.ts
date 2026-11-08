@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { planReferenceUpdates } from "@/features/workspace/reference-updates";
 
 import { stat } from "node:fs/promises";
 
@@ -15,7 +16,7 @@ import { reserveUpload, UploadError, writeUpload } from "./upload";
 
 const json = (value: unknown, status = 200) => Response.json(value, { status, headers: { "cache-control": "no-store" } });
 
-const reserveSchema = z.object({ project: z.string().min(1).max(200), name: z.string().min(1).max(255), kind: z.enum(["file", "directory"]) });
+const reserveSchema = z.object({ project: z.string().min(1).max(200), name: z.string().min(1).max(255), kind: z.enum(["file", "directory"]), parent: z.string().max(4000).optional() });
 const project = z.string().min(1).max(200);
 const workspacePath = z.string().max(4000);
 const renameSchema = z.object({ project, path: workspacePath.min(1), name: z.string().min(1).max(255) });
@@ -56,7 +57,7 @@ export async function handleFsApi(method: string, path: string[], request: Reque
     }
     if (method === "POST" && path[1] === "reserve") {
       const body = reserveSchema.parse(await request.json());
-      return json(await reserveUpload(projectPath(body.project), body.name, body.kind), 201);
+      return json(await reserveUpload(projectPath(body.project), body.name, body.kind, body.parent), 201);
     }
     if (method === "GET" && (path[1] === "content" || path[1] === "summary")) {
       const url = new URL(request.url);
@@ -74,8 +75,9 @@ export async function handleFsApi(method: string, path: string[], request: Reque
       const db = store();
       const notebooks = await notebooksAtPaths(db, body.project, [body.path]);
       const renamed = await renameEntry(projectPath(body.project), body.path, body.name);
+      db.documents?.moved([{ from: body.path, to: renamed }]);
       if (!db.documents && !notebookFile(renamed)) await deleteNotebooks(db, notebooks);
-      return json({ path: renamed });
+      return json({ path: renamed, referenceUpdates: db.documents ? planReferenceUpdates(db.workflows(), [{ from: body.path, to: renamed }]) : [] });
     }
     if (method === "POST" && path[1] === "delete") {
       const body = deleteSchema.parse(await request.json());
@@ -90,8 +92,9 @@ export async function handleFsApi(method: string, path: string[], request: Reque
       const db = store();
       const moved = body.mode === "move" ? await notebooksAtPaths(db, body.project, body.sources) : [];
       const pasted = await pasteEntries(projectPath(body.project), body.sources, body.target, body.mode);
+      if (body.mode === "move") db.documents?.moved(body.sources.map((from, index) => ({ from, to: pasted[index] })));
       if (!db.documents && moved.length && !pasted.every(notebookFile)) await deleteNotebooks(db, moved);
-      return json({ paths: pasted });
+      return json({ paths: pasted, referenceUpdates: db.documents && body.mode === "move" ? planReferenceUpdates(db.workflows(), body.sources.map((from, index) => ({ from, to: pasted[index] }))) : [] });
     }
     if (method === "POST" && path[1] === "folder") {
       const body = folderSchema.parse(await request.json());
@@ -121,7 +124,7 @@ export async function handleUpload(request: Request): Promise<Response> {
   try {
     const target = url.searchParams.get("path");
     if (!target) throw new UploadError(400, "缺少上传路径");
-    return json(await writeUpload(projectPath(url.searchParams.get("project")), target, request.body), 201);
+    return json(await writeUpload(projectPath(url.searchParams.get("project")), target, request.body, undefined, url.searchParams.get("parent") ?? undefined), 201);
   } catch (error) {
     if (error instanceof UploadError) return json({ message: error.message }, error.status);
     throw error;

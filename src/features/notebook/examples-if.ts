@@ -212,7 +212,7 @@ const IF_STEPS: ExampleStep[] = [
   { id: "if_summarize", name: "if_summarize", description: "免疫荧光：描述统计、KMeans 聚类与总览图", cells: ifSummarize },
 ];
 
-export const IF_EXAMPLE_MODULE_IDS = IF_STEPS.map((step) => `script/${step.id}`);
+export const IF_EXAMPLE_MODULE_IDS = IF_STEPS.map((step) => `modules/${step.id}/v1/module.json`);
 
 /** Keywords on the IF example modules, for the module library search. */
 export const IF_EXAMPLE_KEYWORDS = ["notebook", "scikit-image", "immunofluorescence"];

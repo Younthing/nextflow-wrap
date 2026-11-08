@@ -1,3 +1,4 @@
+import { projectChanges } from "@/features/workspace/server/changes";
 import { randomUUID } from "node:crypto";
 import { stat } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
@@ -53,6 +54,7 @@ async function handleScoped(request: Request, context: Context): Promise<Respons
     if (resource === "notebooks" || resource === "script-modules" || resource === "kernels") return await handleNotebookApi(method, path, request);
     if (resource === "documents") {
       const documents = store().documents!;
+      if (id === "changes" && method === "GET") return projectChanges(store().projectRoot!, request.signal, store().projectHandle!);
       const file = url.searchParams.get("path") ?? "";
       if (method === "GET") return json(action === "open" || id === "open" ? documents.open(file) : documents.files.read(file));
       if (method === "PUT") {
@@ -71,7 +73,8 @@ async function handleScoped(request: Request, context: Context): Promise<Respons
       if (!id && method === "POST") {
         const projectId = store().projectHandle;
         if (!projectId) throw new HttpError(400, "先打开一个项目");
-        const doc = { ...workflowInput(await request.json()), id: randomUUID(), projectId, updatedAt: new Date().toISOString() };
+        const body = await request.json();
+        const doc = { ...workflowInput(body), id: randomUUID(), projectId, filePath: typeof body.folder === "string" ? store().documents?.files.available(body.folder, body.name, ".workflow.json") : undefined, fileVersion: undefined, updatedAt: new Date().toISOString() };
         store().saveWorkflow(doc);
         return json(doc, 201);
       }
@@ -112,8 +115,8 @@ async function handleScoped(request: Request, context: Context): Promise<Respons
       if (action === "resume" && method === "POST") return json(resumeRun(id), 202);
       if (action === "tasks" && method === "GET") return json(store().tasks(id));
       if (action === "log" && method === "GET") {
-        const text = await readTail(join(run.attemptDir, "console.log")) || await readTail(join(run.projectDir, "install.log"));
-        if (url.searchParams.get("download") === "1") return fileResponse(await containedFile(run.attemptDir, "console.log"), true);
+        const text = await readTail(join(run.attemptDir, "logs", "console.log")) || await readTail(join(run.projectDir, "install.log"));
+        if (url.searchParams.get("download") === "1") return fileResponse(await containedFile(run.attemptDir, "logs/console.log"), true);
         return json({ lines: text.split("\n") });
       }
       if (action === "task-log" && method === "GET") {

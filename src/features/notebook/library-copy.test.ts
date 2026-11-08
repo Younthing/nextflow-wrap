@@ -139,7 +139,7 @@ describe("library copies", () => {
       receipt: passed(second),
       savedAt: now,
     });
-    expect(v2.library.moduleId).toBe(v1.library.moduleId);
+    expect(v2.library.moduleId).not.toBe(v1.library.moduleId);
     expect(v2.library.version).toBe("v2");
     expect(notebookFromLibrary(v1.library, "nb_a", now).cells.map((cell) => cell.id)).not.toContain("later");
     expect(notebookFromLibrary(v2.library, "nb_b", now).cells.map((cell) => cell.id)).toContain("later");

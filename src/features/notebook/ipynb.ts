@@ -32,7 +32,7 @@ export interface Ipynb {
 
 /** Notebook-level fields the file carries. `rev`, timestamps and kernel state stay in the database. */
 export type IpynbNotebook = Pick<NotebookDoc, "name" | "description" | "kernel" | "language" | "cells" | "metadata">
-  & Partial<Pick<NotebookDoc, "id">>;
+  & Partial<Pick<NotebookDoc, "id" | "fromModuleId">>;
 
 /** Split source the way Jupyter writes it: one string per line, each keeping its newline. */
 function sourceLines(source: string): string[] {
@@ -40,22 +40,27 @@ function sourceLines(source: string): string[] {
 }
 
 function writeCell(cell: NotebookCell): IpynbCell {
-  const metadata = { ...cell.metadata, [IPYNB_KEY]: { role: cell.role } };
+  const metadata = { ...cell.metadata };
+  const studio = { ...record(metadata[IPYNB_KEY]) };
+  if (cell.role === "code" || cell.role === "markdown") delete studio.role;
+  else studio.role = cell.role;
+  if (Object.keys(studio).length) metadata[IPYNB_KEY] = studio;
+  else delete metadata[IPYNB_KEY];
   if (cell.role === "markdown") return { cell_type: "markdown", id: cell.id, metadata, source: sourceLines(cell.source) };
   return { cell_type: "code", id: cell.id, metadata, source: sourceLines(cell.source), outputs: [], execution_count: null };
 }
 
 export function notebookToIpynb(doc: IpynbNotebook): Ipynb {
   const language = doc.language === "r" ? "R" : "python";
-  const studio: Record<string, unknown> = { id: doc.id, description: doc.description };
+  const studio: Record<string, unknown> = { id: doc.id, description: doc.description, ...(doc.fromModuleId ? { fromModuleId: doc.fromModuleId } : {}) };
   return {
     nbformat: 4,
     nbformat_minor: 5,
     metadata: {
       ...doc.metadata,
-      kernelspec: { name: doc.kernel, display_name: kernelLabel(doc.kernel), language: doc.language },
-      language_info: { name: language },
-      [IPYNB_KEY]: { ...studio, name: doc.name },
+      kernelspec: { ...record(doc.metadata?.kernelspec), name: doc.kernel, display_name: kernelLabel(doc.kernel), language: doc.language },
+      language_info: { ...record(doc.metadata?.language_info), name: language },
+      [IPYNB_KEY]: { ...record(doc.metadata?.[IPYNB_KEY]), ...studio, name: doc.name },
     },
     cells: doc.cells.map(writeCell),
   };
@@ -127,5 +132,6 @@ export function notebookFromIpynb(raw: string, fallbackName: string): IpynbNoteb
     cells: cells.length ? cells : [{ id: "c1", role: "code", source: "" }],
   };
   if (typeof studio.id === "string" && ID.test(studio.id)) doc.id = studio.id;
+  if (typeof studio.fromModuleId === "string") doc.fromModuleId = studio.fromModuleId;
   return doc;
 }

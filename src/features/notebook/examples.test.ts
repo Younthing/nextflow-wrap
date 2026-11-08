@@ -27,16 +27,16 @@ describe("example project", () => {
     expect(issues).toEqual([]);
     for (const def of modules) {
       expect(def.inputs.filter((port) => !port.widget).length).toBeGreaterThanOrEqual(2);
-      expect(def.outputs.length).toBeGreaterThanOrEqual(def.id === "script/summary_report" ? 1 : 3);
+      expect(def.outputs.length).toBeGreaterThanOrEqual(def.id === "modules/summary_report/v1/module.json" ? 1 : 3);
     }
-    expect(modules.find((module) => module.id === "script/group_compare")!.inputs.filter((port) => port.widget).map((port) => port.name)).toEqual(["group_col", "reference", "alpha", "top_n"]);
+    expect(modules.find((module) => module.id === "modules/group_compare/v1/module.json")!.inputs.filter((port) => port.widget).map((port) => port.name)).toEqual(["group_col", "reference", "alpha", "top_n"]);
   });
 
   it("opens each module's saved notebook copy for editing", () => {
     const copies = exampleLibraryCopies();
     const notebook = notebookFromLibrary(copies[0]!, "nb_edit", "example");
     expect(notebook.cells).toEqual(exampleNotebooks()[0]!.cells);
-    expect(notebook.fromModuleId).toBe("script/count_qc");
+    expect(notebook.fromModuleId).toBe("modules/count_qc/v1/module.json");
   });
 
   it("runs the generated scripts end to end on the example data, as Nextflow would", () => {
@@ -46,7 +46,7 @@ describe("example project", () => {
       writeFileSync(join(dir, file.path), file.content);
     }
     const run = (id: string, args: string[]) => {
-      const def = modules.find((item) => item.id === `script/${id}`)!;
+      const def = modules.find((item) => item.id === `modules/${id}/v1/module.json`)!;
       const task = join(dir, id);
       mkdirSync(task, { recursive: true });
       writeFileSync(join(task, "script.py"), def.script!);

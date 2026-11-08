@@ -72,7 +72,7 @@ export function StorageView({ report, onClean, cleaning }: { report: StorageRepo
               <li key={session.key} className="flex flex-wrap items-center gap-3 py-3" aria-label={`${session.workflowName} 会话`}>
                 <div className="flex min-w-0 flex-1 flex-col gap-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <Link href={`/workflows/${session.workflowId}`} className="font-medium hover:underline">{session.workflowName}</Link>
+                    <Link href={`/workbench/workflow/${session.workflowId}`} className="font-medium hover:underline">{session.workflowName}</Link>
                     {session.active && <Badge variant="warning">运行中</Badge>}
                     {session.cleanedAt && <Badge variant="secondary">work 已清理 · 不能续跑</Badge>}
                     {session.remote && <Badge variant="outline">对象存储：请用 nextflow clean</Badge>}

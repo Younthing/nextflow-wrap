@@ -15,11 +15,11 @@ export class ApiError extends Error {
 }
 
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  let project = windowProject();
+  let project = new URLSearchParams(path.split("?")[1]).get("project") ?? windowProject();
   if (typeof init?.body === "string") {
     try {
       const body = JSON.parse(init.body);
-      project = body.projectId ?? body.workflow?.projectId ?? project;
+      project = body.projectId ?? body.workflow?.projectId ?? (typeof body.project === "string" ? body.project : project);
     } catch { /* Non-JSON bodies are handled by their endpoint. */ }
   }
   const res = await fetch(`/api${path}`, {

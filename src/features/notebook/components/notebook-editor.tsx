@@ -272,7 +272,7 @@ export function NotebookEditor({ notebookId }: { notebookId: string }) {
   }, [dragging]);
 
   if (notebook.isPending) return <AsyncPlaceholder status="pending" className="h-full" />;
-  if (notebook.error || !notebook.data) {
+  if ((notebook.error || !notebook.data) && !live) {
     return <AsyncPlaceholder status="error" className="h-auto" message={notebook.error?.message ?? "笔记本不存在"} />;
   }
   if (!live || !saved) return <AsyncPlaceholder status="pending" className="h-full" />;

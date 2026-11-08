@@ -162,13 +162,8 @@ if [ -n "$p" ] && kill -0 "$p" 2>/dev/null; then
 fi
 `;
 
-/**
- * What "清除数据" removes from a data directory, and what the desktop app removes before starting a local server
- * on data from another schema version: the database, the example project, run records, launch and work
- * directories. Settings (settings.json, secrets.json), the toolchain, logs, installed servers and projects in
- * their own folders stay.
- */
-export const DATA_ENTRIES = ["studio.sqlite", "studio.sqlite-wal", "studio.sqlite-shm", "workspaces", "executions", "pipelines", "work"] as const;
+/** Clearing application state removes only the backend registry; project folders and earlier data remain. */
+export const DATA_ENTRIES = ["workspace-registry.sqlite", "workspace-registry.sqlite-wal", "workspace-registry.sqlite-shm"] as const;
 
 /** Removes DATA_ENTRIES from the server's data directory (run after STOP_SCRIPT). */
 export const CLEAR_DATA_SCRIPT = `d="$HOME/.local/share/nextflow-studio"

@@ -22,7 +22,7 @@ const meta = {
 
 export default meta;
 
-/** Left column: the project's notebooks over its folder, runtimes at the bottom. */
+/** A single project file tree, with runtimes at the bottom. */
 export const LeftColumn: StoryObj = {
   render: () => (
     <aside className="glass flex h-[640px] w-62 flex-col gap-2 rounded-xl px-1.5 pt-3 pb-2">
@@ -32,7 +32,7 @@ export const LeftColumn: StoryObj = {
   ),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByRole("link", { name: "02 降维与聚类" })).toHaveAttribute("aria-current", "page");
+    await expect(canvas.getByRole("button", { name: "新建笔记本" })).toBeVisible();
     await expect(await canvas.findByText("pbmc3k.h5ad")).toBeVisible();
     await expect(canvas.getByText("当前笔记本 · 未启动")).toBeVisible();
   },
@@ -55,6 +55,29 @@ export const Tabs: StoryObj<typeof WorkbenchTabs> = {
     await expect(canvas.getByRole("link", { name: "02 降维与聚类" })).toHaveAttribute("aria-current", "page");
     await userEvent.click(canvas.getByRole("button", { name: "关闭 02 降维与聚类" }));
     await expect(args.onClose).toHaveBeenCalledWith("nb_umap");
+  },
+};
+
+export const MixedDocuments: StoryObj<typeof WorkbenchTabs> = {
+  ...Tabs,
+  args: {
+    tabs: ["nb_qc", "workflow/analysis", "file/samples.csv"],
+    names: { nb_qc: "01 质控.ipynb", "workflow/analysis": "主流程.workflow.json", "file/samples.csv": "samples.csv" },
+    active: "workflow/analysis",
+    onClose: fn(),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("link", { name: "主流程.workflow.json" })).toHaveAttribute("href", "/workbench/workflow/analysis");
+    await expect(canvas.getByRole("link", { name: "samples.csv" })).toBeVisible();
+  },
+};
+
+export const ManyDocuments: StoryObj<typeof WorkbenchTabs> = {
+  ...Tabs,
+  args: { tabs: Array.from({ length: 18 }, (_, index) => `file/notes-${index}.txt`), names: {}, active: "file/notes-17.txt", onClose: fn() },
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).getAllByRole("link")).toHaveLength(18);
   },
 };
 

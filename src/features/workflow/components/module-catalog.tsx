@@ -12,7 +12,7 @@ import { SearchField } from "@/components/ui/search-field";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AsyncPlaceholder } from "@/components/ui/async-placeholder";
 import { EnvConfigAssistant } from "@/features/assistant/surfaces/prompt-only";
-import { ModuleEnvEditor } from "@/features/notebook/components/module-env-form";
+import { SharedModuleLibrary } from "@/features/notebook/components/shared-module-library";
 import { useEditModule, useScriptModules } from "@/features/notebook/queries";
 import type { ScriptModuleView } from "@/features/notebook/library";
 import { BUILTIN_MODULES } from "@/features/workflow/builtins";
@@ -110,7 +110,8 @@ export function ModuleCatalog() {
       </div>
 
       <div className="min-h-0 flex-1 space-y-4 overflow-auto">
-        {envModule ? <ModuleEnvEditor key={envModule.id} module={envModule} /> : null}
+        <SharedModuleLibrary local={scriptRows} />
+        {envModule ? <p className="text-xs text-muted-foreground">{envModule.name} · {envModule.version} 是已发布的不可变版本。通过「在笔记本中编辑」修改并发布新版本。</p> : null}
         {scripts.isPending ? (
           <AsyncPlaceholder status="pending" className="h-40" />
         ) : scripts.error ? (

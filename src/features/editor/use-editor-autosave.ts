@@ -18,11 +18,14 @@ export function useEditorAutosave() {
   const docId = useEditorStore((s) => s.docId);
   const revision = useEditorStore((s) => s.revision);
   const dirty = useEditorStore(selectIsDirty);
+  const conflict = useEditorStore((state) => state.conflict);
+  const paused = useEditorStore((state) => state.autosavePaused);
   const doSave = React.useCallback(
     (silent = false) => {
       // Capture this workflow now. A queued save must not read whatever document
       // is in the shared store when the previous request finally finishes.
       const state = store.getState();
+      if (state.conflict || state.autosavePaused) return;
       const snapshot: EditorSaveRead = {
         docId: state.docId,
         revision: state.revision,
@@ -57,10 +60,10 @@ export function useEditorAutosave() {
 
   // Autosave saved workflows shortly after each edit, like ComfyUI does.
   React.useEffect(() => {
-    if (!dirty || !docId) return;
+    if (!dirty || !docId || conflict || paused) return;
     const t = setTimeout(() => doSave(true), AUTOSAVE_MS);
     return () => clearTimeout(t);
-  }, [dirty, docId, revision, doSave]);
+  }, [dirty, docId, revision, doSave, conflict, paused]);
 
   const doSaveRef = React.useRef(doSave);
   React.useEffect(() => {

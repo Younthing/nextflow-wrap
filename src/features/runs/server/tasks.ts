@@ -75,7 +75,7 @@ export function ingestEvent(db: StudioStore, id: string, value: unknown) {
 }
 
 export async function reconcileTrace(db: StudioStore, run: StoredExecution) {
-  const text = await readFile(join(run.attemptDir, "trace.tsv"), "utf8").catch((error: NodeJS.ErrnoException) => {
+  const text = await readFile(join(run.attemptDir, "logs", "trace.tsv"), "utf8").catch((error: NodeJS.ErrnoException) => {
     if (error.code === "ENOENT") return "";
     throw error;
   });

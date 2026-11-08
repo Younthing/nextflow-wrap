@@ -231,7 +231,7 @@ const STEPS: ExampleStep[] = [
   { id: "summary_report", name: "summary_report", description: "质控、PCA、差异结果汇总为 HTML 报告", cells: summaryReport },
 ];
 
-export const EXAMPLE_MODULE_IDS = STEPS.map((step) => `script/${step.id}`);
+export const EXAMPLE_MODULE_IDS = STEPS.map((step) => `modules/${step.id}/v1/module.json`);
 
 /** The example project's notebooks. */
 export function exampleNotebooks(projectId = EXAMPLE_PROJECT_ID): NotebookDoc[] {
@@ -260,7 +260,7 @@ export function exampleModules(notebooks = exampleNotebooks(), keywords = ["note
     const entry = `bin/${notebook.id}_v1.py`;
     const converted = convertNotebook(notebook, entry);
     return {
-      id: `script/${notebook.id}`,
+      id: `modules/${notebook.id}/v1/module.json`,
       path: `${notebook.id}_v1`,
       name: notebook.name,
       process: processName(notebook.name),
@@ -289,7 +289,7 @@ export function exampleLibraryCopies(notebooks = exampleNotebooks(), modules = e
 export const node = (id: string, moduleId: string, alias: string, x: number, y: number, extra: Partial<WorkflowNode["data"]> = {}): WorkflowNode => ({
   id,
   position: { x, y },
-  data: { moduleId, alias, widgets: {}, config: { publish: true }, ...extra },
+  data: { moduleId: moduleId.startsWith("script/") ? `modules/${moduleId.slice(7)}/v1/module.json` : moduleId, alias, widgets: {}, config: { publish: true }, ...extra },
 });
 
 export const edge = (source: string, out: string, target: string, input: string): WorkflowEdge => ({

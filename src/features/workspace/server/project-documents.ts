@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { basename } from "node:path";
 import { existsSync } from "node:fs";
-import { notebookFromIpynb, notebookToIpynb, IPYNB_KEY } from "@/features/notebook/ipynb";
+import { notebookFromIpynb, notebookToIpynb, IPYNB_KEY, IpynbError } from "@/features/notebook/ipynb";
 import type { NotebookDoc, NotebookRevision } from "@/features/notebook/types";
 import type { WorkflowDoc } from "@/features/workflow/types";
 import { nextWorkflowRevision } from "@/features/workflow/revision";
 import { ProjectFiles, ProjectFileError } from "./project-files";
+import type { FileMove } from "../reference-updates";
 
 type Document = NotebookDoc | WorkflowDoc;
 type Kind = "notebook" | "workflow";
@@ -14,13 +15,47 @@ type Kind = "notebook" | "workflow";
 export class ProjectDocuments {
   readonly files: ProjectFiles;
   private readonly locations = new Map<string, string>();
-  constructor(root: string, readonly projectId: string) { this.files = new ProjectFiles(root); }
+  private readonly unreadable = new Set<string>();
+  constructor(root: string, readonly projectId: string) {
+    this.files = new ProjectFiles(root);
+    try {
+      const index = JSON.parse(this.files.read(".studio/document-index.json").content);
+      for (const [id, path] of Object.entries(index)) {
+        if (typeof path !== "string" || !/^(notebook|workflow):[\w-]{1,80}$/.test(id)) continue;
+        this.files.resolve(path);
+        this.locations.set(id, path);
+      }
+    } catch { /* The location cache is disposable; source documents remain authoritative. */ }
+  }
+
+  private saveIndex() {
+    const path = ".studio/document-index.json";
+    try {
+      let previous: Record<string, string> = {};
+      let version: string | null = null;
+      try { const file = this.files.read(path); version = file.version; try { previous = JSON.parse(file.content); } catch { /* Rebuild invalid cache. */ } } catch { /* First index. */ }
+      const entries = Object.fromEntries([...this.locations].filter(([key]) => !key.startsWith("open:")));
+      const content = `${JSON.stringify({ ...previous, ...entries }, null, 2)}\n`;
+      if (existsSync(this.files.resolve(path)) && this.files.read(path).content === content) return;
+      this.files.write(path, content, version);
+    } catch { /* Another process can rebuild this index; a cache write must never reject a document save. */ }
+  }
+
+  moved(moves: FileMove[]) {
+    for (const [id, path] of this.locations) {
+      const move = moves.find(({ from }) => path === from || path.startsWith(`${from}/`));
+      if (move) this.locations.set(id, `${move.to}${path.slice(move.from.length)}`);
+    }
+    this.saveIndex();
+  }
 
   private read(path: string, kind: Kind): Document {
     const file = this.files.read(path);
     if (kind === "workflow") {
       const doc = JSON.parse(file.content) as WorkflowDoc;
       if (doc.version !== 1 || !Array.isArray(doc.nodes) || !Array.isArray(doc.edges)) throw new ProjectFileError(422, `${path} 不是有效的流程文件`);
+      if (doc.id && !/^[\w-]{1,80}$/.test(doc.id)) throw new ProjectFileError(422, `${path} 文档 ID 无效`);
+      if (!doc.id) return this.write({ ...doc, id: `wf_${randomUUID()}`, filePath: path, fileVersion: file.version }, "workflow");
       return { ...doc, projectId: this.projectId, filePath: path, fileVersion: file.version };
     }
     const parsed = notebookFromIpynb(file.content, basename(path, ".ipynb"));
@@ -40,11 +75,19 @@ export class ProjectDocuments {
     // Known files can live in data directories without recursively scanning all input data.
     for (const path of this.locations.values()) if (!paths.includes(path) && path.endsWith(kind === "notebook" ? ".ipynb" : ".workflow.json") && existsSync(this.files.resolve(path))) paths.push(path);
     const seen = new Set<string>();
-    return paths.sort((a, b) => {
-      const known = new Set(this.locations.values());
+    const documents = paths.sort((a, b) => {
+      const known = new Set([...this.locations].filter(([key]) => !key.startsWith("open:")).map(([, path]) => path));
       return Number(known.has(b)) - Number(known.has(a)) || a.localeCompare(b);
-    }).map((path) => {
-      let doc = this.read(path, kind);
+    }).flatMap((path): Document[] => {
+      let doc: Document;
+      try { doc = this.read(path, kind); this.unreadable.delete(path); }
+      catch (error) {
+        if (error instanceof SyntaxError || error instanceof IpynbError || (error instanceof ProjectFileError && [404, 413, 422].includes(error.status))) {
+          this.unreadable.add(path);
+          return [];
+        }
+        throw error;
+      }
       if (kind === "notebook" && !(doc as NotebookDoc).metadata?.[IPYNB_KEY]) doc = this.write(doc, kind);
       if (seen.has(doc.id)) {
         doc = { ...doc, id: `${kind === "notebook" ? "nb" : "wf"}_${randomUUID()}` };
@@ -52,20 +95,28 @@ export class ProjectDocuments {
       }
       seen.add(doc.id);
       this.locations.set(`${kind}:${doc.id}`, path);
-      return doc;
+      return [doc];
     });
+    this.saveIndex();
+    return documents;
   }
 
   get(id: string, kind: "notebook"): NotebookDoc | undefined;
   get(id: string, kind: "workflow"): WorkflowDoc | undefined;
   get(id: string, kind: Kind): Document | undefined {
-    return (kind === "notebook" ? this.list("notebook") : this.list("workflow")).find((doc) => doc.id === id);
+    const documents = kind === "notebook" ? this.list("notebook") : this.list("workflow");
+    const path = this.locations.get(`${kind}:${id}`);
+    if (path && this.unreadable.has(path)) throw new ProjectFileError(422, `${path} 无法解析，本地编辑已保留，请修复文件或另存为`);
+    return documents.find((doc) => doc.id === id);
   }
 
   open(path: string): Document {
     const kind = path.endsWith(".ipynb") ? "notebook" : "workflow";
-    const doc = this.read(path, kind);
-    this.locations.set(`${kind}:${doc.id}`, path);
+    this.read(path, kind);
+    this.locations.set(`open:${path}`, path);
+    const docs = kind === "notebook" ? this.list("notebook") : this.list("workflow");
+    const doc = docs.find((item) => item.filePath === path);
+    if (!doc) throw new ProjectFileError(404, "文件不存在");
     return doc;
   }
 
@@ -84,7 +135,8 @@ export class ProjectDocuments {
     } else content = `${JSON.stringify(portable, null, 2)}\n`;
     const written = this.files.write(path, content, doc.fileVersion ?? null);
     this.locations.set(`${kind}:${doc.id}`, path);
-    this.files.record(`.studio/history/${doc.id}/${written.version}.json`, { ...portable, filePath: path });
+    this.saveIndex();
+    this.files.immutable(`.studio/history/${doc.id}/${written.version}.json`, { ...portable, filePath: path });
     return { ...doc, filePath: path, fileVersion: written.version, projectId: this.projectId };
   }
 

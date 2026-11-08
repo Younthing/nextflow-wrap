@@ -27,7 +27,7 @@ describe("projects", () => {
     expect(project).toMatchObject({ name: "PBMC 图谱", path: join(root, "PBMC 图谱"), id: projectIdForPath(join(root, "PBMC 图谱")) });
     expect(existsSync(join(root, "PBMC 图谱", "data"))).toBe(true);
     expect(existsSync(join(root, "PBMC 图谱", "results"))).toBe(true);
-    expect(await listProjects(context)).toMatchObject({ current: project.id, projects: [project] });
+    expect(await listProjects(context)).toMatchObject({ projects: [project] });
   });
 
   it("refuse a name that is a path, a missing parent and a non-empty folder", async () => {
@@ -55,7 +55,7 @@ describe("projects", () => {
     const b = await createProject(context, { name: "b", parent: root });
     expect((await listProjects(context)).projects.map((p) => p.id)).toEqual([b.id, a.id]);
     await reopenProject(context, a.id);
-    expect(await listProjects(context)).toMatchObject({ current: a.id, projects: [{ id: a.id }, { id: b.id }] });
+    expect(await listProjects(context)).toMatchObject({ projects: [{ id: a.id }, { id: b.id }] });
   });
 
   it("close and forget without touching the folder", async () => {
@@ -78,9 +78,9 @@ describe("projects", () => {
 });
 
 describe("example project", () => {
-  it("is removed from the list like any other project", () => {
+  it("is removed from the list like any other project", async () => {
     db.saveProject({ id: "example", name: "示例项目", path: root, createdAt: "2026-01-01T00:00:00.000Z", openedAt: "2026-01-01T00:00:00.000Z" });
     forgetProject(context, "example");
-    expect(db.project("example")).toBeUndefined();
+    expect((await listProjects(context)).projects).toEqual([]);
   });
 });

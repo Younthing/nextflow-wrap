@@ -257,6 +257,14 @@ export class KernelSession {
 const registry = globalThis as typeof globalThis & { __nfStudioKernels?: Map<string, KernelSession> };
 const sessions = (registry.__nfStudioKernels ??= new Map<string, KernelSession>());
 
+export function shutdownProjectKernels(project: string) {
+  for (const [key, session] of sessions) {
+    if (!key.startsWith(`${project}:`)) continue;
+    sessions.delete(key);
+    session.shutdown();
+  }
+}
+
 /**
  * The notebook's running kernel, started when missing or when the notebook switched kernels. It runs in `cwd`, the
  * project folder, so cells read workspace paths such as `data/reads.fq`; a notebook without one gets a scratch folder.

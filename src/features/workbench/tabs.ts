@@ -31,7 +31,7 @@ export function pruneTabs(tabs: readonly string[], existing: readonly string[]):
 export function workbenchView(path: readonly string[] | undefined): { kind: "start" } | { kind: "notebook"; id: string } | { kind: "publish"; id: string } | { kind: "workflow"; id: string } | { kind: "file"; id: string } | { kind: "missing" } {
   if (!path?.length) return { kind: "start" };
   const [id, action, ...rest] = path;
-  if ((id === "workflow" || id === "file") && action && !rest.length) return { kind: id, id: action };
+  if ((id === "workflow" || id === "file") && action && !rest.length) return { kind: id, id: id === "file" ? decodeURIComponent(action) : action };
   if (!/^[\w-]{1,80}$/.test(id) || rest.length) return { kind: "missing" };
   if (!action) return { kind: "notebook", id };
   if (action === "publish") return { kind: "publish", id };

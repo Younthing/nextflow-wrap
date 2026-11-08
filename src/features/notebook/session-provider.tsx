@@ -33,6 +33,11 @@ export function NotebookSessionProvider({ notebookId, children }: { notebookId: 
   React.useLayoutEffect(() => {
     if (notebook.data) session.setSaved(notebook.data);
   }, [session, notebook.data]);
+  React.useEffect(() => {
+    if (!notebook.error || !session.doc()) return;
+    const state = session.store.getState();
+    session.store.setState({ draft: state.draft ?? state.saved, saveError: `无法读取磁盘文件：${notebook.error.message}。本地内容已保留，可另存为副本` });
+  }, [notebook.error, session]);
 
   // Re-read variables whenever the kernel settles: after a run, a restart, or a shutdown from the toolbar.
   const kernelState = kernel?.state;

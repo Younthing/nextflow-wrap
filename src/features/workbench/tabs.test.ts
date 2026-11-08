@@ -8,12 +8,12 @@ describe("workbench tabs", () => {
     expect(openTab(["a", "b"], "a")).toEqual(["a", "b"]);
   });
 
-  it("drop the oldest past the limit", () => {
+  it("retain every open document beyond twelve tabs", () => {
     const full = Array.from({ length: MAX_TABS }, (_, index) => `t${index}`);
     const next = openTab(full, "new");
-    expect(next).toHaveLength(MAX_TABS);
+    expect(next).toHaveLength(MAX_TABS + 1);
     expect(next.at(-1)).toBe("new");
-    expect(next[0]).toBe("t1");
+    expect(next[0]).toBe("t0");
   });
 
   it("move to the right neighbour, else the left, when closing the active tab", () => {

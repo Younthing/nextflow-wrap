@@ -15,7 +15,7 @@ import { redactEnv, redactText } from "../redact";
 const ENV_KEYS = /^(PATH|HOME|SHELL|LANG|LC_ALL|TMPDIR|JAVA_HOME|NXF_.*|NEXTFLOW_.*|CONDA_.*|MAMBA_.*|DOCKER_.*|HTTPS?_PROXY|NO_PROXY|https?_proxy|no_proxy|PORT|NODE_ENV)$/;
 const TAIL_BYTES = 2 * 1024 ** 2;
 /** Files of a run attempt that explain what happened. Results and the work directory are left out. */
-const RUN_FILES = ["console.log", "nextflow.log", "run.config", "params.json", "trace.tsv", "artifacts.json", "project/main.nf", "project/nextflow.config", "project/conf/base.config", "project/conf/modules.config"];
+const RUN_FILES = ["logs/console.log", "logs/nextflow.log", "run.config", "params.json", "logs/trace.tsv", "artifacts.json", "snapshot/project/main.nf", "snapshot/project/nextflow.config", "snapshot/project/conf/base.config", "snapshot/project/conf/modules.config"];
 
 export interface BundleEntry { path: string; text: string }
 

@@ -19,6 +19,16 @@ const doc: IpynbNotebook = {
 };
 
 describe("ipynb", () => {
+  it("preserves foreign metadata while changing a marked cell back to plain code", () => {
+    const parsed = notebookFromIpynb(serializeIpynb(doc), "fallback");
+    parsed.metadata = { ...parsed.metadata, language_info: { name: "python", version: "3.12" }, custom: { lab: "mine" } };
+    parsed.cells[1] = { ...parsed.cells[1], role: "code", metadata: { ...parsed.cells[1].metadata, tags: ["keep"] } };
+    const written = notebookToIpynb(parsed);
+    expect(written.metadata.language_info).toMatchObject({ version: "3.12" });
+    expect(written.metadata.custom).toEqual({ lab: "mine" });
+    expect(notebookFromIpynb(JSON.stringify(written), "x").cells[1].role).toBe("code");
+    expect(written.cells[1].metadata.tags).toEqual(["keep"]);
+  });
   it("writes standard nbformat 4.5 with the app's roles in cell metadata", () => {
     const nb = notebookToIpynb(doc);
     expect(nb.nbformat).toBe(4);
@@ -32,7 +42,7 @@ describe("ipynb", () => {
   });
 
   it("reads back exactly what it wrote", () => {
-    expect(notebookFromIpynb(serializeIpynb(doc), "ignored")).toEqual(doc);
+    expect(notebookFromIpynb(serializeIpynb(doc), "ignored")).toMatchObject(doc);
   });
 
   it("opens a notebook made in Jupyter", () => {

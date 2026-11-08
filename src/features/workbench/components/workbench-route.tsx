@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { FolderOpen } from "lucide-react";
 
 import { AsyncPlaceholder } from "@/components/ui/async-placeholder";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { PANELS, useLayoutStore, usePanel } from "@/components/layout/layout-store";
 import { ResizeHandle } from "@/components/layout/resize-handle";
@@ -18,13 +19,18 @@ import { useCreateNotebook, useNotebooks } from "@/features/notebook/queries";
 import type { NotebookSummary } from "@/features/notebook/types";
 import { WorkflowEditor } from "@/features/editor/components/workflow-editor";
 import { EditorProvider } from "@/features/editor/editor-provider";
-import { workflowSession } from "../document-sessions";
-import { useWorkflows } from "@/features/workflow/queries";
+import { dirtyDocument, forgetDocument, moveTextDocuments, pauseDocument, saveDocument, workflowSession } from "../document-sessions";
+import { useProjectChanges } from "@/features/workspace/use-project-changes";
+import { emptyWorkflow } from "@/features/workflow/document";
+import { useSaveWorkflow, useWorkflows } from "@/features/workflow/queries";
+import { NotebookConflict } from "./document-conflict";
+import { ReferenceUpdateDialog } from "@/features/workspace/components/reference-update-dialog";
 import { TextEditor } from "./text-editor";
-import { closeTab, openTab, pruneTabs, tabsPrefKey, workbenchPathFromPathname, workbenchView } from "@/features/workbench/tabs";
+import { closeTab, openTab, workbenchPathFromPathname, workbenchView } from "@/features/workbench/tabs";
 import { useCurrentProject } from "@/features/workspace/queries";
 import type { Project } from "@/features/workspace/types";
-import { usePref } from "@/lib/local-pref";
+import type { FileMove } from "@/features/workspace/reference-updates";
+import { useWindowTabs } from "../window-tabs";
 import { shownWidth } from "@/lib/panel-size";
 import { toast } from "@/lib/toast";
 import { WorkbenchFiles } from "./workbench-files";
@@ -64,30 +70,51 @@ export function Workbench({ path }: { path?: string[] }) {
 
 function WorkbenchFrame({ project, path }: { project: Project; path?: string[] }) {
   const router = useRouter();
+  useProjectChanges(project.id);
   const view = workbenchView(path);
   const activeId = view.kind === "notebook" || view.kind === "publish" ? view.id : view.kind === "workflow" ? `workflow/${view.id}` : view.kind === "file" ? `file/${encodeURIComponent(view.id)}` : undefined;
   const workflows = useWorkflows();
   const notebooks = useNotebooks(project.id);
   const create = useCreateNotebook();
-  const [stored, setStored] = usePref<string[]>(tabsPrefKey(project.id));
+  const createWorkflow = useSaveWorkflow();
+  const [stored, setStored, tabsReady] = useWindowTabs(project.id);
   const list = notebooks.data ?? [];
+  const [closing, setClosing] = React.useState<string>();
+  const [closeError, setCloseError] = React.useState<string>();
 
   // The route decides the active tab; opening a notebook by link adds it.
   let tabs = stored ?? [];
-  if (notebooks.data) tabs = pruneTabs(tabs, [...list.map((nb) => nb.id), ...(workflows.data ?? []).map((doc) => `workflow/${doc.id}`), ...tabs.filter((tab) => tab.startsWith("file/")), ...(activeId ? [activeId] : [])]);
+
   if (activeId) tabs = openTab(tabs, activeId);
   const tabsKey = tabs.join("|");
   React.useEffect(() => {
-    if (stored !== null && tabsKey === stored.join("|")) return;
+    if (!tabsReady || tabsKey === stored.join("|")) return;
     setStored(tabsKey ? tabsKey.split("|") : []);
-  }, [tabsKey, stored, setStored]);
+  }, [tabsKey, stored, setStored, tabsReady]);
+
+  React.useEffect(() => {
+    const listener = (event: Event) => {
+      const moves = (event as CustomEvent<FileMove[]>).detail;
+      moveTextDocuments(moves);
+      const mapped = (tab: string) => {
+        if (!tab.startsWith("file/")) return tab;
+        const path = decodeURIComponent(tab.slice(5));
+        const move = moves.find(({ from }) => path === from || path.startsWith(`${from}/`));
+        return move ? `file/${encodeURIComponent(`${move.to}${path.slice(move.from.length)}`)}` : tab;
+      };
+      setStored(stored.map(mapped));
+      if (activeId && mapped(activeId) !== activeId) router.replace(`/workbench/${mapped(activeId)}`);
+    };
+    window.addEventListener("studio-files-moved", listener);
+    return () => window.removeEventListener("studio-files-moved", listener);
+  }, [stored, activeId, setStored, router]);
 
   const names = Object.fromEntries([...list.map((nb) => [nb.id, nb.name]), ...(workflows.data ?? []).map((doc) => [`workflow/${doc.id}`, doc.name])]);
   const active: NotebookSummary | undefined = list.find((nb) => nb.id === activeId);
 
-  const createNotebook = (kernel = defaultKernel("python", mockingActive())) => {
+  const createNotebook = (kernel = defaultKernel("python", mockingActive()), folder?: string) => {
     create.mutate(
-      { name: "未命名笔记本", description: "", kernel, cells: [{ id: "c1", role: "code", source: "" }], projectId: project.id },
+      { folder, name: "未命名笔记本", description: "", kernel, cells: [{ id: "c1", role: "code", source: "" }], projectId: project.id },
       { onSuccess: (doc) => router.push(`/workbench/${doc.id}`), onError: (err) => toast.error(err.message) },
     );
   };
@@ -105,7 +132,10 @@ function WorkbenchFrame({ project, path }: { project: Project; path?: string[] }
     return () => window.removeEventListener("keydown", onKey);
   }, [togglePanel]);
 
-  const close = (id: string) => {
+  const closeNow = (id: string) => {
+    forgetDocument(id);
+    setClosing(undefined);
+    setCloseError(undefined);
     const result = closeTab(tabs, id, activeId);
     setStored(result.tabs);
     if (activeId === id) router.push(result.next ? `/workbench/${result.next}` : "/workbench");
@@ -113,6 +143,18 @@ function WorkbenchFrame({ project, path }: { project: Project; path?: string[] }
 
   return (
     <div className="flex size-full min-h-0">
+      <ReferenceUpdateDialog />
+      <Dialog open={!!closing} onOpenChange={(open) => { if (!open) { if (closing) pauseDocument(closing, false); setClosing(undefined); } }}>
+        <DialogContent><DialogHeader><DialogTitle>保存对文件的修改？</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">关闭前保存修改，或放弃本地修改。</p>
+          {closeError ? <p role="alert" className="text-sm text-destructive">{closeError}</p> : null}
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => { if (closing) pauseDocument(closing, false); setClosing(undefined); }}>取消</Button>
+            <Button variant="outline" onClick={() => closing && closeNow(closing)}>放弃修改</Button>
+            <Button onClick={async () => { if (!closing) return; try { await saveDocument(closing); closeNow(closing); } catch (error) { setCloseError(error instanceof Error ? error.message : "保存失败"); } }}>保存并关闭</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <div
         className="panel-animate flex min-h-0 shrink-0 overflow-hidden"
         style={{ width: shownWidth(PANELS.explorer, explorer) }}
@@ -125,7 +167,8 @@ function WorkbenchFrame({ project, path }: { project: Project; path?: string[] }
             loading={notebooks.isPending}
             activeId={activeId}
             creating={create.isPending}
-            onCreate={() => createNotebook()}
+            onCreate={(folder) => createNotebook(undefined, folder)}
+            onCreateWorkflow={(folder) => createWorkflow.mutate({ ...emptyWorkflow(""), projectId: project.id, folder } as ReturnType<typeof emptyWorkflow>, { onSuccess: (doc) => router.push(`/workbench/workflow/${doc.id}`), onError: (error) => toast.error(error.message) })}
           />
           <WorkbenchRuntimes notebooks={list} active={active} />
         </aside>
@@ -136,7 +179,7 @@ function WorkbenchFrame({ project, path }: { project: Project; path?: string[] }
           <PublishWizard notebookId={view.id} />
         ) : (
           <section className="glass flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl">
-            <WorkbenchTabs tabs={tabs} names={names} active={activeId} onClose={close} />
+            <WorkbenchTabs tabs={tabs} names={names} active={activeId} onClose={(id) => { if (dirtyDocument(id)) { pauseDocument(id, true); setClosing(id); } else closeNow(id); }} />
             {view.kind === "workflow" ? (
               <EditorProvider key={view.id} store={workflowSession(view.id)}><WorkflowEditor workflowId={view.id} /></EditorProvider>
             ) : view.kind === "file" ? (
@@ -145,6 +188,7 @@ function WorkbenchFrame({ project, path }: { project: Project; path?: string[] }
               // The editor and the assistant both work on the open notebook's session.
               <NotebookSessionProvider key={view.id} notebookId={view.id}>
                 <NotebookAssistant />
+                <NotebookConflict id={view.id} />
                 <NotebookEditor notebookId={view.id} />
               </NotebookSessionProvider>
             ) : view.kind === "missing" ? (
