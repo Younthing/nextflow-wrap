@@ -170,13 +170,13 @@ function supervise(name: string, modulePath: string, args: string[], env: NodeJS
 
 /**
  * There are no migrations: a database written by another schema version is refused by the server, which leaves
- * the app with pages that cannot load. Before the local server starts, such data (database, example project, run
- * records, launch and work directories) is deleted so the server starts fresh. Settings, the toolchain, logs,
- * the unpacked server and connections are kept; projects in their own folders are not touched.
+ * the app with pages that cannot load. Before the local server starts, such a project registry is deleted so the
+ * server starts fresh. Settings, the toolchain, logs, the unpacked server and connections are kept; projects in
+ * their own folders are not touched, nor is the pre-project `studio.sqlite`, which the start page offers to import.
  */
 function clearStaleLocalData() {
   const data = dataDirectory({ env: baseEnv });
-  const database = join(data, "studio.sqlite");
+  const database = join(data, "workspace-registry.sqlite");
   if (!existsSync(database)) return;
   let version: number;
   try {
