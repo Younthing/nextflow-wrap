@@ -56,6 +56,25 @@ export function resolveDataParams(
   return { params: out, errors, sync };
 }
 
+/** The cells of one CSV or TSV line; a quoted cell keeps its commas and `""` stands for a quote. */
+function csvCells(line: string): string[] {
+  const cells: string[] = [];
+  let cell = "";
+  let quoted = false;
+  for (let index = 0; index < line.length; index++) {
+    const char = line[index];
+    if (quoted) {
+      if (char === '"' && line[index + 1] === '"') { cell += '"'; index++; }
+      else if (char === '"') quoted = false;
+      else cell += char;
+    } else if (char === '"' && !cell.trim()) { quoted = true; cell = ""; }
+    else if (char === "," || char === "\t") { cells.push(cell); cell = ""; }
+    else cell += char;
+  }
+  cells.push(cell);
+  return cells;
+}
+
 /**
  * Cells of a samplesheet that name workspace files (`data/S1_R1.fq.gz`): what a cluster run must copy along with the
  * sheet. Cells that are not paths, or name nothing in the workspace, are left to the samplesheet check at run time.
@@ -63,8 +82,8 @@ export function resolveDataParams(
 export function samplesheetWorkspaceFiles(csv: string, exists: (relative: string) => boolean): string[] {
   const found = new Set<string>();
   for (const line of csv.split(/\r?\n/).slice(1)) {
-    for (const raw of line.split(/[,\t]/)) {
-      const cell = raw.trim().replace(/^"(.*)"$/, "$1");
+    for (const raw of csvCells(line)) {
+      const cell = raw.trim();
       // A bare name (`S1.fq.gz`) can be a file at the project root; `exists` tells it from a sample name.
       if (!cell || dataPathKind(cell) !== "workspace") continue;
       const relative = normalizeWorkspacePath(cell)!;

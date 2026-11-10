@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import { defaultLaunchConfig } from "@/features/project/launch";
 import { missingRemoteTools } from "./server/remote-run";
-import { cancelScript, launchScript, packScript, parseLaunch, parsePoll, parseProbe, parseSize, pollScript, remoteLayout, SAFE_PATH, sq, sshArgs, taskLogScript } from "./ssh";
+import { cancelScript, launchScript, packScript, parseLaunch, prepareDataScript, snapshotScript, statScript, parsePoll, parseProbe, parseSize, pollScript, remoteLayout, SAFE_PATH, sq, sshArgs, taskLogScript } from "./ssh";
 import type { RemoteHost } from "./types";
 
 const host: RemoteHost = { id: "hpc", name: "HPC", host: "login.example.org", user: "ana", port: 2222, identityFile: "/Users/ana/.ssh/id_ed25519", baseDir: "~/nextflow-studio" };
@@ -77,6 +77,9 @@ describe("remote ssh helpers", () => {
       cancelScript({ pid: 12, pidStart: "x" }),
       packScript("/s/r/1", ["trace.tsv", ".nextflow/history"]),
       taskLogScript("/s/work/ab/cdef"),
+      statScript("/s/projects/p", ["data/a.fq"], ["data/reads"]),
+      prepareDataScript("/s/projects/p", ["data/reads/gone.fq"], ["data/reads", "data/reads/empty"]),
+      snapshotScript("/s/projects/p", "/s/runs/1/inputs", ["data/a.fq", "sheet.csv"]),
     ];
     for (const script of scripts) expect(() => execFileSync("sh", ["-n"], { input: script })).not.toThrow();
     expect(scripts[0]).toContain("module load nextflow\n");

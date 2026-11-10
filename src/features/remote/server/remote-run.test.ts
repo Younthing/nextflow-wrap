@@ -105,6 +105,7 @@ describe("remote run over ssh", () => {
     mkdirSync(join(workspace, "data", "reads"), { recursive: true });
     writeFileSync(join(workspace, "data", "greeting.txt"), "hello from the workspace\n");
     writeFileSync(join(workspace, "data", "reads", "S1.fq"), "@r1\nACGT\n+\nIIII\n");
+    mkdirSync(join(workspace, "data", "reads", "empty"));
     const dir = join(workspace, "local-project");
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "main.nf"), [
@@ -125,10 +126,13 @@ describe("remote run over ssh", () => {
       data: { root: workspace, project: "p1", paths: ["data/greeting.txt", "data/reads"] },
     });
     const dataDir = join(root, "cluster", "projects", "p1");
-    expect(data).toEqual({ dir: dataDir, files: 2, uploaded: 2, removed: 0 });
+    const inputs = join(state.attemptDir, "inputs");
+    expect(data).toEqual({ dir: dataDir, inputs, files: 2, uploaded: 2, removed: 0 });
     expect(readFileSync(join(dataDir, "data", "reads", "S1.fq"), "utf8")).toContain("ACGT");
+    expect(existsSync(join(dataDir, "data", "reads", "empty"))).toBe(true);
+    // The run reads its own snapshot of the data.
     const params = JSON.parse(readFileSync(join(state.attemptDir, "params.json"), "utf8"));
-    expect(params).toMatchObject({ greeting: join(dataDir, "data", "greeting.txt"), studio_project_root: dataDir });
+    expect(params).toMatchObject({ greeting: join(inputs, "data", "greeting.txt"), studio_project_root: inputs });
     expect((await waitForExit(session, state)).exitCode).toBe(0);
     await collectRemoteRun(session, state, attemptDir, join(attemptDir, "results"));
     expect(readFileSync(join(attemptDir, "results", "shown.txt"), "utf8")).toBe("hello from the workspace\n");
@@ -142,6 +146,9 @@ describe("remote run over ssh", () => {
     expect(await syncRemoteData(session, workspace, dataDir, ["data/greeting.txt", "data/reads"])).toEqual({ files: 2, uploaded: 1, removed: 1 });
     expect(existsSync(join(dataDir, "data", "reads", "S1.fq"))).toBe(false);
     expect(readFileSync(join(dataDir, "data", "reads", "S2.fq"), "utf8")).toContain("TTTT");
+    // A later sync for another run leaves this run's snapshot as it started.
+    expect(readFileSync(join(inputs, "data", "greeting.txt"), "utf8")).toBe("hello from the workspace\n");
+    expect(readFileSync(join(inputs, "data", "reads", "S1.fq"), "utf8")).toContain("ACGT");
   }, 200_000);
 
   it("explains a missing scheduler before it uploads anything", async () => {

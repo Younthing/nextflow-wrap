@@ -76,10 +76,14 @@ export class SshSession {
     if ((await tarDone) !== 0) throw new Error(`打包 ${localDir} 失败：${tarError}`);
   }
 
-  /** Copies `files` (relative to `localRoot`) into the same relative places under `remoteDir`, keeping mtimes. */
+  /**
+   * Copies `files` (relative to `localRoot`) into the same relative places under `remoteDir`, keeping mtimes. The
+   * list goes to tar on stdin, so a folder of tens of thousands of files stays under the argument size limit.
+   */
   async uploadFiles(localRoot: string, remoteDir: string, files: string[]) {
     if (!files.length) return;
-    const tar = spawn("tar", ["-C", localRoot, "-cf", "-", "--", ...files], { stdio: ["ignore", "pipe", "pipe"] });
+    const tar = spawn("tar", ["-C", localRoot, "-cf", "-", "-T", "-"], { stdio: ["pipe", "pipe", "pipe"] });
+    tar.stdin.end(`${files.join("\n")}\n`);
     let tarError = "";
     tar.stderr.on("data", (chunk: Buffer) => { tarError += chunk.toString("utf8"); });
     const tarDone = new Promise<number | null>((resolve) => tar.once("close", resolve));

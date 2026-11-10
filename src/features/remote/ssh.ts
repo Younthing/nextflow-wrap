@@ -193,9 +193,40 @@ export function statScript(dir: string, files: string[], folders: string[] = [])
   ].join("\n");
 }
 
-/** Deletes `files` under `dir`: what a synced folder still holds on the host after they were removed locally. */
-export function removeScript(dir: string, files: string[]): string {
-  return [`cd ${sq(dir)} || exit 1`, ...files.map((file) => `rm -f -- ${sq(file)}`), "exit 0", ""].join("\n");
+/**
+ * Brings the host's copy of the project data in line before an upload: deletes `remove` (files gone locally from a
+ * synced folder) and creates `folders`, so an empty folder exists there too.
+ */
+export function prepareDataScript(dir: string, remove: string[], folders: string[]): string {
+  return [
+    `mkdir -p ${sq(dir)} && cd ${sq(dir)} || exit 1`,
+    ...remove.map((file) => `rm -f -- ${sq(file)}`),
+    ...folders.map((folder) => `mkdir -p -- ${sq(folder)}`),
+    "exit 0",
+    "",
+  ].join("\n");
+}
+
+/**
+ * The run's own view of the synced data: `paths` hard-linked from `dataDir` into `target` (copied where the two are on
+ * different file systems). A later sync replaces files in `dataDir` instead of changing them in place (tar unlinks
+ * before it extracts) and only unlinks deleted ones, so a run that is still going keeps reading the data it started with.
+ */
+export function snapshotScript(dataDir: string, target: string, paths: string[]): string {
+  return [
+    `cd ${sq(dataDir)} || exit 1`,
+    `rm -rf ${sq(target)} && mkdir -p ${sq(target)} || exit 1`,
+    ...paths.map((path) => {
+      const parent = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+      const destination = sq(`${target}/${path}`);
+      return [
+        parent ? `mkdir -p ${sq(`${target}/${parent}`)} || exit 1` : "",
+        `cp -Rl -- ${sq(path)} ${destination} 2>/dev/null || cp -Rp -- ${sq(path)} ${destination} || exit 1`,
+      ].filter(Boolean).join("\n");
+    }),
+    "exit 0",
+    "",
+  ].join("\n");
 }
 
 export function parseStat(output: string): Map<string, { size: number; mtime: number }> {
