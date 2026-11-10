@@ -126,8 +126,9 @@ describe("remote run over ssh", () => {
       data: { root: workspace, project: "p1", paths: ["data/greeting.txt", "data/reads"] },
     });
     const dataDir = join(root, "cluster", "projects", "p1");
-    const inputs = join(state.attemptDir, "inputs");
-    expect(data).toEqual({ dir: dataDir, inputs, files: 2, uploaded: 2, removed: 0 });
+    expect(data).toMatchObject({ dir: dataDir, files: 2, uploaded: 2, removed: 0 });
+    const inputs = data!.inputs;
+    expect(inputs).toBe(join(root, "cluster", "snapshots", "p1", data!.digest));
     expect(readFileSync(join(dataDir, "data", "reads", "S1.fq"), "utf8")).toContain("ACGT");
     expect(existsSync(join(dataDir, "data", "reads", "empty"))).toBe(true);
     // The run reads its own snapshot of the data.
@@ -136,14 +137,24 @@ describe("remote run over ssh", () => {
     expect((await waitForExit(session, state)).exitCode).toBe(0);
     await collectRemoteRun(session, state, attemptDir, join(attemptDir, "results"));
     expect(readFileSync(join(attemptDir, "results", "shown.txt"), "utf8")).toBe("hello from the workspace\n");
+    // A resume over unchanged data reads the same snapshot paths, so Nextflow's task cache still matches.
+    const again = await startRemoteRun({
+      host, session, runId: "run6", workflowId: "wf5", runName: "remote_data_again", projectDir: dir, attemptDir: join(root, "attempts", "run6"),
+      launch: defaultLaunchConfig(), params: { greeting: "data/greeting.txt" },
+      data: { root: workspace, project: "p1", paths: ["data/greeting.txt", "data/reads"] },
+    });
+    expect(again.data).toMatchObject({ inputs, uploaded: 0 });
+    await waitForExit(session, again.state);
     // The next run sends only what changed.
     writeFileSync(join(workspace, "data", "greeting.txt"), "hello again, a little longer\n");
-    expect(await syncRemoteData(session, workspace, dataDir, ["data/greeting.txt", "data/reads"])).toEqual({ files: 2, uploaded: 1, removed: 0 });
+    expect(await syncRemoteData(session, workspace, dataDir, ["data/greeting.txt", "data/reads"])).toMatchObject({ files: 2, uploaded: 1, removed: 0 });
     expect(readFileSync(join(dataDir, "data", "greeting.txt"), "utf8")).toBe("hello again, a little longer\n");
     // A synced folder is mirrored: a sample removed locally is removed on the host too.
     writeFileSync(join(workspace, "data", "reads", "S2.fq"), "@r2\nTTTT\n+\nIIII\n");
     rmSync(join(workspace, "data", "reads", "S1.fq"));
-    expect(await syncRemoteData(session, workspace, dataDir, ["data/greeting.txt", "data/reads"])).toEqual({ files: 2, uploaded: 1, removed: 1 });
+    const changed = await syncRemoteData(session, workspace, dataDir, ["data/greeting.txt", "data/reads"]);
+    expect(changed).toMatchObject({ files: 2, uploaded: 1, removed: 1 });
+    expect(changed.digest).not.toBe(data!.digest);
     expect(existsSync(join(dataDir, "data", "reads", "S1.fq"))).toBe(false);
     expect(readFileSync(join(dataDir, "data", "reads", "S2.fq"), "utf8")).toContain("TTTT");
     // A later sync for another run leaves this run's snapshot as it started.

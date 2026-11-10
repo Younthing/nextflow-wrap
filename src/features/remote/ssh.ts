@@ -40,6 +40,8 @@ export function remoteLayout(baseDir: string, workflowId: string, runId: string,
   return {
     /** The project's workspace data a run copied here; workspace paths in params resolve inside it. */
     dataDir: `${base}/projects/${project || "default"}`,
+    /** Read-only snapshots of that data, one per distinct state of the synced files (see `snapshotScript`). */
+    snapshotsDir: `${base}/snapshots/${project || "default"}`,
     launchDir: `${base}/pipelines/${workflowId}`,
     attemptDir: `${base}/runs/${runId}`,
     outdir: `${base}/runs/${runId}/results`,
@@ -207,23 +209,36 @@ export function prepareDataScript(dir: string, remove: string[], folders: string
   ].join("\n");
 }
 
+/** `paths` without those already inside another one (`reads/a.fq` when `reads` is listed too), sorted. */
+export function outermostPaths(paths: string[]): string[] {
+  const unique = [...new Set(paths)].sort();
+  return unique.filter((path) => !unique.some((other) => other !== path && path.startsWith(`${other}/`)));
+}
+
 /**
- * The run's own view of the synced data: `paths` hard-linked from `dataDir` into `target` (copied where the two are on
- * different file systems). A later sync replaces files in `dataDir` instead of changing them in place (tar unlinks
- * before it extracts) and only unlinks deleted ones, so a run that is still going keeps reading the data it started with.
+ * A read-only view of the synced data for runs: `paths` hard-linked from `dataDir` into `target` (copied where the two
+ * are on different file systems). `target` is named after the data's state, so runs and resumes over unchanged data
+ * share it and keep Nextflow's path-based task cache; it is built beside its final name and moved there, and left as
+ * it is when it already exists. A later sync replaces files in `dataDir` instead of changing them in place (tar
+ * unlinks before it extracts) and only unlinks deleted ones, so a snapshot in use never changes.
  */
 export function snapshotScript(dataDir: string, target: string, paths: string[]): string {
+  const building = `${target}.partial.$$`;
   return [
+    `[ -d ${sq(target)} ] && exit 0`,
     `cd ${sq(dataDir)} || exit 1`,
-    `rm -rf ${sq(target)} && mkdir -p ${sq(target)} || exit 1`,
-    ...paths.map((path) => {
+    `rm -rf "${building}" && mkdir -p "${building}" || exit 1`,
+    ...outermostPaths(paths).map((path) => {
       const parent = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
-      const destination = sq(`${target}/${path}`);
+      const destination = `"${building}"/${sq(path)}`;
       return [
-        parent ? `mkdir -p ${sq(`${target}/${parent}`)} || exit 1` : "",
-        `cp -Rl -- ${sq(path)} ${destination} 2>/dev/null || cp -Rp -- ${sq(path)} ${destination} || exit 1`,
+        parent ? `mkdir -p "${building}"/${sq(parent)} || exit 1` : "",
+        `cp -Rl -- ${sq(path)} ${destination} 2>/dev/null || { rm -rf ${destination}; cp -Rp -- ${sq(path)} ${destination}; } || exit 1`,
       ].filter(Boolean).join("\n");
     }),
+    // Another run may have finished the same snapshot first; either copy is the same data.
+    `mv "${building}" ${sq(target)} 2>/dev/null || rm -rf "${building}"`,
+    `[ -d ${sq(target)} ] || exit 1`,
     "exit 0",
     "",
   ].join("\n");

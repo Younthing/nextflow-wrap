@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import { defaultLaunchConfig } from "@/features/project/launch";
 import { missingRemoteTools } from "./server/remote-run";
-import { cancelScript, launchScript, packScript, parseLaunch, prepareDataScript, snapshotScript, statScript, parsePoll, parseProbe, parseSize, pollScript, remoteLayout, SAFE_PATH, sq, sshArgs, taskLogScript } from "./ssh";
+import { cancelScript, launchScript, outermostPaths, packScript, parseLaunch, prepareDataScript, snapshotScript, statScript, parsePoll, parseProbe, parseSize, pollScript, remoteLayout, SAFE_PATH, sq, sshArgs, taskLogScript } from "./ssh";
 import type { RemoteHost } from "./types";
 
 const host: RemoteHost = { id: "hpc", name: "HPC", host: "login.example.org", user: "ana", port: 2222, identityFile: "/Users/ana/.ssh/id_ed25519", baseDir: "~/nextflow-studio" };
@@ -34,6 +34,7 @@ describe("remote ssh helpers", () => {
   it("lays out data, launch, attempt, results and work directories under the base", () => {
     expect(remoteLayout("/scratch/ana/nfs/", "wf1", "run1", "proj")).toEqual({
       dataDir: "/scratch/ana/nfs/projects/proj",
+      snapshotsDir: "/scratch/ana/nfs/snapshots/proj",
       launchDir: "/scratch/ana/nfs/pipelines/wf1",
       attemptDir: "/scratch/ana/nfs/runs/run1",
       outdir: "/scratch/ana/nfs/runs/run1/results",
@@ -70,6 +71,15 @@ describe("remote ssh helpers", () => {
     expect(parseSize("@@KB -1\n")).toBe(-1);
   });
 
+  it("snapshots a folder once even when a file inside it is listed too", () => {
+    expect(outermostPaths(["reads/a.fq", "reads", "readsX/b.fq", "sheet.csv", "reads"])).toEqual(["reads", "readsX/b.fq", "sheet.csv"]);
+    const dir = execFileSync("mktemp", ["-d"], { encoding: "utf8" }).trim();
+    sh(`mkdir -p ${dir}/data/reads && echo a > ${dir}/data/reads/a.fq && echo b > ${dir}/data/reads/b.fq`);
+    execFileSync("sh", ["-s"], { input: snapshotScript(`${dir}/data`, `${dir}/snap/x`, ["reads/a.fq", "reads"]) });
+    expect(sh(`cd ${dir}/snap/x && find . -type f | sort`)).toBe("./reads/a.fq\n./reads/b.fq\n");
+    sh(`rm -rf ${dir}`);
+  });
+
   it("writes scripts a POSIX shell accepts", () => {
     const scripts = [
       launchScript({ ...host, setup: "module load nextflow" }, { launchDir: "/s/p/wf", attemptDir: "/s/r/1", args: ["run", ".", "-name", "it's"] }),
@@ -79,7 +89,7 @@ describe("remote ssh helpers", () => {
       taskLogScript("/s/work/ab/cdef"),
       statScript("/s/projects/p", ["data/a.fq"], ["data/reads"]),
       prepareDataScript("/s/projects/p", ["data/reads/gone.fq"], ["data/reads", "data/reads/empty"]),
-      snapshotScript("/s/projects/p", "/s/runs/1/inputs", ["data/a.fq", "sheet.csv"]),
+      snapshotScript("/s/projects/p", "/s/snapshots/p/abc", ["data/a.fq", "sheet.csv"]),
     ];
     for (const script of scripts) expect(() => execFileSync("sh", ["-n"], { input: script })).not.toThrow();
     expect(scripts[0]).toContain("module load nextflow\n");

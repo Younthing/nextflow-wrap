@@ -1,9 +1,10 @@
+import { createHash } from "node:crypto";
 import { mkdir, readdir, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { gstr } from "@/features/project/groovy";
 import { launchTools, profileList, renderRunConfig, type LaunchConfig } from "@/features/project/launch";
 import type { PipelineParams } from "@/features/workflow/types";
-import { cancelScript, launchScript, parseLaunch, parsePoll, parseProbe, parseSize, parseStat, pollScript, prepareDataScript, probeScript, remoteLayout, snapshotScript, sizeScript, statScript, taskLogScript } from "../ssh";
+import { cancelScript, launchScript, parseLaunch, parsePoll, parseProbe, parseSize, parseStat, pollScript, outermostPaths, prepareDataScript, probeScript, remoteLayout, snapshotScript, sizeScript, statScript, taskLogScript } from "../ssh";
 import type { RemoteHost, RemoteProbe, RemoteRunState } from "../types";
 import type { SshSession } from "./session";
 
@@ -97,13 +98,17 @@ export async function syncRemoteData(session: SshSession, root: string, dataDir:
   const stale = [...remote.keys()].filter((file) => !local.has(file));
   await session.script(prepareDataScript(dataDir, stale, directories), { timeoutMs: 120_000 });
   const changed: string[] = [];
+  // The data's state as the host will hold it: what names a snapshot, so unchanged data maps to the same one.
+  const state = createHash("sha256").update(JSON.stringify(outermostPaths(paths))).update(JSON.stringify(directories));
   for (const file of files) {
     const local = await stat(join(root, file));
+    const mtime = Math.floor(local.mtimeMs / 1000);
+    state.update(`${file}\0${local.size}\0${mtime}\n`);
     const there = remote.get(file);
-    if (!there || there.size !== local.size || there.mtime !== Math.floor(local.mtimeMs / 1000)) changed.push(file);
+    if (!there || there.size !== local.size || there.mtime !== mtime) changed.push(file);
   }
   await session.uploadFiles(root, dataDir, changed);
-  return { files: files.length, uploaded: changed.length, removed: stale.length };
+  return { files: files.length, uploaded: changed.length, removed: stale.length, digest: state.digest("hex").slice(0, 16) };
 }
 
 /** Params that name synced workspace data point into `dataDir` (the run's snapshot) on the host; the rest stay. */
@@ -129,10 +134,11 @@ export async function startRemoteRun(input: RemoteStart) {
   const layout = remoteLayout(probe.baseDir, input.workflowId, input.runId, input.data?.project);
   const workDir = input.launch.workDir === "work" || !input.launch.workDir ? layout.workDir : input.launch.workDir;
   const launch: LaunchConfig = { ...input.launch, workDir };
-  // The project's data is synced once per host, then each run reads its own hard-linked snapshot of it, so a later
-  // sync for another workflow cannot change or remove files this run still needs.
-  const inputsDir = `${layout.attemptDir}/inputs`;
+  // The project's data is synced once per host, then runs read a hard-linked snapshot named after its state: a later
+  // sync for another workflow cannot change or remove files a run still needs, and a resume over unchanged data sees
+  // the same paths, so its tasks stay cached.
   const synced = input.data?.paths.length ? await syncRemoteData(session, input.data.root, layout.dataDir, input.data.paths) : undefined;
+  const inputsDir = synced ? `${layout.snapshotsDir}/${synced.digest}` : "";
   if (synced) await session.script(snapshotScript(layout.dataDir, inputsDir, input.data!.paths), { timeoutMs: 10 * 60_000 });
   input.signal?.throwIfAborted();
   const params: PipelineParams = {
