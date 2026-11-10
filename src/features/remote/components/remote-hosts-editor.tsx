@@ -130,7 +130,7 @@ export function RemoteHostsEditor({ hosts, onSave, onTest, saving }: {
         <CardHeader>
           <CardTitle>远程集群</CardTitle>
           <CardDescription>
-            通过 SSH 免密登录 · 输入路径写集群上的路径 · 结果超过 2 GB 留在集群
+            通过 SSH 免密登录 · 工作区数据运行前自动同步到集群（集群上的绝对路径照常使用）· 结果超过 2 GB 留在集群
           </CardDescription>
         </CardHeader>
       </Card>

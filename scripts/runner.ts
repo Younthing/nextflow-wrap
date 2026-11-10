@@ -264,8 +264,9 @@ async function executeRemote(run: StoredExecution, tools: RuntimeTools, controll
       host: session.host, session, runId: id, workflowId: run.detail.workflowId, runName: run.detail.runName,
       projectDir: run.projectDir, attemptDir: run.attemptDir, launch: run.detail.launch, params,
       resumeSession: run.resumeFrom ? run.sessionId : undefined, signal: controller.signal,
+      data: run.remoteData && run.projectRoot ? { root: run.projectRoot, project: run.remoteData.project, paths: run.remoteData.paths } : undefined,
     });
-    await writeFile(join(run.attemptDir, "manifest.json"), JSON.stringify({ workflow: run.detail.workflow, host: session.host, nextflow: started.versions, remote: started.state, command: started.command }, null, 2));
+    await writeFile(join(run.attemptDir, "manifest.json"), JSON.stringify({ workflow: run.detail.workflow, host: session.host, nextflow: started.versions, remote: started.state, command: started.command, data: started.data }, null, 2));
     db.updateRun(id, (record) => {
       record.detail.launch = started.launch;
       record.detail.runConfig = started.runConfig;

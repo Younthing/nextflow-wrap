@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { generateProject } from "@/features/project/generate";
@@ -27,7 +27,7 @@ import { REMOTE_ID } from "@/features/remote/types";
 import { store, type StoredExecution } from "@/lib/server/database";
 import { readSettings } from "@/lib/server/settings";
 
-import { dataPathParams, resolveDataParams } from "../data-params";
+import { dataPathParams, resolveDataParams, samplesheetWorkspaceFiles } from "../data-params";
 import type { RunProgress } from "../types";
 
 export class HttpError extends Error { constructor(readonly status: number, message: string) { super(message); } }
@@ -137,6 +137,12 @@ export function submitRun(body: unknown, idempotency?: string) {
   if (workflow.fileVersion !== saved.fileVersion) throw new HttpError(409, "流程已改变，请保存或重新载入后运行");
   const data = resolveDataParams(request.params, dataPathParams(workflow), { root, remote: Boolean(launch.remote), exists: existsSync });
   if (data.errors.length) throw new HttpError(400, data.errors.join("；"));
+  // A cluster run copies the workspace data it names, and the files a workspace samplesheet lists, to the host.
+  const sheet = typeof data.params.input === "string" && data.sync.includes(data.params.input) ? join(root, data.params.input) : undefined;
+  const remoteData = launch.remote && data.sync.length ? {
+    project: store().projectHandle ?? projectId ?? "project",
+    paths: [...new Set([...data.sync, ...(sheet && statSync(sheet).isFile() ? samplesheetWorkspaceFiles(readFileSync(sheet, "utf8"), (path) => existsSync(join(root, path))) : [])])],
+  } : undefined;
   const project = generateProject(workflow, index, { registry: launch.registry, scriptLayout: scriptLayoutFor(launch.executor) });
   const id = randomUUID();
   const lineageId = source?.lineageId ?? id;
@@ -144,7 +150,7 @@ export function submitRun(body: unknown, idempotency?: string) {
   const now = new Date().toISOString();
   const run: StoredExecution = {
     // Every run of a workflow launches from one directory so `-resume` can reuse any earlier session's tasks.
-    lineageId, projectRoot: root, inputParams: request.params, projectDir: join(root, ".studio/runtime/workflows", workflow.id), attemptDir,
+    lineageId, projectRoot: root, inputParams: request.params, ...(remoteData ? { remoteData } : {}), projectDir: join(root, ".studio/runtime/workflows", workflow.id), attemptDir,
     ...(source ? { resumeFrom: source.detail.id, sessionId: source.sessionId } : {}),
     detail: {
       ...(source ? { resumeFromRunId: source.detail.id, nextflowSessionId: source.sessionId } : {}),

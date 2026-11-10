@@ -3,7 +3,7 @@ import { createWriteStream, mkdirSync } from "node:fs";
 import { mkdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { packScript, sshArgs } from "../ssh";
+import { packScript, sq, sshArgs } from "../ssh";
 import type { RemoteHost } from "../types";
 
 export class RemoteError extends Error {
@@ -74,6 +74,17 @@ export class SshSession {
     const tarDone = new Promise<number | null>((resolve) => tar.once("close", resolve));
     await this.exec(`mkdir -p ${remoteDir} && tar -xf - -C ${remoteDir}`, { stdin: tar.stdout, timeoutMs: 30 * 60_000 });
     if ((await tarDone) !== 0) throw new Error(`打包 ${localDir} 失败：${tarError}`);
+  }
+
+  /** Copies `files` (relative to `localRoot`) into the same relative places under `remoteDir`, keeping mtimes. */
+  async uploadFiles(localRoot: string, remoteDir: string, files: string[]) {
+    if (!files.length) return;
+    const tar = spawn("tar", ["-C", localRoot, "-cf", "-", "--", ...files], { stdio: ["ignore", "pipe", "pipe"] });
+    let tarError = "";
+    tar.stderr.on("data", (chunk: Buffer) => { tarError += chunk.toString("utf8"); });
+    const tarDone = new Promise<number | null>((resolve) => tar.once("close", resolve));
+    await this.exec(`mkdir -p ${sq(remoteDir)} && tar -xf - -C ${sq(remoteDir)}`, { stdin: tar.stdout, timeoutMs: 6 * 60 * 60_000 });
+    if ((await tarDone) !== 0) throw new Error(`打包 ${localRoot} 里的数据失败：${tarError}`);
   }
 
   /** Copies the existing `entries` of a remote directory into `localDir`. Missing entries are skipped. */

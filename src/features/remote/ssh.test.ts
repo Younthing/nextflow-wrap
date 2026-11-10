@@ -31,8 +31,9 @@ describe("remote ssh helpers", () => {
     for (const bad of ["", "nf", "/a b", "/a;rm -rf", "~ana/x", "/a/$(id)", "/a'b"]) expect(SAFE_PATH.test(bad)).toBe(false);
   });
 
-  it("lays out launch, attempt, results and work directories under the base", () => {
-    expect(remoteLayout("/scratch/ana/nfs/", "wf1", "run1")).toEqual({
+  it("lays out data, launch, attempt, results and work directories under the base", () => {
+    expect(remoteLayout("/scratch/ana/nfs/", "wf1", "run1", "proj")).toEqual({
+      dataDir: "/scratch/ana/nfs/projects/proj",
       launchDir: "/scratch/ana/nfs/pipelines/wf1",
       attemptDir: "/scratch/ana/nfs/runs/run1",
       outdir: "/scratch/ana/nfs/runs/run1/results",

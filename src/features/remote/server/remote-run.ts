@@ -1,9 +1,9 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { gstr } from "@/features/project/groovy";
 import { launchTools, profileList, renderRunConfig, type LaunchConfig } from "@/features/project/launch";
 import type { PipelineParams } from "@/features/workflow/types";
-import { cancelScript, launchScript, parseLaunch, parsePoll, parseProbe, parseSize, pollScript, probeScript, remoteLayout, sizeScript, taskLogScript } from "../ssh";
+import { cancelScript, launchScript, parseLaunch, parsePoll, parseProbe, parseSize, parseStat, pollScript, probeScript, remoteLayout, sizeScript, statScript, taskLogScript } from "../ssh";
 import type { RemoteHost, RemoteProbe, RemoteRunState } from "../types";
 import type { SshSession } from "./session";
 
@@ -54,7 +54,52 @@ export interface RemoteStart {
   params: PipelineParams;
   /** `-resume <session>` of an earlier run on the same host. */
   resumeSession?: string;
+  /** Workspace files and folders to copy into the project's folder on the host first (see `syncRemoteData`). */
+  data?: { root: string; project: string; paths: string[] };
   signal?: AbortSignal;
+}
+
+/** The files under each workspace path (a file, or every file in a folder), relative to `root`. */
+async function workspaceFiles(root: string, paths: string[]): Promise<string[]> {
+  const files = new Set<string>();
+  const walk = async (relative: string): Promise<void> => {
+    const info = await stat(join(root, relative));
+    if (info.isFile()) { files.add(relative); return; }
+    if (!info.isDirectory()) return;
+    for (const entry of await readdir(join(root, relative), { withFileTypes: true })) {
+      if (entry.isSymbolicLink()) continue;
+      await walk(`${relative}/${entry.name}`);
+    }
+  };
+  for (const path of paths) await walk(path);
+  return [...files].sort();
+}
+
+/**
+ * Copies workspace data into `dataDir` on the host, at the same relative paths, so a samplesheet's relative file
+ * columns still line up. Files the host already has with the same size and modification time are skipped; tar keeps
+ * mtimes, so an unchanged file is sent once.
+ */
+export async function syncRemoteData(session: SshSession, root: string, dataDir: string, paths: string[]) {
+  const files = await workspaceFiles(root, paths);
+  const remote = parseStat(await session.script(statScript(dataDir, files), { timeoutMs: 120_000 }));
+  const changed: string[] = [];
+  for (const file of files) {
+    const local = await stat(join(root, file));
+    const there = remote.get(file);
+    if (!there || there.size !== local.size || there.mtime !== Math.floor(local.mtimeMs / 1000)) changed.push(file);
+  }
+  await session.uploadFiles(root, dataDir, changed);
+  return { files: files.length, uploaded: changed.length };
+}
+
+/** Params that name synced workspace data point into `dataDir` on the host; the rest stay as they are. */
+export function remoteDataParams(params: PipelineParams, dataDir: string, paths: string[]): PipelineParams {
+  const out: PipelineParams = { ...params, studio_project_root: dataDir };
+  for (const [name, value] of Object.entries(params)) {
+    if (typeof value === "string" && paths.includes(value)) out[name] = `${dataDir}/${value}`;
+  }
+  return out;
 }
 
 /**
@@ -68,10 +113,15 @@ export async function startRemoteRun(input: RemoteStart) {
   const missing = missingRemoteTools(input.launch, probe.tools);
   if (missing.length) throw new Error(missing.join("；"));
   input.signal?.throwIfAborted();
-  const layout = remoteLayout(probe.baseDir, input.workflowId, input.runId);
+  const layout = remoteLayout(probe.baseDir, input.workflowId, input.runId, input.data?.project);
   const workDir = input.launch.workDir === "work" || !input.launch.workDir ? layout.workDir : input.launch.workDir;
   const launch: LaunchConfig = { ...input.launch, workDir };
-  const params: PipelineParams = { ...input.params, outdir: layout.outdir, publish_dir_mode: "copy", trace_report_suffix: input.runId };
+  const synced = input.data?.paths.length ? await syncRemoteData(session, input.data.root, layout.dataDir, input.data.paths) : undefined;
+  input.signal?.throwIfAborted();
+  const params: PipelineParams = {
+    ...(synced ? remoteDataParams(input.params, layout.dataDir, input.data!.paths) : input.params),
+    outdir: layout.outdir, publish_dir_mode: "copy", trace_report_suffix: input.runId,
+  };
   const runConfig = remoteRunConfig(launch, layout.attemptDir);
   const staging = join(input.attemptDir, "remote");
   await mkdir(staging, { recursive: true });
@@ -94,7 +144,7 @@ export async function startRemoteRun(input: RemoteStart) {
     pid: started.pid, pidStart: started.pidStart,
   };
   const command = `ssh ${host.user ? `${host.user}@` : ""}${host.host} 'cd ${layout.launchDir} && nohup ${host.nextflow?.trim() || "nextflow"} ${args.join(" ")} &'`;
-  return { state, launch, runConfig, command, versions: probe.nextflow };
+  return { state, launch, runConfig, command, versions: probe.nextflow, ...(synced ? { data: { dir: layout.dataDir, ...synced } } : {}) };
 }
 
 export async function pollRemoteRun(session: SshSession, state: RemoteRunState) {

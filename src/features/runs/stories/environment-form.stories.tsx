@@ -56,7 +56,7 @@ export const OnCluster: Story = {
     // The listbox keeps the form aria-hidden until it has closed.
     await expect(await canvas.findByRole("radio", { name: /^登录节点/ })).toHaveAttribute("aria-checked", "true");
     expect(canvas.queryByRole("radio", { name: /AWS Batch/ })).toBeNull();
-    await expect(canvas.getByText(/路径写集群上的路径/)).toBeInTheDocument();
+    await expect(canvas.getByText(/工作区数据运行前自动同步过去/)).toBeInTheDocument();
     await expect(canvas.getByLabelText("工作目录（workDir）")).toBeEnabled();
     await expect(canvas.getByText("填 work 时用 ~/nextflow-studio/work")).toBeInTheDocument();
     const slurm = canvas.getByRole("radio", { name: /^SLURM/ });

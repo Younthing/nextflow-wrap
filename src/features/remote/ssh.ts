@@ -35,9 +35,11 @@ export function sshArgs(host: RemoteHost, controlDir?: string): string[] {
 }
 
 /** Paths a run uses on the host, under the resolved absolute base directory. */
-export function remoteLayout(baseDir: string, workflowId: string, runId: string) {
+export function remoteLayout(baseDir: string, workflowId: string, runId: string, project = "") {
   const base = baseDir.replace(/\/+$/, "");
   return {
+    /** The project's workspace data a run copied here; workspace paths in params resolve inside it. */
+    dataDir: `${base}/projects/${project || "default"}`,
     launchDir: `${base}/pipelines/${workflowId}`,
     attemptDir: `${base}/runs/${runId}`,
     outdir: `${base}/runs/${runId}/results`,
@@ -174,6 +176,22 @@ export const parseSize = (output: string) => {
   const kb = Number(output.match(/^@@KB (-?\d+)$/m)?.[1] ?? -1);
   return kb < 0 ? -1 : kb * 1024;
 };
+
+/** Size and modification time (seconds) of each file under `dir`, to skip uploading what the host already has. */
+export function statScript(dir: string, files: string[]): string {
+  return [
+    `cd ${sq(dir)} 2>/dev/null || exit 0`,
+    ...files.map((file) => `[ -f ${sq(file)} ] && printf '@@STAT %s\\t%s\\n' "$(stat -c '%s %Y' ${sq(file)} 2>/dev/null || stat -f '%z %m' ${sq(file)})" ${sq(file)}`),
+    "exit 0",
+    "",
+  ].join("\n");
+}
+
+export function parseStat(output: string): Map<string, { size: number; mtime: number }> {
+  const files = new Map<string, { size: number; mtime: number }>();
+  for (const match of output.matchAll(/^@@STAT (\d+) (\d+)\t(.+)$/gm)) files.set(match[3], { size: Number(match[1]), mtime: Number(match[2]) });
+  return files;
+}
 
 /** A tar stream of the entries of `dir` that exist, on stdout. Prints nothing when none exists. */
 export function packScript(dir: string, entries: string[]): string {

@@ -134,7 +134,7 @@ export function EnvironmentForm({
           <Field
             label="从哪里启动 Nextflow"
             htmlFor={`${formId}-remote`}
-            hint={host ? `SSH 到 ${host.host} 登录节点 · 路径写集群上的路径` : "在这台电脑上启动"}
+            hint={host ? `SSH 到 ${host.host} 登录节点 · 工作区数据运行前自动同步过去` : "在这台电脑上启动"}
           >
             <Select value={config.remote ?? "here"} onValueChange={(value) => chooseHost(value === "here" ? "" : value)}>
               <SelectTrigger id={`${formId}-remote`} className="sm:w-80"><SelectValue /></SelectTrigger>

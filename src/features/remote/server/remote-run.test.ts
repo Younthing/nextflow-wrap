@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { defaultLaunchConfig } from "@/features/project/launch";
 import type { RemoteHost, RemoteRunState } from "../types";
-import { cancelRemoteRun, collectRemoteRun, pollRemoteRun, startRemoteRun } from "./remote-run";
+import { cancelRemoteRun, collectRemoteRun, pollRemoteRun, startRemoteRun, syncRemoteData } from "./remote-run";
 import { SshSession } from "./session";
 
 /**
@@ -97,6 +97,45 @@ describe("remote run over ssh", () => {
     await cancelRemoteRun(session, state);
     const poll = await waitForExit(session, state, 60_000);
     expect(poll.exitCode ?? -1).not.toBe(0);
+  }, 200_000);
+
+  it("copies workspace data to the project's folder on the host and reads it there", async () => {
+    const session = new SshSession(host, env, undefined);
+    const workspace = join(root, "workspace");
+    mkdirSync(join(workspace, "data", "reads"), { recursive: true });
+    writeFileSync(join(workspace, "data", "greeting.txt"), "hello from the workspace\n");
+    writeFileSync(join(workspace, "data", "reads", "S1.fq"), "@r1\nACGT\n+\nIIII\n");
+    const dir = join(workspace, "local-project");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "main.nf"), [
+      "params.outdir = 'results'",
+      "process SHOW {",
+      "  publishDir params.outdir, mode: 'copy'",
+      "  input: path greeting",
+      "  output: path 'shown.txt'",
+      "  script: \"cat $greeting > shown.txt\"",
+      "}",
+      "workflow { SHOW(Channel.fromPath(params.greeting, checkIfExists: true)) }",
+      "",
+    ].join("\n"));
+    const attemptDir = join(root, "attempts", "run5");
+    const { state, data } = await startRemoteRun({
+      host, session, runId: "run5", workflowId: "wf5", runName: "remote_data", projectDir: dir, attemptDir,
+      launch: defaultLaunchConfig(), params: { greeting: "data/greeting.txt" },
+      data: { root: workspace, project: "p1", paths: ["data/greeting.txt", "data/reads"] },
+    });
+    const dataDir = join(root, "cluster", "projects", "p1");
+    expect(data).toEqual({ dir: dataDir, files: 2, uploaded: 2 });
+    expect(readFileSync(join(dataDir, "data", "reads", "S1.fq"), "utf8")).toContain("ACGT");
+    const params = JSON.parse(readFileSync(join(state.attemptDir, "params.json"), "utf8"));
+    expect(params).toMatchObject({ greeting: join(dataDir, "data", "greeting.txt"), studio_project_root: dataDir });
+    expect((await waitForExit(session, state)).exitCode).toBe(0);
+    await collectRemoteRun(session, state, attemptDir, join(attemptDir, "results"));
+    expect(readFileSync(join(attemptDir, "results", "shown.txt"), "utf8")).toBe("hello from the workspace\n");
+    // The next run sends only what changed.
+    writeFileSync(join(workspace, "data", "greeting.txt"), "hello again, a little longer\n");
+    expect(await syncRemoteData(session, workspace, dataDir, ["data/greeting.txt", "data/reads"])).toEqual({ files: 2, uploaded: 1 });
+    expect(readFileSync(join(dataDir, "data", "greeting.txt"), "utf8")).toBe("hello again, a little longer\n");
   }, 200_000);
 
   it("explains a missing scheduler before it uploads anything", async () => {

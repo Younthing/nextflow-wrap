@@ -34,6 +34,11 @@ export interface StoredExecution {
   eventToken?: string;
   cancelRequested?: boolean;
   resumeFrom?: string;
+  /**
+   * Workspace files and folders (relative to `projectRoot`) a cluster run copies into the project's folder on the
+   * host before it starts; params naming them point there.
+   */
+  remoteData?: { project: string; paths: string[] };
 }
 
 /** All mutations are synchronous transactions so web and runner cannot lose updates. */
