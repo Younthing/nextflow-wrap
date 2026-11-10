@@ -16,6 +16,8 @@ Saving compares a digest of the bytes originally read and uses a temporary sibli
 
 Analysis paths are relative to the project root, including typed paths in workflow inputs and sample-sheet file columns. Absolute backend paths, parent-relative paths and supported storage URIs are allowed. External data must remain available separately when a project is moved. Project file mutations cannot traverse outside the root or follow external symlinks for writes.
 
+A cluster run copies the workspace files and folders it names, and the files a workspace sample sheet lists, into `<baseDir>/projects/<project>/` on the host at the same relative paths before Nextflow starts; parameters point there and sample-sheet columns resolve against it. Files the host already has with the same size and modification time are not sent again. Globs and paths outside the project are refused; data already on the cluster is named by its absolute path or storage URI.
+
 Notebook kernels start at the project root. Explicit `chdir` calls retain the language runtime's normal meaning. Module tests execute in a task directory with staged inputs. Data files no longer have a fixed 32 MB staging limit.
 
 Published modules are immutable versions under `modules/<name>/<version>/`, including the definition, executable source, environment when supplied, and the source notebook. The shared library can distribute a complete version; installation saves a local copy so the project remains independent. Workflows reference a specific local version. Publishing a newer version does not change existing workflow nodes.
@@ -28,8 +30,8 @@ Closing an editor tab leaves its kernel alive. The last window disconnecting fro
 
 ## Format change
 
-This model does not migrate or read the former global content database. The new recent-project registry uses a separate file; existing application data and project folders are not automatically deleted. Newly seeded examples are ordinary projects in a separate example directory.
+This model does not migrate the former global content database (`studio.sqlite` in the data directory) automatically. The new recent-project registry uses a separate file; existing application data and project folders are not automatically deleted. While the old database still holds workflows or published modules, the workbench start page offers to import them into the open project: workflows go to `workflows/旧版导入/`, modules to `modules/` with their original ids so imported nodes still resolve, and anything the project already has is skipped. The old database is left untouched, so the same content can be imported into another project. Newly seeded examples are ordinary projects in a separate example directory.
 
 ## End-to-end validation
 
-Run `pnpm smoke:project` on the Linux/WSL backend with Java, the pinned Nextflow release and a Python with ipykernel available. `NEXTFLOW_STUDIO_JUPYTER_PYTHON` can select that interpreter. The smoke check creates an isolated temporary backend and project, executes a notebook, tests and publishes its module, runs the workflow through the actual runner, copies the active project to verify isolation, and checks that resume uses cached tasks. It prints the temporary project location for inspection.
+Run `pnpm smoke:project` on the Linux/WSL backend with Java, the pinned Nextflow release and a Python with ipykernel available. `NEXTFLOW_STUDIO_JUPYTER_PYTHON` can select that interpreter. The smoke check creates an isolated temporary backend and project, executes a notebook, tests and publishes its module, runs the workflow through the actual runner, copies the active project to verify isolation, and checks that resume uses cached tasks. It prints the temporary project location for inspection. CI runs it in the e2e job.

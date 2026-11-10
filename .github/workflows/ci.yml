@@ -74,6 +74,11 @@ jobs:
           Rscript --version
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm build:real
+      # The project model end to end without a browser: notebook, publish, real run, copy isolation, cached resume.
+      - run: pnpm smoke:project
+        env:
+          NXF_DISABLE_CHECK_LATEST: "true"
+          NXF_ANSI_LOG: "false"
       - run: pnpm test:e2e
         env:
           NXF_DISABLE_CHECK_LATEST: "true"
