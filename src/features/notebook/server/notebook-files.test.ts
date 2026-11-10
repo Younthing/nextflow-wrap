@@ -43,6 +43,8 @@ describe("project notebook documents", () => {
     renameSync(join(root, doc.filePath!), join(root, "other/moved.ipynb"));
     const moved = db.notebook(doc.id)!;
     expect(moved.filePath).toBe("other/moved.ipynb");
+    // Renaming the file renames the notebook, which also names the module it publishes.
+    expect(moved.name).toBe("moved");
     rmSync(join(root, moved.filePath!));
     expect(db.notebook(doc.id)).toBeUndefined();
     expect(() => db.saveNotebook(moved)).toThrow();

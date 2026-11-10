@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
-import { addFileInput, artifactDirs, extend, notebookModule, runWithShell, shot, uploadToWorkspace } from "./helpers";
+import { addFileInput, artifactDirs, extend, notebookModule, runWithShell, shot, uploadToWorkspace, hideExplorer } from "./helpers";
 
 /**
  * Single-cell acceptance on the real stack: two scanpy notebooks run in the persistent Jupyter
@@ -99,7 +99,8 @@ test.describe("single-cell user path", () => {
     const countsInWorkspace = await uploadToWorkspace(page, counts, `pbmc3k_${stamp}.h5ad`);
     await page.goto("/workflows");
     await page.getByRole("button", { name: "新建", exact: true }).click();
-    await page.waitForURL(/\/workflows\/(?!modules$)[^/]+$/);
+    await page.waitForURL(/\/workbench\/workflow\/[^/]+$/);
+    await hideExplorer(page);
     await page.getByRole("textbox", { name: "流程名称" }).fill(`单细胞 ${stamp}`);
     const reference = await addFileInput(page, countsInWorkspace);
 

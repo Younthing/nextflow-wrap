@@ -85,6 +85,8 @@ export async function ensureProject(page: Page) {
  */
 export async function uploadToWorkspace(page: Page, path: string, name: string) {
   await go(page, "/workbench");
+  // The explorer uploads into the selected folder; data/ is where the examples keep their inputs.
+  await selectFolder(page, "data");
   await onScreen(page).getByLabel("选择要上传的文件").setInputFiles({ name, mimeType: "application/octet-stream", buffer: readFileSync(path) });
   await expect(page.getByText(`已上传：data/${name}`)).toBeVisible({ timeout: 60_000 });
   return `data/${name}`;
@@ -110,24 +112,49 @@ export async function exportModule(page: Page) {
   await page.getByRole("menuitem", { name: /导出为模块/ }).click();
 }
 
-/**
- * Names the open notebook the way a user does now that the editor has no title field: right-click its row in the
- * workbench sidebar, 重命名, type the name. The notebook's .ipynb file is renamed with it.
- */
-export async function renameOpenNotebook(page: Page, name: string) {
-  const row = page.getByRole("list", { name: "项目里的笔记本" }).locator('a[aria-current="page"]');
-  await row.click({ button: "right" });
-  await page.getByRole("menuitem", { name: /重命名/ }).click();
-  const dialog = page.getByRole("dialog", { name: "重命名笔记本" });
-  await dialog.getByRole("textbox", { name: "名称" }).fill(name);
-  await dialog.getByRole("button", { name: "重命名", exact: true }).click();
-  await expect(dialog).toBeHidden();
-  await expect(row).toHaveText(name);
+/** Selects a top-level folder of the workbench explorer, the target of uploads and new notebooks. */
+export async function selectFolder(page: Page, name: string) {
+  const view = onScreen(page);
+  await view.getByRole("list", { name: "项目文件" }).getByRole("button", { name, exact: true }).click();
+  await expect(view.locator(`p[title="${name}"]`)).toBeVisible();
 }
 
-/** Creates a notebook from the workbench sidebar, opens it and gives it a name. */
+/** The open notebook's file in the project, read from the API with the window's project. */
+async function openNotebookFile(page: Page): Promise<string> {
+  const id = new URL(page.url()).pathname.split("/").pop()!;
+  return page.evaluate(async (id) => {
+    const project = sessionStorage.getItem("studio.window-project.v2") ?? "";
+    const doc = await (await fetch(`/api/notebooks/${id}`, { headers: { "x-project-id": project } })).json() as { filePath: string };
+    return doc.filePath;
+  }, id);
+}
+
+/**
+ * Names the open notebook the way a user does: right-click its .ipynb in the workbench explorer, 重命名, type the
+ * name. The file name is the notebook's name, and with it the name of the module it publishes.
+ */
+export async function renameOpenNotebook(page: Page, name: string) {
+  const file = await openNotebookFile(page);
+  const tree = onScreen(page).getByRole("list", { name: "项目文件" });
+  const parts = file.split("/");
+  for (const folder of parts.slice(0, -1)) {
+    const button = tree.getByRole("button", { name: folder, exact: true }).first();
+    if ((await button.getAttribute("aria-expanded")) !== "true") await button.click();
+  }
+  await tree.getByRole("button", { name: parts.at(-1)!, exact: true }).click({ button: "right" });
+  await page.getByRole("menuitem", { name: /重命名/ }).click();
+  const dialog = page.getByRole("dialog", { name: "重命名" });
+  await dialog.getByRole("textbox", { name: "名称" }).fill(`${name}.ipynb`);
+  await dialog.getByRole("button", { name: "重命名", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect(tree.getByRole("button", { name: `${name}.ipynb`, exact: true })).toBeVisible();
+  await expect.poll(() => openNotebookFile(page)).toMatch(new RegExp(`(^|/)${name}\\.ipynb$`));
+}
+
+/** Creates a notebook in notebooks/ from the workbench explorer, opens it and gives it a name. */
 export async function newNotebook(page: Page, name: string) {
-  await page.getByRole("button", { name: "新建笔记本", exact: true }).click();
+  await selectFolder(page, "notebooks");
+  await onScreen(page).getByRole("button", { name: "新建笔记本", exact: true }).click();
   await page.waitForURL(/\/workbench\/nb_/);
   await renameOpenNotebook(page, name);
 }
@@ -242,4 +269,16 @@ export async function runWithShell(page: Page) {
       return /成功/.test(text);
     }, { timeout: 20 * 60_000, intervals: [2_000, 5_000] })
     .toBe(true);
+}
+
+/**
+ * Hides the workbench explorer (Ctrl+B, as in VS Code) so the canvas, its module library and inspector have room;
+ * at the test viewport the inspector would otherwise cover the canvas toolbar.
+ */
+export async function hideExplorer(page: Page) {
+  // A collapsed panel keeps its content laid out at zero width and marks its frame inert.
+  const frame = onScreen(page).locator("div").filter({ has: page.locator('> aside[aria-label="笔记本、文件与运行时"]') });
+  if (await frame.getAttribute("inert") !== null) return;
+  await page.keyboard.press("Control+b");
+  await expect(frame).toHaveAttribute("inert", "");
 }

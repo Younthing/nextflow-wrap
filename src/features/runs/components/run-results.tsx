@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 import { formatBytes } from "../format";
 import type { ResultFile } from "../outputs";
 import { firstPreviewable } from "../preview";
-import { runKeys, useHealthStatus, useRunLog, useRunResults } from "../queries";
+import { runFileUrl, runKeys, useHealthStatus, useRunLog, useRunResults } from "../queries";
 import type { TaskRecord } from "../types";
 import { RemoteResultsNotice } from "@/features/remote/components/remote-results-notice";
 import type { RemoteRunState } from "@/features/remote/types";
@@ -22,7 +22,7 @@ const MULTIQC = "multiqc/multiqc_report.html";
 
 /** Result files of a run, read from its --outdir. */
 function resultSource(runId: string): PreviewSource {
-  const url = (kind: string) => (path: string) => `/api/runs/${runId}/results/${kind}?path=${encodeURIComponent(path)}`;
+  const url = (kind: string) => (path: string) => runFileUrl(runId, `results/${kind}`, { path });
   return { key: runKeys.detail(runId), contentUrl: url("content"), summaryUrl: url("summary") };
 }
 
@@ -145,7 +145,7 @@ export function RunResults({ runId, active, outdir, workflow, tasks = [], remote
                 {outdir.replace(/\/$/, "")}/{current.path}
               </div>
               <ResultSource file={current} fullPath={`${outdir.replace(/\/$/, "")}/${current.path}`} workflow={workflow} tasks={tasks} />
-              {health.data?.mocked === false && <Button asChild variant="outline" size="sm" className="self-start"><a href={`/api/runs/${runId}/results/content?download=1&path=${encodeURIComponent(current.path)}`}>下载原始文件</a></Button>}
+              {health.data?.mocked === false && <Button asChild variant="outline" size="sm" className="self-start"><a href={runFileUrl(runId, "results/content", { download: "1", path: current.path })}>下载原始文件</a></Button>}
               {current.preview === "html" && <p className="text-xs text-muted-foreground">静态预览</p>}
               <FilePreview key={current.path} source={resultSource(runId)} file={current} fullPath={`${outdir.replace(/\/$/, "")}/${current.path}`} />
             </>
@@ -171,7 +171,7 @@ export function RunConsole({ runId, active }: { runId: string; active: boolean }
   }, [lines?.length]);
 
   return (
-    <><div className="flex justify-end pb-2">{health.data?.mocked === false && <Button asChild variant="outline" size="sm"><a href={`/api/runs/${runId}/log?download=1`}>下载完整日志</a></Button>}</div>
+    <><div className="flex justify-end pb-2">{health.data?.mocked === false && <Button asChild variant="outline" size="sm"><a href={runFileUrl(runId, "log", { download: "1" })}>下载完整日志</a></Button>}</div>
     <div ref={ref} className="min-h-0 flex-1 overflow-auto rounded-lg bg-console p-3 font-mono text-[12px] leading-5 text-console-foreground">
       {log.isPending && <span className="opacity-60">加载日志…</span>}
       {lines?.map((line, i) => (
