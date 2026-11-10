@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, readdir, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, realpath, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { gstr } from "@/features/project/groovy";
 import { launchTools, profileList, renderRunConfig, type LaunchConfig } from "@/features/project/launch";
@@ -68,15 +68,19 @@ async function workspaceFiles(root: string, paths: string[]): Promise<{ files: s
   const files = new Set<string>();
   const folders: string[] = [];
   const directories = new Set<string>();
+  // Links are followed, as the file picker does, and uploaded as the files they point to; a folder already being
+  // walked (a link back up the tree) is not entered again.
+  const visiting = new Set<string>();
   const walk = async (relative: string): Promise<void> => {
     const info = await stat(join(root, relative));
     if (info.isFile()) { files.add(relative); return; }
     if (!info.isDirectory()) return;
+    const real = await realpath(join(root, relative));
+    if (visiting.has(real)) return;
+    visiting.add(real);
     directories.add(relative);
-    for (const entry of await readdir(join(root, relative), { withFileTypes: true })) {
-      if (entry.isSymbolicLink()) continue;
-      await walk(`${relative}/${entry.name}`);
-    }
+    for (const entry of await readdir(join(root, relative))) await walk(`${relative}/${entry}`);
+    visiting.delete(real);
   };
   for (const path of paths) {
     if ((await stat(join(root, path))).isDirectory()) folders.push(path);
@@ -111,6 +115,20 @@ export async function syncRemoteData(session: SshSession, root: string, dataDir:
   return { files: files.length, uploaded: changed.length, removed: stale.length, digest: state.digest("hex").slice(0, 16) };
 }
 
+const dataLocks = new Map<string, Promise<unknown>>();
+
+/** Runs `task` after every earlier task with the same key has settled. */
+async function withDataLock<T>(key: string, task: () => Promise<T>): Promise<T> {
+  const previous = dataLocks.get(key) ?? Promise.resolve();
+  const current = previous.catch(() => undefined).then(task);
+  dataLocks.set(key, current);
+  try {
+    return await current;
+  } finally {
+    if (dataLocks.get(key) === current) dataLocks.delete(key);
+  }
+}
+
 /** Params that name synced workspace data point into `dataDir` (the run's snapshot) on the host; the rest stay. */
 export function remoteDataParams(params: PipelineParams, dataDir: string, paths: string[]): PipelineParams {
   const out: PipelineParams = { ...params, studio_project_root: dataDir };
@@ -137,9 +155,15 @@ export async function startRemoteRun(input: RemoteStart) {
   // The project's data is synced once per host, then runs read a hard-linked snapshot named after its state: a later
   // sync for another workflow cannot change or remove files a run still needs, and a resume over unchanged data sees
   // the same paths, so its tasks stay cached.
-  const synced = input.data?.paths.length ? await syncRemoteData(session, input.data.root, layout.dataDir, input.data.paths) : undefined;
-  const inputsDir = synced ? `${layout.snapshotsDir}/${synced.digest}` : "";
-  if (synced) await session.script(snapshotScript(layout.dataDir, inputsDir, input.data!.paths), { timeoutMs: 10 * 60_000 });
+  // Sync and snapshot hold one lock per host and project, so another run cannot change the shared copy in between.
+  const prepared = input.data?.paths.length ? await withDataLock(`${host.id}\0${layout.dataDir}`, async () => {
+    const synced = await syncRemoteData(session, input.data!.root, layout.dataDir, input.data!.paths);
+    const dir = `${layout.snapshotsDir}/${synced.digest}`;
+    await session.script(snapshotScript(layout.dataDir, dir, input.data!.paths), { timeoutMs: 10 * 60_000 });
+    return { synced, dir };
+  }) : undefined;
+  const synced = prepared?.synced;
+  const inputsDir = prepared?.dir ?? "";
   input.signal?.throwIfAborted();
   const params: PipelineParams = {
     ...(synced ? remoteDataParams(input.params, inputsDir, input.data!.paths) : input.params),

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -106,6 +106,11 @@ describe("remote run over ssh", () => {
     writeFileSync(join(workspace, "data", "greeting.txt"), "hello from the workspace\n");
     writeFileSync(join(workspace, "data", "reads", "S1.fq"), "@r1\nACGT\n+\nIIII\n");
     mkdirSync(join(workspace, "data", "reads", "empty"));
+    // A linked sample is uploaded as the file it points to; a link back up the tree is not followed forever.
+    mkdirSync(join(workspace, "elsewhere"));
+    writeFileSync(join(workspace, "elsewhere", "S3.fq"), "@r3\nGGGG\n+\nIIII\n");
+    symlinkSync(join(workspace, "elsewhere", "S3.fq"), join(workspace, "data", "reads", "S3.fq"));
+    symlinkSync(".", join(workspace, "data", "reads", "loop"));
     const dir = join(workspace, "local-project");
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "main.nf"), [
@@ -126,11 +131,12 @@ describe("remote run over ssh", () => {
       data: { root: workspace, project: "p1", paths: ["data/greeting.txt", "data/reads"] },
     });
     const dataDir = join(root, "cluster", "projects", "p1");
-    expect(data).toMatchObject({ dir: dataDir, files: 2, uploaded: 2, removed: 0 });
+    expect(data).toMatchObject({ dir: dataDir, files: 3, uploaded: 3, removed: 0 });
     const inputs = data!.inputs;
     expect(inputs).toBe(join(root, "cluster", "snapshots", "p1", data!.digest));
     expect(readFileSync(join(dataDir, "data", "reads", "S1.fq"), "utf8")).toContain("ACGT");
     expect(existsSync(join(dataDir, "data", "reads", "empty"))).toBe(true);
+    expect(readFileSync(join(dataDir, "data", "reads", "S3.fq"), "utf8")).toContain("GGGG");
     // The run reads its own snapshot of the data.
     const params = JSON.parse(readFileSync(join(state.attemptDir, "params.json"), "utf8"));
     expect(params).toMatchObject({ greeting: join(inputs, "data", "greeting.txt"), studio_project_root: inputs });
@@ -147,13 +153,13 @@ describe("remote run over ssh", () => {
     await waitForExit(session, again.state);
     // The next run sends only what changed.
     writeFileSync(join(workspace, "data", "greeting.txt"), "hello again, a little longer\n");
-    expect(await syncRemoteData(session, workspace, dataDir, ["data/greeting.txt", "data/reads"])).toMatchObject({ files: 2, uploaded: 1, removed: 0 });
+    expect(await syncRemoteData(session, workspace, dataDir, ["data/greeting.txt", "data/reads"])).toMatchObject({ files: 3, uploaded: 1, removed: 0 });
     expect(readFileSync(join(dataDir, "data", "greeting.txt"), "utf8")).toBe("hello again, a little longer\n");
     // A synced folder is mirrored: a sample removed locally is removed on the host too.
     writeFileSync(join(workspace, "data", "reads", "S2.fq"), "@r2\nTTTT\n+\nIIII\n");
     rmSync(join(workspace, "data", "reads", "S1.fq"));
     const changed = await syncRemoteData(session, workspace, dataDir, ["data/greeting.txt", "data/reads"]);
-    expect(changed).toMatchObject({ files: 2, uploaded: 1, removed: 1 });
+    expect(changed).toMatchObject({ files: 3, uploaded: 1, removed: 1 });
     expect(changed.digest).not.toBe(data!.digest);
     expect(existsSync(join(dataDir, "data", "reads", "S1.fq"))).toBe(false);
     expect(readFileSync(join(dataDir, "data", "reads", "S2.fq"), "utf8")).toContain("TTTT");

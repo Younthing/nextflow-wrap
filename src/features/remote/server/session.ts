@@ -77,12 +77,14 @@ export class SshSession {
   }
 
   /**
-   * Copies `files` (relative to `localRoot`) into the same relative places under `remoteDir`, keeping mtimes. The
+   * Copies `files` (relative to `localRoot`) into the same relative places under `remoteDir`, keeping mtimes and
+   * following links. The
    * list goes to tar on stdin, so a folder of tens of thousands of files stays under the argument size limit.
    */
   async uploadFiles(localRoot: string, remoteDir: string, files: string[]) {
     if (!files.length) return;
-    const tar = spawn("tar", ["-C", localRoot, "-cf", "-", "-T", "-"], { stdio: ["pipe", "pipe", "pipe"] });
+    // -h sends what a link points to, as the sync compared it.
+    const tar = spawn("tar", ["-C", localRoot, "-h", "-cf", "-", "-T", "-"], { stdio: ["pipe", "pipe", "pipe"] });
     tar.stdin.end(`${files.join("\n")}\n`);
     let tarError = "";
     tar.stderr.on("data", (chunk: Buffer) => { tarError += chunk.toString("utf8"); });
