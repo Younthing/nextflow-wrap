@@ -127,8 +127,8 @@ describe("remote run over ssh", () => {
     const attemptDir = join(root, "attempts", "run5");
     const { state, data } = await startRemoteRun({
       host, session, runId: "run5", workflowId: "wf5", runName: "remote_data", projectDir: dir, attemptDir,
-      launch: defaultLaunchConfig(), params: { greeting: "data/greeting.txt" },
-      data: { root: workspace, project: "p1", paths: ["data/greeting.txt", "data/reads"] },
+      launch: defaultLaunchConfig(), params: { greeting: "data/greeting.txt", mode: "data/greeting.txt" },
+      data: { root: workspace, project: "p1", paths: ["data/greeting.txt", "data/reads"], params: ["greeting"] },
     });
     const dataDir = join(root, "cluster", "projects", "p1");
     expect(data).toMatchObject({ dir: dataDir, files: 3, uploaded: 3, removed: 0 });
@@ -139,7 +139,8 @@ describe("remote run over ssh", () => {
     expect(readFileSync(join(dataDir, "data", "reads", "S3.fq"), "utf8")).toContain("GGGG");
     // The run reads its own snapshot of the data.
     const params = JSON.parse(readFileSync(join(state.attemptDir, "params.json"), "utf8"));
-    expect(params).toMatchObject({ greeting: join(inputs, "data", "greeting.txt"), studio_project_root: inputs });
+    // Only data params point at the snapshot; a plain param with the same text keeps it.
+    expect(params).toMatchObject({ greeting: join(inputs, "data", "greeting.txt"), mode: "data/greeting.txt", studio_project_root: inputs });
     expect((await waitForExit(session, state)).exitCode).toBe(0);
     await collectRemoteRun(session, state, attemptDir, join(attemptDir, "results"));
     expect(readFileSync(join(attemptDir, "results", "shown.txt"), "utf8")).toBe("hello from the workspace\n");
@@ -147,7 +148,7 @@ describe("remote run over ssh", () => {
     const again = await startRemoteRun({
       host, session, runId: "run6", workflowId: "wf5", runName: "remote_data_again", projectDir: dir, attemptDir: join(root, "attempts", "run6"),
       launch: defaultLaunchConfig(), params: { greeting: "data/greeting.txt" },
-      data: { root: workspace, project: "p1", paths: ["data/greeting.txt", "data/reads"] },
+      data: { root: workspace, project: "p1", paths: ["data/greeting.txt", "data/reads"], params: ["greeting"] },
     });
     expect(again.data).toMatchObject({ inputs, uploaded: 0 });
     await waitForExit(session, again.state);

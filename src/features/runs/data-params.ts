@@ -24,10 +24,12 @@ export function resolveDataParams(
   params: PipelineParams,
   names: readonly string[],
   options: { root?: string; remote: boolean; exists: (path: string) => boolean },
-): { params: PipelineParams; errors: string[]; sync: string[] } {
+): { params: PipelineParams; errors: string[]; sync: string[]; synced: string[] } {
   const out: PipelineParams = { ...params };
   const errors: string[] = [];
   const sync: string[] = [];
+  /** The params whose values are in `sync`: the only ones a cluster run points at the copied data. */
+  const synced: string[] = [];
   for (const name of new Set(names)) {
     const value = params[name];
     if (typeof value !== "string" || !value.trim()) continue;
@@ -41,7 +43,7 @@ export function resolveDataParams(
       else if (isGlob(value)) errors.push(`--${name} 是工作区里的通配路径，集群运行请改成文件夹，或填写集群上的绝对路径`);
       else if (!options.root) { errors.push("流程不属于任何项目，无法解析工作区路径"); break; }
       else if (!options.exists(resolveWorkspacePath(value, options.root)!)) errors.push(`工作区里没有 ${value}`);
-      else { sync.push(relative); out[name] = relative; }
+      else { sync.push(relative); synced.push(name); out[name] = relative; }
       continue;
     }
     if (kind === "absolute") {
@@ -53,7 +55,7 @@ export function resolveDataParams(
     if (!isGlob(value) && !options.exists(resolved)) { errors.push(`工作区里没有 ${value}`); continue; }
     out[name] = resolved;
   }
-  return { params: out, errors, sync };
+  return { params: out, errors, sync, synced };
 }
 
 /** The cells of one CSV or TSV line; a quoted cell keeps its commas and `""` stands for a quote. */

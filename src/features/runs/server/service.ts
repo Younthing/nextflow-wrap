@@ -141,6 +141,7 @@ export function submitRun(body: unknown, idempotency?: string) {
   const sheet = typeof data.params.input === "string" && data.sync.includes(data.params.input) ? join(root, data.params.input) : undefined;
   const remoteData = launch.remote && data.sync.length ? {
     project: store().projectHandle ?? projectId ?? "project",
+    params: data.synced,
     paths: [...new Set([...data.sync, ...(sheet && statSync(sheet).isFile() ? samplesheetWorkspaceFiles(readFileSync(sheet, "utf8"), (path) => existsSync(join(root, path))) : [])])],
   } : undefined;
   const project = generateProject(workflow, index, { registry: launch.registry, scriptLayout: scriptLayoutFor(launch.executor) });

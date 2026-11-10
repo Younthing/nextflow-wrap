@@ -19,13 +19,14 @@ describe("resolveDataParams", () => {
     ]);
   });
   it("accepts existing absolute and parent-relative data", () => {
-    expect(resolveDataParams({ a: "/data/shared.csv", b: "../shared.csv" }, ["a", "b"], { root: "/project", remote: false, exists: () => true })).toEqual({ params: { a: "/data/shared.csv", b: "/project/../shared.csv" }, errors: [], sync: [] });
+    expect(resolveDataParams({ a: "/data/shared.csv", b: "../shared.csv" }, ["a", "b"], { root: "/project", remote: false, exists: () => true })).toEqual({ params: { a: "/data/shared.csv", b: "/project/../shared.csv" }, errors: [], sync: [], synced: [] });
   });
   it("lists workspace data a cluster run must copy and keeps cluster paths as they are", () => {
     const { params, errors, sync } = resolveDataParams({ a: "/scratch/x.fq", b: "./data/reads.fq" }, ["a", "b"], { root: "/srv/proj", remote: true, exists });
     expect(errors).toEqual([]);
     expect(params).toEqual({ a: "/scratch/x.fq", b: "data/reads.fq" });
     expect(sync).toEqual(["data/reads.fq"]);
+    expect(resolveDataParams({ b: "data/reads.fq", mode: "data/reads.fq" }, ["b"], { root: "/srv/proj", remote: true, exists }).synced).toEqual(["b"]);
   });
   it("refuses workspace data a cluster run cannot copy", () => {
     const { errors, sync } = resolveDataParams({ a: "data/*.fq", b: "../outside.fq", c: "data/missing.fq" }, ["a", "b", "c"], { root: "/srv/proj", remote: true, exists: () => false });

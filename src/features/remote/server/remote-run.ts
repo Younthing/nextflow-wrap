@@ -56,7 +56,7 @@ export interface RemoteStart {
   /** `-resume <session>` of an earlier run on the same host. */
   resumeSession?: string;
   /** Workspace files and folders to copy into the project's folder on the host first (see `syncRemoteData`). */
-  data?: { root: string; project: string; paths: string[] };
+  data?: { root: string; project: string; paths: string[]; params: string[] };
   signal?: AbortSignal;
 }
 
@@ -129,11 +129,12 @@ async function withDataLock<T>(key: string, task: () => Promise<T>): Promise<T> 
   }
 }
 
-/** Params that name synced workspace data point into `dataDir` (the run's snapshot) on the host; the rest stay. */
-export function remoteDataParams(params: PipelineParams, dataDir: string, paths: string[]): PipelineParams {
+/** The data params (`names`) point into `dataDir` (the run's snapshot) on the host; every other param stays as it is. */
+export function remoteDataParams(params: PipelineParams, dataDir: string, names: string[]): PipelineParams {
   const out: PipelineParams = { ...params, studio_project_root: dataDir };
-  for (const [name, value] of Object.entries(params)) {
-    if (typeof value === "string" && paths.includes(value)) out[name] = `${dataDir}/${value}`;
+  for (const name of names) {
+    const value = params[name];
+    if (typeof value === "string") out[name] = `${dataDir}/${value}`;
   }
   return out;
 }
@@ -166,7 +167,7 @@ export async function startRemoteRun(input: RemoteStart) {
   const inputsDir = prepared?.dir ?? "";
   input.signal?.throwIfAborted();
   const params: PipelineParams = {
-    ...(synced ? remoteDataParams(input.params, inputsDir, input.data!.paths) : input.params),
+    ...(synced ? remoteDataParams(input.params, inputsDir, input.data!.params) : input.params),
     outdir: layout.outdir, publish_dir_mode: "copy", trace_report_suffix: input.runId,
   };
   const runConfig = remoteRunConfig(launch, layout.attemptDir);

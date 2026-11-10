@@ -38,7 +38,8 @@ export interface StoredExecution {
    * Workspace files and folders (relative to `projectRoot`) a cluster run copies into the project's folder on the
    * host before it starts; params naming them point there.
    */
-  remoteData?: { project: string; paths: string[] };
+  /** Workspace data a cluster run copies to the host (`paths`), and the params that name it (`params`). */
+  remoteData?: { project: string; paths: string[]; params: string[] };
 }
 
 /** All mutations are synchronous transactions so web and runner cannot lose updates. */
