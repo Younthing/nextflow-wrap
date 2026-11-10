@@ -125,7 +125,7 @@ describe("remote run over ssh", () => {
       data: { root: workspace, project: "p1", paths: ["data/greeting.txt", "data/reads"] },
     });
     const dataDir = join(root, "cluster", "projects", "p1");
-    expect(data).toEqual({ dir: dataDir, files: 2, uploaded: 2 });
+    expect(data).toEqual({ dir: dataDir, files: 2, uploaded: 2, removed: 0 });
     expect(readFileSync(join(dataDir, "data", "reads", "S1.fq"), "utf8")).toContain("ACGT");
     const params = JSON.parse(readFileSync(join(state.attemptDir, "params.json"), "utf8"));
     expect(params).toMatchObject({ greeting: join(dataDir, "data", "greeting.txt"), studio_project_root: dataDir });
@@ -134,8 +134,14 @@ describe("remote run over ssh", () => {
     expect(readFileSync(join(attemptDir, "results", "shown.txt"), "utf8")).toBe("hello from the workspace\n");
     // The next run sends only what changed.
     writeFileSync(join(workspace, "data", "greeting.txt"), "hello again, a little longer\n");
-    expect(await syncRemoteData(session, workspace, dataDir, ["data/greeting.txt", "data/reads"])).toEqual({ files: 2, uploaded: 1 });
+    expect(await syncRemoteData(session, workspace, dataDir, ["data/greeting.txt", "data/reads"])).toEqual({ files: 2, uploaded: 1, removed: 0 });
     expect(readFileSync(join(dataDir, "data", "greeting.txt"), "utf8")).toBe("hello again, a little longer\n");
+    // A synced folder is mirrored: a sample removed locally is removed on the host too.
+    writeFileSync(join(workspace, "data", "reads", "S2.fq"), "@r2\nTTTT\n+\nIIII\n");
+    rmSync(join(workspace, "data", "reads", "S1.fq"));
+    expect(await syncRemoteData(session, workspace, dataDir, ["data/greeting.txt", "data/reads"])).toEqual({ files: 2, uploaded: 1, removed: 1 });
+    expect(existsSync(join(dataDir, "data", "reads", "S1.fq"))).toBe(false);
+    expect(readFileSync(join(dataDir, "data", "reads", "S2.fq"), "utf8")).toContain("TTTT");
   }, 200_000);
 
   it("explains a missing scheduler before it uploads anything", async () => {

@@ -178,13 +178,24 @@ export const parseSize = (output: string) => {
 };
 
 /** Size and modification time (seconds) of each file under `dir`, to skip uploading what the host already has. */
-export function statScript(dir: string, files: string[]): string {
+/**
+ * Size and mtime of each file under `dir` that exists, as `@@STAT <size> <mtime>\t<file>`; for each folder in
+ * `folders`, of every file under it, so files that are gone locally can be found.
+ */
+export function statScript(dir: string, files: string[], folders: string[] = []): string {
+  const stat = (file: string) => `printf '@@STAT %s\\t%s\\n' "$(stat -c '%s %Y' ${file} 2>/dev/null || stat -f '%z %m' ${file})" ${file}`;
   return [
     `cd ${sq(dir)} 2>/dev/null || exit 0`,
-    ...files.map((file) => `[ -f ${sq(file)} ] && printf '@@STAT %s\\t%s\\n' "$(stat -c '%s %Y' ${sq(file)} 2>/dev/null || stat -f '%z %m' ${sq(file)})" ${sq(file)}`),
+    ...files.map((file) => `[ -f ${sq(file)} ] && ${stat(sq(file))}`),
+    ...folders.map((folder) => `[ -d ${sq(folder)} ] && find ${sq(folder)} -type f | while IFS= read -r f; do ${stat('"$f"')}; done`),
     "exit 0",
     "",
   ].join("\n");
+}
+
+/** Deletes `files` under `dir`: what a synced folder still holds on the host after they were removed locally. */
+export function removeScript(dir: string, files: string[]): string {
+  return [`cd ${sq(dir)} || exit 1`, ...files.map((file) => `rm -f -- ${sq(file)}`), "exit 0", ""].join("\n");
 }
 
 export function parseStat(output: string): Map<string, { size: number; mtime: number }> {

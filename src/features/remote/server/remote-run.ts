@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { gstr } from "@/features/project/groovy";
 import { launchTools, profileList, renderRunConfig, type LaunchConfig } from "@/features/project/launch";
 import type { PipelineParams } from "@/features/workflow/types";
-import { cancelScript, launchScript, parseLaunch, parsePoll, parseProbe, parseSize, parseStat, pollScript, probeScript, remoteLayout, sizeScript, statScript, taskLogScript } from "../ssh";
+import { cancelScript, launchScript, parseLaunch, parsePoll, parseProbe, parseSize, parseStat, pollScript, probeScript, remoteLayout, removeScript, sizeScript, statScript, taskLogScript } from "../ssh";
 import type { RemoteHost, RemoteProbe, RemoteRunState } from "../types";
 import type { SshSession } from "./session";
 
@@ -59,9 +59,10 @@ export interface RemoteStart {
   signal?: AbortSignal;
 }
 
-/** The files under each workspace path (a file, or every file in a folder), relative to `root`. */
-async function workspaceFiles(root: string, paths: string[]): Promise<string[]> {
+/** The files under each workspace path (a file, or every file in a folder), relative to `root`, and the folders. */
+async function workspaceFiles(root: string, paths: string[]): Promise<{ files: string[]; folders: string[] }> {
   const files = new Set<string>();
+  const folders: string[] = [];
   const walk = async (relative: string): Promise<void> => {
     const info = await stat(join(root, relative));
     if (info.isFile()) { files.add(relative); return; }
@@ -71,18 +72,25 @@ async function workspaceFiles(root: string, paths: string[]): Promise<string[]> 
       await walk(`${relative}/${entry.name}`);
     }
   };
-  for (const path of paths) await walk(path);
-  return [...files].sort();
+  for (const path of paths) {
+    if ((await stat(join(root, path))).isDirectory()) folders.push(path);
+    await walk(path);
+  }
+  return { files: [...files].sort(), folders };
 }
 
 /**
  * Copies workspace data into `dataDir` on the host, at the same relative paths, so a samplesheet's relative file
  * columns still line up. Files the host already has with the same size and modification time are skipped; tar keeps
- * mtimes, so an unchanged file is sent once.
+ * mtimes, so an unchanged file is sent once. A synced folder is mirrored: files removed locally are removed there too,
+ * so a run never reads samples that are gone.
  */
 export async function syncRemoteData(session: SshSession, root: string, dataDir: string, paths: string[]) {
-  const files = await workspaceFiles(root, paths);
-  const remote = parseStat(await session.script(statScript(dataDir, files), { timeoutMs: 120_000 }));
+  const { files, folders } = await workspaceFiles(root, paths);
+  const remote = parseStat(await session.script(statScript(dataDir, files, folders), { timeoutMs: 120_000 }));
+  const local = new Set(files);
+  const stale = [...remote.keys()].filter((file) => !local.has(file));
+  if (stale.length) await session.script(removeScript(dataDir, stale), { timeoutMs: 120_000 });
   const changed: string[] = [];
   for (const file of files) {
     const local = await stat(join(root, file));
@@ -90,7 +98,7 @@ export async function syncRemoteData(session: SshSession, root: string, dataDir:
     if (!there || there.size !== local.size || there.mtime !== Math.floor(local.mtimeMs / 1000)) changed.push(file);
   }
   await session.uploadFiles(root, dataDir, changed);
-  return { files: files.length, uploaded: changed.length };
+  return { files: files.length, uploaded: changed.length, removed: stale.length };
 }
 
 /** Params that name synced workspace data point into `dataDir` on the host; the rest stay as they are. */

@@ -43,8 +43,8 @@ describe("resolveDataParams", () => {
 
 describe("samplesheetWorkspaceFiles", () => {
   it("finds the workspace files a sheet names, quoted or not, and skips sample names and remote paths", () => {
-    const csv = 'sample,fastq_1,fastq_2\nS1,data/S1_R1.fq.gz,"data/S1_R2.fq.gz"\nS2,/scratch/S2.fq.gz,\nS3,data/missing.fq,\n';
-    const present = new Set(["data/S1_R1.fq.gz", "data/S1_R2.fq.gz"]);
-    expect(samplesheetWorkspaceFiles(csv, (path) => present.has(path))).toEqual(["data/S1_R1.fq.gz", "data/S1_R2.fq.gz"]);
+    const csv = 'sample,fastq_1,fastq_2\nS1,data/S1_R1.fq.gz,"data/S1_R2.fq.gz"\nS2,/scratch/S2.fq.gz,\nS3,data/missing.fq,\nS4,S4.fq.gz,\n';
+    const present = new Set(["data/S1_R1.fq.gz", "data/S1_R2.fq.gz", "S4.fq.gz"]);
+    expect(samplesheetWorkspaceFiles(csv, (path) => present.has(path))).toEqual(["data/S1_R1.fq.gz", "data/S1_R2.fq.gz", "S4.fq.gz"]);
   });
 });

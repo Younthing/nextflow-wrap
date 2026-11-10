@@ -42,6 +42,14 @@ export interface StoredExecution {
 }
 
 /** All mutations are synchronous transactions so web and runner cannot lose updates. */
+/**
+ * Where a module's definition lives in a project folder: its id when the id is that path, otherwise (modules from
+ * before project folders keep their old ids) under `modules/<path>/<version>/`.
+ */
+function moduleFile(mod: ModuleDef): string {
+  return mod.id.startsWith("modules/") ? mod.id : `modules/${mod.path}/${mod.version ?? "v1"}/module.json`;
+}
+
 export class StudioStore {
   readonly db: DatabaseSync;
   /** Example project folder (the default workspace). An in-memory database has none. */
@@ -250,7 +258,7 @@ export class StudioStore {
   }
   saveScriptModule(mod: ModuleDef) {
     if (this.documents) {
-      const path = mod.id.startsWith("modules/") ? mod.id : `modules/${mod.path}/${mod.version ?? "v1"}/module.json`;
+      const path = moduleFile(mod);
       const files = this.documents.files;
       files.write(path, `${JSON.stringify(mod, null, 2)}\n`, null);
       const folder = path.slice(0, -"module.json".length);
@@ -268,14 +276,19 @@ export class StudioStore {
     if (this.documents) {
       const mod = this.scriptModule(moduleId);
       if (!mod) return undefined;
-      const path = `${moduleId.slice(0, -"module.json".length)}library.json`;
+      const path = `${moduleFile(mod).slice(0, -"module.json".length)}library.json`;
       return existsSync(this.documents.files.resolve(path)) ? JSON.parse(this.documents.files.read(path).content) : undefined;
     }
     const row = this.db.prepare("SELECT data FROM module_library WHERE module_id=?").get(moduleId);
     return row ? JSON.parse(String(row.data)) as ModuleLibraryCopy : undefined;
   }
   saveLibraryCopy(copy: ModuleLibraryCopy) {
-    if (this.documents) { this.documents.files.record(`${copy.moduleId.slice(0, -"module.json".length)}library.json`, copy); return; }
+    if (this.documents) {
+      const mod = this.scriptModule(copy.moduleId);
+      const file = mod ? moduleFile(mod) : copy.moduleId;
+      this.documents.files.record(`${file.slice(0, -"module.json".length)}library.json`, copy);
+      return;
+    }
     this.db.prepare("INSERT INTO module_library(module_id, data) VALUES (?,?) ON CONFLICT(module_id) DO UPDATE SET data=excluded.data").run(copy.moduleId, JSON.stringify(copy));
   }
   /** Raw notebook JSON, for checks that a publish left the source row untouched. */

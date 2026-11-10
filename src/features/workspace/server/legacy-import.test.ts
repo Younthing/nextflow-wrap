@@ -11,16 +11,18 @@ const cleanup: (() => void)[] = [];
 afterEach(() => { for (const step of cleanup.splice(0)) step(); });
 
 const workflow = { version: 1, id: "wf_old", name: "旧流程", updatedAt: "2026-01-01T00:00:00.000Z", params: {}, nodes: [], edges: [] };
+const libraryCopy = { moduleId: "script/lab/qc", version: "v1", format: "jupytext-percent", formatVersion: "1.3", percent: "# %%\nprint('qc')\n", script: "print('qc')\n", command: "qc.py", savedAt: "2026-01-01T00:00:00.000Z" };
 const legacyModule = { id: "script/lab/qc", name: "qc", path: "qc_v1", version: "v1", origin: "script", script: "print('qc')\n", command: "qc.py", inputs: [], outputs: [] };
 
 /** A data directory with the database of an app version from before project folders. */
-function legacyDataDir(rows: { workflows?: unknown[]; modules?: unknown[] }) {
+function legacyDataDir(rows: { workflows?: unknown[]; modules?: unknown[]; library?: unknown[] }) {
   const dir = mkdtempSync(join(tmpdir(), "studio-legacy-"));
   cleanup.push(() => rmSync(dir, { recursive: true, force: true }));
   const db = new DatabaseSync(join(dir, LEGACY_DATABASE));
-  db.exec("CREATE TABLE workflows (id TEXT PRIMARY KEY, data TEXT NOT NULL); CREATE TABLE script_modules (id TEXT PRIMARY KEY, data TEXT NOT NULL);");
+  db.exec("CREATE TABLE workflows (id TEXT PRIMARY KEY, data TEXT NOT NULL); CREATE TABLE script_modules (id TEXT PRIMARY KEY, data TEXT NOT NULL); CREATE TABLE module_library (module_id TEXT PRIMARY KEY, data TEXT NOT NULL);");
   for (const doc of rows.workflows ?? []) db.prepare("INSERT INTO workflows VALUES (?,?)").run(String((doc as { id?: string }).id ?? Math.random()), JSON.stringify(doc));
   for (const mod of rows.modules ?? []) db.prepare("INSERT INTO script_modules VALUES (?,?)").run(String((mod as { id: string }).id), JSON.stringify(mod));
+  for (const copy of rows.library ?? []) db.prepare("INSERT INTO module_library VALUES (?,?)").run(String((copy as { moduleId: string }).moduleId), JSON.stringify(copy));
   db.close();
   return dir;
 }
@@ -41,7 +43,7 @@ describe("legacy import", () => {
   });
 
   it("copies old workflows and modules into the project once and leaves the old database as it was", () => {
-    const dir = legacyDataDir({ workflows: [workflow, { id: "broken", name: "坏流程" }], modules: [legacyModule] });
+    const dir = legacyDataDir({ workflows: [workflow, { id: "broken", name: "坏流程" }], modules: [legacyModule], library: [libraryCopy] });
     expect(legacySummary(dir)).toEqual({ workflows: 2, modules: 1 });
     const { root, db } = project();
     const result = importLegacy(dir, db);
@@ -52,6 +54,9 @@ describe("legacy import", () => {
     // The module keeps its id, so imported nodes still resolve.
     expect(db.scriptModule("script/lab/qc")?.name).toBe("qc");
     expect(readFileSync(join(root, "modules/qc_v1/v1/script.py"), "utf8")).toBe("print('qc')\n");
+    // Its editable notebook copy comes along, so 编辑 still opens it.
+    expect(db.libraryCopy("script/lab/qc")).toEqual(libraryCopy);
+    expect(existsSync(join(root, "modules/qc_v1/v1/library.json"))).toBe(true);
     // A second import skips what is already there.
     expect(importLegacy(dir, db)).toMatchObject({ workflows: 0, modules: 0 });
     expect(existsSync(join(dir, LEGACY_DATABASE))).toBe(true);

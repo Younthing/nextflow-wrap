@@ -65,7 +65,8 @@ export function samplesheetWorkspaceFiles(csv: string, exists: (relative: string
   for (const line of csv.split(/\r?\n/).slice(1)) {
     for (const raw of line.split(/[,\t]/)) {
       const cell = raw.trim().replace(/^"(.*)"$/, "$1");
-      if (!cell.includes("/") || dataPathKind(cell) !== "workspace") continue;
+      // A bare name (`S1.fq.gz`) can be a file at the project root; `exists` tells it from a sample name.
+      if (!cell || dataPathKind(cell) !== "workspace") continue;
       const relative = normalizeWorkspacePath(cell)!;
       if (!relative.startsWith("..") && exists(relative)) found.add(relative);
     }
