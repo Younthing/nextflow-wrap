@@ -11,7 +11,7 @@ const cleanup: (() => void)[] = [];
 afterEach(() => { for (const step of cleanup.splice(0)) step(); });
 
 const workflow = { version: 1, id: "wf_old", name: "旧流程", updatedAt: "2026-01-01T00:00:00.000Z", params: {}, nodes: [], edges: [] };
-const module = { id: "script/lab/qc", name: "qc", path: "qc_v1", version: "v1", origin: "script", script: "print('qc')\n", command: "qc.py", inputs: [], outputs: [] };
+const legacyModule = { id: "script/lab/qc", name: "qc", path: "qc_v1", version: "v1", origin: "script", script: "print('qc')\n", command: "qc.py", inputs: [], outputs: [] };
 
 /** A data directory with the database of an app version from before project folders. */
 function legacyDataDir(rows: { workflows?: unknown[]; modules?: unknown[] }) {
@@ -41,7 +41,7 @@ describe("legacy import", () => {
   });
 
   it("copies old workflows and modules into the project once and leaves the old database as it was", () => {
-    const dir = legacyDataDir({ workflows: [workflow, { id: "broken", name: "坏流程" }], modules: [module] });
+    const dir = legacyDataDir({ workflows: [workflow, { id: "broken", name: "坏流程" }], modules: [legacyModule] });
     expect(legacySummary(dir)).toEqual({ workflows: 2, modules: 1 });
     const { root, db } = project();
     const result = importLegacy(dir, db);
