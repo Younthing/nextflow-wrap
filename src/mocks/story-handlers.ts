@@ -4,7 +4,7 @@ import { FIXTURE_MODULES } from "@/features/workflow/fixture-modules";
 import { defaultLaunchConfig } from "@/features/project/launch";
 import { NEXTFLOW_VERSION } from "@/features/project/templates";
 import type { RunDetail } from "@/features/runs/types";
-import { fsHandlers } from "./fs";
+import { documentHandlers, fsHandlers } from "./fs";
 import { settingsHandlers } from "./settings";
 import { storageHandlers } from "./storage";
 import { diagnosticsHandlers } from "./diagnostics";
@@ -69,6 +69,7 @@ export const storyHandlers = [
     return HttpResponse.json({ path: `${storyProject.path}/data/${path}`, bytes: (await request.arrayBuffer()).byteLength }, { status: 201 });
   }),
   ...fsHandlers,
+  ...documentHandlers,
   ...settingsHandlers,
   ...storageHandlers,
   ...diagnosticsHandlers,
