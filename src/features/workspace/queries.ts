@@ -56,3 +56,28 @@ export const useCloseProject = () =>
 
 export const useForgetProject = () =>
   useProjectMutation((id: string) => api<void>(`/projects/${encodeURIComponent(id)}`, { method: "DELETE" }));
+
+export interface LegacySummary { workflows: number; modules: number }
+export interface LegacyImport { workflows: number; modules: number; skipped: string[] }
+
+/** Workflows and modules left in the database of an app version from before project folders, if any. */
+export function useLegacySummary(projectId: string) {
+  return useQuery({
+    queryKey: [...projectKeys.all, "legacy", projectId],
+    queryFn: () => api<LegacySummary | null>(`/projects/legacy?project=${encodeURIComponent(projectId)}`),
+    staleTime: Infinity,
+  });
+}
+
+export function useImportLegacy(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api<LegacyImport>("/projects/legacy/import", { method: "POST", body: JSON.stringify({ project: projectId }) }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: [...projectKeys.all, "legacy", projectId] });
+      void qc.invalidateQueries({ queryKey: ["workflows"] });
+      void qc.invalidateQueries({ queryKey: ["script-modules"] });
+      void qc.invalidateQueries({ queryKey: ["fs"] });
+    },
+  });
+}
