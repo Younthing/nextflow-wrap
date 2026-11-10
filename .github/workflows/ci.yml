@@ -20,6 +20,10 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # theme-build.test.ts validates the packaging config with the desktop shell's electron-builder.
+      - run: pnpm --dir desktop install --frozen-lockfile
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
       - run: pnpm typecheck
       - run: pnpm lint
       - name: Install Nextflow

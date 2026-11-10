@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/nextjs-vite";
-import { expect, fn, userEvent, within } from "storybook/test";
+import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 
 import { SettingsForm } from "../components/settings-form";
 import { defaultSettings, SECRET_KEYS, type SettingsView } from "../types";
@@ -60,6 +60,8 @@ export const NextflowVersion: Story = {
     await userEvent.click(await canvas.findByRole("combobox", { name: "Nextflow 版本" }));
     await userEvent.click(within(document.body).getByRole("option", { name: "指定版本" }));
     const input = await canvas.findByLabelText("指定版本号");
+    // Radix Select leaves pointer-events: none on <body> for a moment after it closes.
+    await waitFor(() => expect(document.body.style.pointerEvents).not.toBe("none"));
     await userEvent.clear(input);
     await userEvent.type(input, "26.10.5");
     await userEvent.click(canvas.getByRole("button", { name: /保存设置/ }));

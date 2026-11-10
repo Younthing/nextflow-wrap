@@ -50,6 +50,10 @@ storybook-static
 
 # Local Nextflow work directories for pattern checks
 .nf-verify/
+# Nextflow scratch folders left by an interrupted run in the repository root
+/nxf-tmp.*
+/.nextflow/
+/.nextflow.log*
 
 # Playwright user-path runs
 /test-results/
