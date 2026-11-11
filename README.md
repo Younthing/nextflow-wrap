@@ -143,9 +143,9 @@ pnpm dev:real    # 另一个终端，http://127.0.0.1:3000
 
 数据目录默认在 Linux 上是 `${XDG_DATA_HOME:-~/.local/share}/nextflow-studio/`，macOS 上是 `~/Library/Application Support/Nextflow Studio/`（`NEXTFLOW_STUDIO_DATA_DIR` 可改）。数据目录只放跨项目的东西：
 
-- `workspace-registry.sqlite`：最近打开的项目、运行环境状态和共享模块库（发布到共享库的模块版本，安装时复制进项目）。没有迁移，格式版本不同时服务端拒绝打开；桌面版会在启动前删掉它重建，项目文件夹不受影响。
+- `workspace-registry.sqlite`：最近打开的项目、运行环境状态和共享模块库（发布到共享库的模块版本，安装时复制进项目）。没有迁移，格式版本不同时服务端拒绝打开；桌面版会在启动前删掉它重建：项目文件夹不受影响，但共享模块库会清空。
 - `workspaces/default/`：示例项目（`NEXTFLOW_STUDIO_WORKSPACE` 可换位置）。
-- `settings.json`、`secrets.json`（设置和加密保存的密钥）、`toolchain/`（应用安装的 JRE、Nextflow、nf-weblog、micromamba，按版本分目录）、`logs/`。
+- `settings.json`、`secrets.json`（设置和密钥；权限 0600，只有桌面版通过系统钥匙串传入 `NEXTFLOW_STUDIO_SECRET_KEY` 时才用 AES-256-GCM 加密，独立服务端或没有可用钥匙串的 Linux 上是明文）、`toolchain/`（应用安装的 JRE、Nextflow、nf-weblog、micromamba，按版本分目录）、`logs/`。
 - `studio.sqlite`：项目化之前的旧数据库，只读；仍有流程或模块时工作台首页会提议导入。
 
 项目本身是一个普通文件夹（详见 [项目工作台](docs/project-workbench.md)）：`studio.json` 记项目 id 和格式版本；笔记本（`.ipynb`，默认 `notebooks/`）和流程画布（`.workflow.json`，默认 `workflows/`）是权威文件；发布的模块是 `modules/<名称>/<版本>/` 下不可变的版本目录；每次运行在 `runs/<运行 id>/`（参数、日志、trace、报告、`results/` 和当次项目快照）；`.studio/state.sqlite` 是可从文件重建的索引，`.studio/runtime/workflows/<流程 id>/` 是每个流程固定的 launch 目录（`.nextflow/` 历史和缓存库也在这里），`.studio/runtime/work/` 是项目的本机 work 目录。
@@ -173,7 +173,7 @@ NEXTFLOW_STUDIO_SSH=$PWD/scripts/ssh-shim.sh NEXTFLOW_STUDIO_REMOTE_POLL_MS=1000
 pnpm smoke:remote # 测试连接 → 集群上运行成功 → 结果取回 → 经 ssh 读任务日志 → 集群缓存续跑 → 停止
 ```
 
-云端执行器（AWS / Google / Azure Batch、Kubernetes）仍由本机 Nextflow 提交；设置页「云端凭据」里的 profile、区域、服务账号文件和账户名映射为 `AWS_PROFILE`、`AWS_REGION`、`GOOGLE_APPLICATION_CREDENTIALS`、`AZURE_BATCH_ACCOUNT_NAME` 等变量，访问密钥（`AWS_ACCESS_KEY_ID`、`AWS_SECRET_ACCESS_KEY`、`AZURE_BATCH_ACCOUNT_KEY`、`AZURE_STORAGE_ACCOUNT_KEY`）和 API key 一样只写、加密保存，runner 重启后生效。
+云端执行器（AWS / Google / Azure Batch、Kubernetes）仍由本机 Nextflow 提交；设置页「云端凭据」里的 profile、区域、服务账号文件和账户名映射为 `AWS_PROFILE`、`AWS_REGION`、`GOOGLE_APPLICATION_CREDENTIALS`、`AZURE_BATCH_ACCOUNT_NAME` 等变量，访问密钥（`AWS_ACCESS_KEY_ID`、`AWS_SECRET_ACCESS_KEY`、`AZURE_BATCH_ACCOUNT_KEY`、`AZURE_STORAGE_ACCOUNT_KEY`）和 API key 一样只写，存进 `secrets.json`（加密条件见上面的数据目录说明），runner 重启后生效。
 
 可执行完整 API 验收（需要 web 和 runner 都已启动，会新增验收记录）：
 

@@ -60,8 +60,8 @@ macOS/Linux 在当前执行主机运行；Windows 桌面连接 WSL/SSH 服务端
 | macOS | `~/Library/Application Support/Nextflow Studio` |
 | Linux | `$XDG_DATA_HOME/nextflow-studio`，默认 `~/.local/share/nextflow-studio` |
 
-可以用环境变量 `NEXTFLOW_STUDIO_DATA_DIR` 换到别的磁盘。数据目录里只有设置、工具链、日志、示例项目和「最近项目」列表；笔记本、流程、模块和运行记录都在各自的项目文件夹里。
-应用的内部数据库没有迁移：升级后格式不同时，桌面版会重建「最近项目」列表，设置和项目文件夹不受影响，重新打开项目即可。用旧版本应用打开新版本创建的项目（`studio.json` 的格式版本更高）会被拒绝，而不是读错。
+可以用环境变量 `NEXTFLOW_STUDIO_DATA_DIR` 换到别的磁盘。数据目录里有设置、工具链、日志、示例项目，以及「最近项目」列表和共享模块库（都在 `workspace-registry.sqlite` 里）；笔记本、流程、已安装到项目的模块和运行记录都在各自的项目文件夹里。
+应用的内部数据库没有迁移：升级后格式不同时，桌面版会删掉并重建 `workspace-registry.sqlite`。设置和项目文件夹不受影响，重新打开项目即可；但**共享模块库里的模块会丢失**（已安装进项目的副本还在项目的 `modules/` 里）。用过共享模块库的话，升级前先备份这个文件。用旧版本应用打开新版本创建的项目（`studio.json` 的格式版本更高）会被拒绝，而不是读错。
 
 ## 关窗和退出
 
