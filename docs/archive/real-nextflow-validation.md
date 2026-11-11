@@ -1,5 +1,7 @@
 # 本机真实执行：实现与验收
 
+> **历史文档。** 这是 2026-10 第一版本机真实执行的记录，按当时的代码写成：用 nf-core 模块、Docker 跑 FastQC / MultiQC，数据放在全局 `studio.sqlite` 和数据目录下的 `executions/`、`pipelines/`。之后 nf-core 依赖已去掉（模块全部来自笔记本发布），存储改成项目文件夹，`pnpm smoke:nextflow` 也已删除。现状见 [README](../../README.md)、[项目工作台](../project-workbench.md)，后续计划见 [roadmap](../roadmap.md)。
+
 日期：2026-10-31。
 
 ## 已实现

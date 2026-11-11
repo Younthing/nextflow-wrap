@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-This is a Next.js 16 App Router application for composing and running Nextflow workflows from notebook-published modules. Routes and global styling live in `src/app/`; run history is in `src/app/runs/`. Keep product code in `src/features/<domain>/` (such as `workflow`, `editor`, `project`, and `runs`). Put primitives in `src/components/ui/`, shell components in `src/components/layout/`, and shared helpers in `src/lib/`.
+This is a Next.js 16 App Router application for composing and running Nextflow workflows from notebook-published modules. Routes and global styling live in `src/app/`; run history is in `src/app/runs/`. The main route is `src/app/workbench/`, which opens a project folder and edits its notebooks, workflow canvases and text files in tabs. Keep product code in `src/features/<domain>/` (such as `workspace`, `notebook`, `workflow`, `editor`, `project`, `runs`, and `remote`); server-only code sits in each feature's `server/` folder and `src/lib/server/`, and `scripts/runner.ts` is the separate Nextflow runner. Put primitives in `src/components/ui/`, shell components in `src/components/layout/`, and shared helpers in `src/lib/`.
 
 Mock API behavior belongs in `src/mocks/`; the product's example project (notebooks, modules, workflow, data) is `src/features/notebook/examples.ts`, seeded by the server and the mock backend alike; tests and stories share fixtures in `src/features/workflow/fixture-modules.ts`, `fixture-workflows.ts` and `src/features/notebook/test-fixtures.ts`. Component examples belong beside their area in `stories/` directories.
 
@@ -18,11 +18,16 @@ pnpm test                    # run Vitest unit tests
 pnpm build                   # create a production build
 pnpm build-storybook         # verify Storybook production output
 pnpm build-server            # standalone Linux server package (docs/server.md)
+pnpm smoke:project           # real notebook → module → workflow → runner loop in a temporary project
 ```
 
 Before a PR, run `pnpm typecheck && pnpm lint && pnpm test && pnpm build && pnpm build-storybook`.
 
 Cloud Agent machines install the [CodeGraph](https://github.com/colbymchenry/codegraph) CLI on `PATH` and index this repository during setup. Use `codegraph explore <query>` for symbol source and call paths. The index stays in `.codegraph/` and is not committed. Cursor is wired to `codegraph serve --mcp`.
+
+## Documentation Map
+
+`README.md` is the feature and API reference (Chinese). `docs/project-workbench.md` defines the project-folder model (files, identity, runs, cluster data sync); `docs/server.md`, `desktop/README.md` and `docs/desktop-release.md` cover the standalone server, the Electron shell and releases; `docs/user-guide/` is the end-user guide; `docs/roadmap.md` holds the next steps. `docs/archive/` is historical and describes code that no longer exists. When behavior changes, update the doc that owns it in the same PR.
 
 ## Coding Style & Naming Conventions
 

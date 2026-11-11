@@ -16,15 +16,15 @@ pnpm build-server --no-node             # 不打包 Node，目标机器需要 No
 ## 运行
 
 ```bash
-tar -xzf nextflow-studio-server-0.2.0-linux-x64.tar.gz
-./nextflow-studio-server-0.2.0-linux-x64/bin/nextflow-studio serve
+tar -xzf nextflow-studio-server-<版本>-linux-x64.tar.gz
+./nextflow-studio-server-<版本>-linux-x64/bin/nextflow-studio serve
 ```
 
 启动后 stdout 先输出一行 JSON 供启动器解析，再输出一个打开即登录的链接：
 
 ```
-{"event":"ready","host":"127.0.0.1","port":41237,"token":"…","version":"0.2.0","apiVersion":1,"pid":1234,"reused":false}
-Nextflow Studio 0.2.0 已启动：http://127.0.0.1:41237/?token=…
+{"event":"ready","host":"127.0.0.1","port":41237,"token":"…","version":"0.2.1","apiVersion":1,"pid":1234,"reused":false}
+Nextflow Studio 0.2.1 已启动：http://127.0.0.1:41237/?token=…
 ```
 
 日志写到 stderr，以及 `<数据目录>/logs/web.log` 和 `runner.log`。
