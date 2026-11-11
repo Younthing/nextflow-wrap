@@ -1,6 +1,6 @@
 {
   "name": "nextflow-studio-desktop",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "Notebook workflow desktop app: Electron shell around the Next.js app and the Nextflow runner",
   "main": "dist/main.js",
