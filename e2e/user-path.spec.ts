@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { ensureProject, exportModule, flowNav, markCell, onScreen, openSection, renameOpenNotebook, uploadToWorkspace } from "./helpers";
+import { ensureProject, exportModule, flowNav, markCell, onScreen, openSection, renameOpenNotebook, uploadToWorkspace, hideExplorer } from "./helpers";
 
 /**
  * Real user path, once for Python and once for R:
@@ -169,9 +169,9 @@ async function publish(page: Page, version: "v1" | "v2", moduleName: string, con
   await exportModule(page);
   await page.waitForURL(/\/publish$/);
   if (version === "v2") {
-    // A notebook is not tied to the module it made; overwriting is chosen under 导出到.
+    // A notebook is not tied to the module it made; a new version of it is chosen under 导出到.
     await page.getByRole("combobox", { name: "导出到" }).click();
-    await page.getByRole("option", { name: new RegExp(`^覆盖 ${moduleName} v1`) }).click();
+    await page.getByRole("option", { name: new RegExp(`^发布新版本 · ${moduleName} v1`) }).click();
   }
   await openSection(page, "试跑输入");
   await expect(view.locator("#arg-title")).toHaveValue("S1");
@@ -206,9 +206,9 @@ async function publish(page: Page, version: "v1" | "v2", moduleName: string, con
   const condaLine = `conda '${condaYaml}'`;
   await expect(view.getByText(condaLine).first()).toBeVisible();
   await expect(view.getByText(`container '${image}'`).first()).toBeVisible();
-  if (version === "v2") await view.locator("#module-changelog").fill("第二次发布，画布上的 v1 复跑应命中缓存");
+  if (version === "v2") await view.locator("#module-changelog").fill("第二次发布；画布上的节点仍固定在 v1，复跑命中缓存");
   await shot(page, shotName);
-  await page.getByRole("button", { name: version === "v1" ? "新建模块" : new RegExp(`^覆盖 .* → ${version}$`) }).click();
+  await page.getByRole("button", { name: version === "v1" ? "新建模块" : `发布 ${moduleName} ${version}` }).click();
   await page.waitForURL("**/modules");
 }
 
@@ -270,7 +270,8 @@ async function runLanguage(page: Page, language: "python" | "r") {
   await flowNav(page, "流程编排");
   await page.waitForURL(/\/workflows$/);
   await page.getByRole("button", { name: "新建", exact: true }).click();
-  await page.waitForURL(/\/workflows\/(?!modules$)[^/]+$/);
+  await page.waitForURL(/\/workbench\/workflow\/[^/]+$/);
+  await hideExplorer(page);
   const workflowUrl = page.url().split("?")[0];
   await page.getByRole("textbox", { name: "流程名称" }).fill(moduleName);
   const library = page.getByRole("complementary", { name: "模块库" });
@@ -361,7 +362,7 @@ async function runLanguage(page: Page, language: "python" | "r") {
       "- try-run: container image via TRY_RUN_CONTAINER_BIN; log names that image and the conda yaml",
       "- engine: Shell (real Nextflow local executor; conda and container directives are in the process)",
       `- results: report.html shows ${figure} and ${table}; table.csv renders S1 and ${count}`,
-      "- v2 overwrites the module in place with a markdown-only edit; resume reports 缓存",
+      "- v2 is a new immutable version; the canvas node stays on v1 and resume reports 缓存",
       "",
     ].join("\n"),
   );

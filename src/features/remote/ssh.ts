@@ -35,9 +35,13 @@ export function sshArgs(host: RemoteHost, controlDir?: string): string[] {
 }
 
 /** Paths a run uses on the host, under the resolved absolute base directory. */
-export function remoteLayout(baseDir: string, workflowId: string, runId: string) {
+export function remoteLayout(baseDir: string, workflowId: string, runId: string, project = "") {
   const base = baseDir.replace(/\/+$/, "");
   return {
+    /** The project's workspace data a run copied here; workspace paths in params resolve inside it. */
+    dataDir: `${base}/projects/${project || "default"}`,
+    /** Read-only snapshots of that data, one per distinct state of the synced files (see `snapshotScript`). */
+    snapshotsDir: `${base}/snapshots/${project || "default"}`,
     launchDir: `${base}/pipelines/${workflowId}`,
     attemptDir: `${base}/runs/${runId}`,
     outdir: `${base}/runs/${runId}/results`,
@@ -174,6 +178,77 @@ export const parseSize = (output: string) => {
   const kb = Number(output.match(/^@@KB (-?\d+)$/m)?.[1] ?? -1);
   return kb < 0 ? -1 : kb * 1024;
 };
+
+/** Size and modification time (seconds) of each file under `dir`, to skip uploading what the host already has. */
+/**
+ * Size and mtime of each file under `dir` that exists, as `@@STAT <size> <mtime>\t<file>`; for each folder in
+ * `folders`, of every file under it, so files that are gone locally can be found.
+ */
+export function statScript(dir: string, files: string[], folders: string[] = []): string {
+  const stat = (file: string) => `printf '@@STAT %s\\t%s\\n' "$(stat -c '%s %Y' ${file} 2>/dev/null || stat -f '%z %m' ${file})" ${file}`;
+  return [
+    `cd ${sq(dir)} 2>/dev/null || exit 0`,
+    ...files.map((file) => `[ -f ${sq(file)} ] && ${stat(sq(file))}`),
+    ...folders.map((folder) => `[ -d ${sq(folder)} ] && find ${sq(folder)} -type f | while IFS= read -r f; do ${stat('"$f"')}; done`),
+    "exit 0",
+    "",
+  ].join("\n");
+}
+
+/**
+ * Brings the host's copy of the project data in line before an upload: deletes `remove` (files gone locally from a
+ * synced folder) and creates `folders`, so an empty folder exists there too.
+ */
+export function prepareDataScript(dir: string, remove: string[], folders: string[]): string {
+  return [
+    `mkdir -p ${sq(dir)} && cd ${sq(dir)} || exit 1`,
+    ...remove.map((file) => `rm -f -- ${sq(file)}`),
+    ...folders.map((folder) => `mkdir -p -- ${sq(folder)}`),
+    "exit 0",
+    "",
+  ].join("\n");
+}
+
+/** `paths` without those already inside another one (`reads/a.fq` when `reads` is listed too), sorted. */
+export function outermostPaths(paths: string[]): string[] {
+  const unique = [...new Set(paths)].sort();
+  return unique.filter((path) => !unique.some((other) => other !== path && path.startsWith(`${other}/`)));
+}
+
+/**
+ * A read-only view of the synced data for runs: `paths` hard-linked from `dataDir` into `target` (copied where the two
+ * are on different file systems). `target` is named after the data's state, so runs and resumes over unchanged data
+ * share it and keep Nextflow's path-based task cache; it is built beside its final name and moved there, and left as
+ * it is when it already exists. A later sync replaces files in `dataDir` instead of changing them in place (tar
+ * unlinks before it extracts) and only unlinks deleted ones, so a snapshot in use never changes.
+ */
+export function snapshotScript(dataDir: string, target: string, paths: string[]): string {
+  const building = `${target}.partial.$$`;
+  return [
+    `[ -d ${sq(target)} ] && exit 0`,
+    `cd ${sq(dataDir)} || exit 1`,
+    `rm -rf "${building}" && mkdir -p "${building}" || exit 1`,
+    ...outermostPaths(paths).map((path) => {
+      const parent = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+      const destination = `"${building}"/${sq(path)}`;
+      return [
+        parent ? `mkdir -p "${building}"/${sq(parent)} || exit 1` : "",
+        `cp -Rl -- ${sq(path)} ${destination} 2>/dev/null || { rm -rf ${destination}; cp -Rp -- ${sq(path)} ${destination}; } || exit 1`,
+      ].filter(Boolean).join("\n");
+    }),
+    // Another run may have finished the same snapshot first; either copy is the same data.
+    `mv "${building}" ${sq(target)} 2>/dev/null || rm -rf "${building}"`,
+    `[ -d ${sq(target)} ] || exit 1`,
+    "exit 0",
+    "",
+  ].join("\n");
+}
+
+export function parseStat(output: string): Map<string, { size: number; mtime: number }> {
+  const files = new Map<string, { size: number; mtime: number }>();
+  for (const match of output.matchAll(/^@@STAT (\d+) (\d+)\t(.+)$/gm)) files.set(match[3], { size: Number(match[1]), mtime: Number(match[2]) });
+  return files;
+}
 
 /** A tar stream of the entries of `dir` that exist, on stdout. Prints nothing when none exists. */
 export function packScript(dir: string, entries: string[]): string {

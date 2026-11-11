@@ -25,6 +25,8 @@ function remember(project: Project): Project {
 
 /** `/api/projects` in the browser. Created folders exist only in this mock: `fs.ts` lists them with the scaffold. */
 export const projectHandlers = [
+  // The demo has no database from before project folders.
+  http.get("/api/projects/legacy", () => HttpResponse.json(null)),
   http.get("/api/projects", async () => {
     await delay(60);
     return HttpResponse.json(list());

@@ -61,7 +61,8 @@ export class ProjectDocuments {
     const parsed = notebookFromIpynb(file.content, basename(path, ".ipynb"));
     const metadata = parsed.metadata?.[IPYNB_KEY] as Partial<NotebookDoc> | undefined;
     return {
-      ...parsed, id: parsed.id ?? `nb_${randomUUID()}`, projectId: this.projectId,
+      // The file name is the notebook's name: renaming the .ipynb in the explorer renames the notebook.
+      ...parsed, name: basename(path, ".ipynb").slice(0, 80), id: parsed.id ?? `nb_${randomUUID()}`, projectId: this.projectId,
       rev: metadata?.rev ?? 1, createdAt: metadata?.createdAt ?? new Date().toISOString(),
       updatedAt: metadata?.updatedAt ?? new Date().toISOString(),
       filePath: path, fileVersion: file.version,

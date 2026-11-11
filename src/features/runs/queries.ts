@@ -241,8 +241,17 @@ export function useAnnDataSummaryAt(key: readonly unknown[], url: string | null)
   });
 }
 
+/**
+ * A run endpoint opened by URL rather than through `api()` (an iframe, an image, a download link). Runs belong to a
+ * project and such requests carry no header, so the window's project goes in the query.
+ */
+export function runFileUrl(id: string, action: string, query: Record<string, string> = {}) {
+  const params = new URLSearchParams({ ...query, project: windowProject() ?? "" });
+  return `/api/runs/${encodeURIComponent(id)}/${action}?${params}`;
+}
+
 const resultUrl = (id: string, path: string | null, kind = "content") =>
-  path ? `/api/runs/${id}/results/${kind}?path=${encodeURIComponent(path)}&project=${encodeURIComponent(windowProject() ?? "")}` : null;
+  path ? runFileUrl(id, `results/${kind}`, { path }) : null;
 
 export function useResultBlob(id: string, path: string | null) {
   return useFileBlob(runKeys.detail(id), resultUrl(id, path));

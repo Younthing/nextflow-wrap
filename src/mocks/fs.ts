@@ -152,6 +152,50 @@ function projectEntry(projectId: string | null | undefined, path = "") {
 
 const relativeTo = (root: string, full: string) => full.slice(root.length + 1);
 
+/** sha256 of the text, as the server versions a document by the bytes the editor read. */
+async function textVersion(content: string) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(content));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+const documentProject = (request: Request) => new URL(request.url).searchParams.get("project") ?? request.headers.get("x-project-id");
+
+/** Text documents of the workbench (`/api/documents`): read by path, saved only over the version the editor read. */
+export const documentHandlers = [
+  http.get("/api/documents/changes", () => new HttpResponse(null, { status: 204 })),
+  http.get("/api/documents/open", ({ request }) => {
+    const path = new URL(request.url).searchParams.get("path") ?? "";
+    const projectId = documentProject(request);
+    const db = readDb();
+    const doc = [...Object.values(db.notebooks), ...Object.values(db.workflows)].find((item) => item.projectId === projectId && item.filePath === path);
+    return doc ? HttpResponse.json(doc) : fail("文件不存在", 404);
+  }),
+  http.get("/api/documents", async ({ request }) => {
+    const target = projectEntry(documentProject(request), new URL(request.url).searchParams.get("path") ?? "");
+    if ("error" in target) return target.error;
+    const bytes = contents.get(target.full);
+    if (!bytes || findEntry(target.full)?.kind !== "file") return fail("文件已删除或不存在", 404);
+    const content = new TextDecoder().decode(bytes);
+    return HttpResponse.json({ path: relativeTo(target.root, target.full), content, version: await textVersion(content) });
+  }),
+  http.put("/api/documents", async ({ request }) => {
+    const target = projectEntry(documentProject(request), new URL(request.url).searchParams.get("path") ?? "");
+    if ("error" in target) return target.error;
+    const body = await request.json() as { content?: unknown; version?: unknown };
+    if (typeof body.content !== "string" || !(body.version === null || typeof body.version === "string")) return fail("缺少内容或文件版本", 400);
+    const bytes = findEntry(target.full)?.kind === "file" ? contents.get(target.full) ?? new Uint8Array() : undefined;
+    const current = bytes ? await textVersion(new TextDecoder().decode(bytes)) : null;
+    if (current !== body.version) return fail(current === null ? "文件已删除，请另存为" : "文件在外部被修改，请比较后重新载入或另存为", 409);
+    const encoded = new TextEncoder().encode(body.content);
+    for (let dir = parentDir(target.full); dir.length > target.root.length && !findEntry(dir); dir = parentDir(dir)) addEntry(dir, "directory");
+    addEntry(target.full, "file", encoded.byteLength);
+    const entry = findEntry(target.full);
+    if (entry) entry.size = encoded.byteLength;
+    contents.set(target.full, encoded);
+    return HttpResponse.json({ path: relativeTo(target.root, target.full), content: body.content, version: await textVersion(body.content) });
+  }),
+];
+
 export const fsHandlers = [
   http.get("/api/fs/list", ({ request }) => {
     const tree = live();

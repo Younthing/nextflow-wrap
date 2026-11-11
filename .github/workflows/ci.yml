@@ -20,6 +20,10 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # theme-build.test.ts validates the packaging config with the desktop shell's electron-builder.
+      - run: pnpm --dir desktop install --frozen-lockfile
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
       - run: pnpm typecheck
       - run: pnpm lint
       - name: Install Nextflow
@@ -70,6 +74,11 @@ jobs:
           Rscript --version
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm build:real
+      # The project model end to end without a browser: notebook, publish, real run, copy isolation, cached resume.
+      - run: pnpm smoke:project
+        env:
+          NXF_DISABLE_CHECK_LATEST: "true"
+          NXF_ANSI_LOG: "false"
       - run: pnpm test:e2e
         env:
           NXF_DISABLE_CHECK_LATEST: "true"

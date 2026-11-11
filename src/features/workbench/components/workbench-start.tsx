@@ -7,6 +7,7 @@ import { defaultKernel } from "@/features/notebook/kernel-choices";
 import { formatRelative } from "@/features/notebook/library";
 import type { NotebookLanguage, NotebookSummary } from "@/features/notebook/types";
 import { mockingActive } from "@/lib/mocking";
+import { LegacyImportNotice } from "@/features/workspace/components/legacy-import-notice";
 import type { Project } from "@/features/workspace/types";
 
 const STARTERS: { language: NotebookLanguage; title: string }[] = [
@@ -34,6 +35,7 @@ export function WorkbenchStart({
           <h1 className="text-2xl leading-snug font-semibold">{project.name}</h1>
           <p title={project.path} className="truncate font-mono text-xs text-muted-foreground">{project.path}</p>
         </header>
+        <LegacyImportNotice projectId={project.id} />
         <section aria-labelledby="workbench-new" className="grid gap-3">
           <h2 id="workbench-new" className="text-xs font-medium text-muted-foreground">新建</h2>
           <div className="grid gap-3 @min-[480px]:grid-cols-2">

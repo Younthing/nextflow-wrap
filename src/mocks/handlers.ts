@@ -18,7 +18,7 @@ import { readDb, writeDb } from "./db";
 import { kernelHandlers } from "./kernels";
 import { runHandlers } from "./runs";
 import { setupHandlers } from "./setup";
-import { fsHandlers } from "./fs";
+import { documentHandlers, fsHandlers } from "./fs";
 import { settingsHandlers } from "./settings";
 import { storageHandlers } from "./storage";
 import { diagnosticsHandlers } from "./diagnostics";
@@ -39,6 +39,7 @@ export const handlers = [
   ...kernelHandlers,
   ...setupHandlers,
   ...fsHandlers,
+  ...documentHandlers,
   ...settingsHandlers,
   ...storageHandlers,
   ...diagnosticsHandlers,

@@ -1,7 +1,7 @@
 import { patternParams, usesSamplesheet } from "@/features/project/schema";
 import { inputParams } from "@/features/workflow/inputs";
 import type { PipelineParams, WorkflowDoc } from "@/features/workflow/types";
-import { dataPathKind, resolveWorkspacePath } from "@/features/workspace/paths";
+import { dataPathKind, normalizeWorkspacePath, resolveWorkspacePath } from "@/features/workspace/paths";
 
 /** Params that name input data: file and folder nodes, the samplesheet's `--input`, file params of channel operators. */
 export function dataPathParams(doc: Pick<WorkflowDoc, "nodes">): string[] {
@@ -16,16 +16,20 @@ const isGlob = (value: string) => /[*?[{]/.test(value);
 
 /**
  * Turns the data params of a run into paths Nextflow can open. Workspace paths (`data/reads.fq`) resolve inside the
- * project folder and must exist; URIs pass through. A local run takes nothing from outside the workspace; a cluster
- * run reads its data on the cluster, so it takes absolute cluster paths and no workspace paths (those files are here).
+ * project folder and must exist; URIs pass through. A local run takes nothing from outside the workspace. A cluster
+ * run takes absolute cluster paths as they are, and lists the workspace paths it uses in `sync`: the runner copies
+ * them into the project's folder on the cluster and points the params there.
  */
 export function resolveDataParams(
   params: PipelineParams,
   names: readonly string[],
   options: { root?: string; remote: boolean; exists: (path: string) => boolean },
-): { params: PipelineParams; errors: string[] } {
+): { params: PipelineParams; errors: string[]; sync: string[]; synced: string[] } {
   const out: PipelineParams = { ...params };
   const errors: string[] = [];
+  const sync: string[] = [];
+  /** The params whose values are in `sync`: the only ones a cluster run points at the copied data. */
+  const synced: string[] = [];
   for (const name of new Set(names)) {
     const value = params[name];
     if (typeof value !== "string" || !value.trim()) continue;
@@ -33,7 +37,13 @@ export function resolveDataParams(
     if (kind === "uri") continue;
     if (kind === "invalid") { errors.push(`--${name} 不是有效的路径：${value}`); continue; }
     if (options.remote) {
-      if (kind === "workspace") errors.push(`--${name} 是工作区里的文件，集群上没有；集群运行请填集群上的绝对路径`);
+      if (kind !== "workspace") continue;
+      const relative = normalizeWorkspacePath(value)!;
+      if (relative === "." || relative.startsWith("..")) errors.push(`--${name} 不在项目文件夹里，集群运行无法上传：${value}`);
+      else if (isGlob(value)) errors.push(`--${name} 是工作区里的通配路径，集群运行请改成文件夹，或填写集群上的绝对路径`);
+      else if (!options.root) { errors.push("流程不属于任何项目，无法解析工作区路径"); break; }
+      else if (!options.exists(resolveWorkspacePath(value, options.root)!)) errors.push(`工作区里没有 ${value}`);
+      else { sync.push(relative); synced.push(name); out[name] = relative; }
       continue;
     }
     if (kind === "absolute") {
@@ -45,5 +55,42 @@ export function resolveDataParams(
     if (!isGlob(value) && !options.exists(resolved)) { errors.push(`工作区里没有 ${value}`); continue; }
     out[name] = resolved;
   }
-  return { params: out, errors };
+  return { params: out, errors, sync, synced };
+}
+
+/** The cells of one CSV or TSV line; a quoted cell keeps its commas and `""` stands for a quote. */
+function csvCells(line: string): string[] {
+  const cells: string[] = [];
+  let cell = "";
+  let quoted = false;
+  for (let index = 0; index < line.length; index++) {
+    const char = line[index];
+    if (quoted) {
+      if (char === '"' && line[index + 1] === '"') { cell += '"'; index++; }
+      else if (char === '"') quoted = false;
+      else cell += char;
+    } else if (char === '"' && !cell.trim()) { quoted = true; cell = ""; }
+    else if (char === "," || char === "\t") { cells.push(cell); cell = ""; }
+    else cell += char;
+  }
+  cells.push(cell);
+  return cells;
+}
+
+/**
+ * Cells of a samplesheet that name workspace files (`data/S1_R1.fq.gz`): what a cluster run must copy along with the
+ * sheet. Cells that are not paths, or name nothing in the workspace, are left to the samplesheet check at run time.
+ */
+export function samplesheetWorkspaceFiles(csv: string, exists: (relative: string) => boolean): string[] {
+  const found = new Set<string>();
+  for (const line of csv.split(/\r?\n/).slice(1)) {
+    for (const raw of csvCells(line)) {
+      const cell = raw.trim();
+      // A bare name (`S1.fq.gz`) can be a file at the project root; `exists` tells it from a sample name.
+      if (!cell || dataPathKind(cell) !== "workspace") continue;
+      const relative = normalizeWorkspacePath(cell)!;
+      if (!relative.startsWith("..") && exists(relative)) found.add(relative);
+    }
+  }
+  return [...found];
 }

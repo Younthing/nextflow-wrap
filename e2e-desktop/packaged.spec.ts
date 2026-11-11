@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { _electron as electron, expect, test, type ElectronApplication, type Page } from "@playwright/test";
-import { addFileInput, extend, go, notebookModule, runWithShell, shot, uploadToWorkspace } from "../e2e/helpers";
+import { addFileInput, extend, go, hideExplorer, notebookModule, runWithShell, shot, uploadToWorkspace } from "../e2e/helpers";
 import { SCHEMA_VERSION } from "../src/lib/server/schema";
 import { defaultSettings } from "../src/features/settings/types";
 import { resolveProductTheme } from "../src/lib/product-theme";
@@ -28,21 +28,27 @@ function packagedBinary(): string {
   return join(release, "linux-unpacked", "nextflow-studio-desktop");
 }
 
-/** An incompatible development database: no historical schema or migration contract is required. */
+/**
+ * A project registry written by another schema version, next to a pre-project `studio.sqlite`: no historical schema
+ * or migration contract is required, the registry is reset and the old database is kept for the import offer.
+ */
 function incompatibleDataDirectory(): string {
   const dir = mkdtempSync(join(tmpdir(), "nfs-desktop-incompatible-"));
-  const db = new DatabaseSync(join(dir, "studio.sqlite"));
-  db.exec(`
-    CREATE TABLE workflows (id TEXT PRIMARY KEY, data TEXT NOT NULL);
+  const registry = new DatabaseSync(join(dir, "workspace-registry.sqlite"));
+  registry.exec(`
+    CREATE TABLE projects (id TEXT PRIMARY KEY, opened TEXT NOT NULL, data TEXT NOT NULL);
+    CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+    INSERT INTO meta VALUES ('stale', 'from another schema');
     PRAGMA user_version=${SCHEMA_VERSION + 1};
   `);
+  registry.close();
+  const legacy = new DatabaseSync(join(dir, "studio.sqlite"));
+  legacy.exec("CREATE TABLE workflows (id TEXT PRIMARY KEY, data TEXT NOT NULL); PRAGMA user_version=5;");
   const workflow = { id: "wf_legacy", name: "旧版本的流程", description: "", version: 1, params: { outdir: "results" }, nodes: [], edges: [], updatedAt: "2026-06-01T00:00:00.000Z" };
-  db.prepare("INSERT INTO workflows VALUES (?,?)").run(workflow.id, JSON.stringify(workflow));
-  db.close();
+  legacy.prepare("INSERT INTO workflows VALUES (?,?)").run(workflow.id, JSON.stringify(workflow));
+  legacy.close();
   const settings = { ...defaultSettings(), notifications: { runFinished: false } };
   writeFileSync(join(dir, "settings.json"), JSON.stringify(settings));
-  mkdirSync(join(dir, "work"));
-  writeFileSync(join(dir, "work", "incompatible-task.txt"), "stale task state");
   return dir;
 }
 
@@ -79,15 +85,21 @@ test.describe("packaged desktop app", () => {
     await expect(page.getByText("旧版本的流程")).toHaveCount(0);
     await shot(page, "e2e-desktop-reset.png");
 
-    expect(existsSync(join(dataDir, "work", "incompatible-task.txt"))).toBe(false);
     expect(readFileSync(join(dataDir, "settings.json"), "utf8")).toBe(settings);
-    const db = new DatabaseSync(join(dataDir, "studio.sqlite"), { readOnly: true });
+    const registry = new DatabaseSync(join(dataDir, "workspace-registry.sqlite"), { readOnly: true });
     try {
-      expect(Number(db.prepare("PRAGMA user_version").get()?.user_version)).toBe(SCHEMA_VERSION);
-      expect(db.prepare("SELECT id FROM workflows WHERE id=?").get("wf_legacy")).toBeUndefined();
-      expect(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='projects'").get()).toBeDefined();
+      expect(Number(registry.prepare("PRAGMA user_version").get()?.user_version)).toBe(SCHEMA_VERSION);
+      expect(registry.prepare("SELECT value FROM meta WHERE key='stale'").get()).toBeUndefined();
+      expect(registry.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='projects'").get()).toBeDefined();
     } finally {
-      db.close();
+      registry.close();
+    }
+    // The pre-project database stays for the start page's import offer.
+    const legacy = new DatabaseSync(join(dataDir, "studio.sqlite"), { readOnly: true });
+    try {
+      expect(legacy.prepare("SELECT id FROM workflows WHERE id=?").get("wf_legacy")).toBeDefined();
+    } finally {
+      legacy.close();
     }
   });
 
@@ -113,7 +125,8 @@ test.describe("packaged desktop app", () => {
     const wordsInWorkspace = await uploadToWorkspace(page, input, `${name}-words.txt`);
     await go(page, "/workflows");
     await page.getByRole("button", { name: "新建", exact: true }).click();
-    await page.waitForURL(/\/workflows\/(?!modules$)[^/]+$/);
+    await page.waitForURL(/\/workbench\/workflow\/[^/]+$/);
+    await hideExplorer(page);
     const reference = await addFileInput(page, wordsInWorkspace);
     await extend(page, reference, "file", name);
     await expect(page.locator(".react-flow__edge")).toHaveCount(1);

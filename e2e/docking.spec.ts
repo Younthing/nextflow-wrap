@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
-import { addFileInput, artifactDirs, connect, extend, notebookModule, runWithShell, shot, uploadToWorkspace } from "./helpers";
+import { addFileInput, artifactDirs, connect, extend, notebookModule, runWithShell, shot, uploadToWorkspace, hideExplorer } from "./helpers";
 
 /**
  * Docking acceptance on the real stack, the second built-in example: an RDKit notebook turns SMILES into 3D
@@ -122,7 +122,8 @@ test.describe("docking user path", () => {
     const receptorInWorkspace = await uploadToWorkspace(page, receptor, `receptor_${stamp}.pdbqt`);
     await page.goto("/workflows");
     await page.getByRole("button", { name: "新建", exact: true }).click();
-    await page.waitForURL(/\/workflows\/(?!modules$)[^/]+$/);
+    await page.waitForURL(/\/workbench\/workflow\/[^/]+$/);
+    await hideExplorer(page);
     await page.getByRole("textbox", { name: "流程名称" }).fill(`分子对接 ${stamp}`);
     const ligandsRef = await addFileInput(page, smilesInWorkspace);
     await page.getByRole("button", { name: /zoom out/i }).click();

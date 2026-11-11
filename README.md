@@ -2,7 +2,8 @@
 
 ComfyUI 式的 Nextflow 可视化前端：在笔记本里写分析脚本并发布成模块，在画布上用这些模块和内置节点搭建流程，一键运行，实时追踪任务并查看结果。生成的是不依赖插件的标准 Nextflow 项目，可直接用 `nextflow run` 运行。
 
-- 使用说明：[用户指南](docs/user-guide/README.md)，两节入门课分别是单细胞（PBMC 3k）和分子对接（AutoDock Vina）。
+- 使用说明：[用户指南](docs/user-guide/README.md)，两节入门课分别是单细胞（PBMC 3k）和分子对接（AutoDock Vina）。新数据目录自带的示例项目是一个普通项目：四本表达分析笔记本（质控、标准化与 PCA、组间比较、汇总报告）和把它们连起来的流程，另有免疫荧光主题的示例。
+- 项目文件夹的结构、保存冲突和运行记录的位置见 [项目工作台](docs/project-workbench.md)。
 - 桌面版（macOS / Linux，Electron 托管 web、runner 和内核）：见 [desktop/README.md](desktop/README.md)。
 
 ## 技术栈
@@ -18,7 +19,7 @@ ComfyUI 式的 Nextflow 可视化前端：在笔记本里写分析脚本并发�
 
 ## 流程编辑器
 
-- 模块库只有两类：笔记本发布、试跑通过的自定义模块，和随产品提供的内置节点（输入、通道算子、功能节点）。测试、Storybook 和演示模式共用 `src/features/workflow/example-modules.ts` 里的单细胞和分子对接示例模块。
+- 模块库只有两类：笔记本发布、试跑通过的自定义模块，和随产品提供的内置节点（输入、通道算子、功能节点）。示例项目在 `src/features/notebook/examples.ts`，服务端和演示模式都从它播种；测试和 Storybook 另用 `src/features/workflow/fixture-modules.ts` 里的模块。
 - 端口按通道元素类型着色：文件、值、meta、目录。连线时校验元组结构，必要时自动补齐可选文件（`[]`）或去掉 meta；文件格式不一致会给出提醒并画成虚线。
 - 汇总报告这类收集输入可以连接多个输出，会自动 `mix` 并 `collect`。
 - 只接受值的输入（布尔、字符串、数字）直接显示为节点上的控件。
@@ -29,8 +30,8 @@ ComfyUI 式的 Nextflow 可视化前端：在笔记本里写分析脚本并发�
 
 ## 笔记本
 
-- 笔记本存成所属项目文件夹里的标准 `.ipynb` 文件（`<项目目录>/notebooks/<名称>.ipynb`；第一次在项目里用笔记本时补上 `studio.json`、`.gitignore` 和标准子目录），能直接用 JupyterLab、VS Code 打开或提交到 Git。单元格角色（input / output / explore）和笔记本说明放在 `metadata.nextflow_studio` 里，Jupyter 保存时会保留；输出不写进文件。在应用外改过的文件下次打开时自动载入，改动记成新修订；应用里保存时如果文件已在外部被改过，会拒绝覆盖（409），重新打开笔记本即可载入磁盘上的版本。放进 `notebooks/` 的其他 `.ipynb`（包括复制出来的副本）会成为新笔记本，在文件管理器里改文件名就是给笔记本改名。修订历史、试跑记录和发布信息仍在数据库里。
-- Python 笔记本的单元格在常驻 Jupyter 内核里运行，每本笔记本一个内核，变量和工作目录（`<数据目录>/scratch/notebooks/<笔记本 id>/`）里的文件在多次运行之间保留。运行单个单元格只跑这一格；「运行全部」先重启内核，再从第一格依次运行，遇到报错停下。工具栏显示内核状态，可以中断正在跑的单元格或重启内核。
+- 笔记本存成所属项目文件夹里的标准 `.ipynb` 文件（默认在 `notebooks/`，也可以建在任意子文件夹；第一次在项目里保存分析文档时补上 `studio.json`），能直接用 JupyterLab、VS Code 打开或提交到 Git。单元格角色（input / output / explore）和笔记本说明放在 `metadata.nextflow_studio` 里，Jupyter 保存时会保留；输出不写进文件。在应用外改过的文件会自动载入；应用里保存时如果文件已在外部被改过，不会覆盖，而是给出比较、重新载入、另存为副本或明确覆盖。项目里的其他 `.ipynb`（包括复制出来的副本）会成为新笔记本，在文件区改文件名就是给笔记本改名，发布的模块也用这个名字。修订历史和试跑记录在项目的 `.studio/state.sqlite`，可由文件重建。
+- Python 笔记本的单元格在常驻 Jupyter 内核里运行，每本笔记本一个内核，内核从项目根目录启动，所以单元格里可以直接读 `data/reads.fq` 这样的相对路径；变量在多次运行之间保留。运行单个单元格只跑这一格；「运行全部」先重启内核，再从第一格依次运行，遇到报错停下。工具栏显示内核状态，可以中断正在跑的单元格或重启内核。
 - 内核选择器列出本机已安装的 Jupyter kernelspec（如 `python -m ipykernel install --user --name scanpy` 注册的环境）。笔记本记的内核名不是已安装的 kernelspec 时改用 `python3`，并在工具栏下方说明。
 - 需要 `python3 -m pip install ipykernel`（`NEXTFLOW_STUDIO_JUPYTER_PYTHON` 可换解释器）。没有 Jupyter 时退回旧行为：每次在新进程里从头运行到所选单元格。内核空闲 2 小时后自动关闭（`NEXTFLOW_STUDIO_KERNEL_IDLE_MS`）。R 笔记本同样在持久内核里运行，需要 IRkernel（在 R 里执行 `install.packages("IRkernel"); IRkernel::installspec()`）；没有 R 内核时 R 单元格只能编辑，试跑仍调用 `Rscript`。结果页能直接看 `.h5ad` 摘要（只读 HDF5 元数据，需要 `h5py`）和 PDB/PDBQT/SDF 结构（Mol*）。
 

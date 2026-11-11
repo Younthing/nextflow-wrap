@@ -4,8 +4,9 @@ import { z } from "zod";
 
 
 import { HttpError } from "@/features/runs/server/service";
-import { store, type StudioStore } from "@/lib/server/database";
+import { projectStore, store, type StudioStore } from "@/lib/server/database";
 import { dataDirectory } from "@/lib/server/paths";
+import { importLegacy, legacySummary } from "./legacy-import";
 import { closeProject, createProject, forgetProject, listProjects, openProject, reopenProject, type ProjectContext } from "./projects";
 
 const json = (value: unknown, status = 200) => Response.json(value, { status, headers: { "cache-control": "no-store" } });
@@ -19,6 +20,7 @@ const idPattern = /^[\w-]{1,80}$/;
  * - `GET` the recent list and the open project
  * - `POST` create a project folder, `POST /open` open a folder, `POST /:id/open` reopen, `POST /close`
  * - `DELETE /:id` forget it (the folder stays on disk)
+ * - `GET /legacy` what the pre-project database still holds, `POST /legacy/import` copy it into `{ project }`
  */
 export async function handleProjectsApi(method: string, path: string[], request: Request, db: StudioStore = store()): Promise<Response> {
   // The example project is seeded on first use; doing it here makes it show up on a fresh install.
@@ -30,6 +32,17 @@ export async function handleProjectsApi(method: string, path: string[], request:
   if (!id && method === "POST") return json(await createProject(context, createSchema.parse(await request.json())), 201);
   if (id === "open" && !action && method === "POST") return json(await openProject(context, openSchema.parse(await request.json()).path));
   if (id === "close" && !action && method === "POST") { closeProject(context); return json(await listProjects(context)); }
+  if (id === "legacy" && !action && method === "GET") {
+    // Once copied into a project, that project stops offering it; another project still can.
+    const project = new URL(request.url).searchParams.get("project");
+    return json(project && db.meta(`legacy-imported:${project}`) ? null : legacySummary(dataDirectory()) ?? null);
+  }
+  if (id === "legacy" && action === "import" && method === "POST") {
+    const { project } = z.object({ project: z.string().regex(idPattern) }).parse(await request.json());
+    const result = importLegacy(dataDirectory(), projectStore(project));
+    db.setMeta(`legacy-imported:${project}`, new Date().toISOString());
+    return json(result);
+  }
   if (id && idPattern.test(id)) {
     if (action === "open" && method === "POST") return json(await reopenProject(context, id));
     if (!action && method === "DELETE") { forgetProject(context, id); return new Response(null, { status: 204 }); }

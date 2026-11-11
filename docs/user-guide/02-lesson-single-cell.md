@@ -13,7 +13,7 @@
 
 ## 1. 质控笔记本
 
-笔记本 → 新建笔记本，命名 `scanpy_qc`，写三个单元格：
+在工作台左侧的文件区选中 `notebooks` 文件夹，点「新建笔记本」（＋），再右键新文件「重命名」为 `scanpy_qc.ipynb`（文件名就是笔记本名，也是发布时的模块名）。写三个单元格：
 
 ```python
 # @input name=adata type=path required

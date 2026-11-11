@@ -2,6 +2,9 @@ import { useState } from "react";
 import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { expect, userEvent, waitFor, within } from "storybook/test";
 
+import { EXAMPLE_PROJECT_ID } from "@/features/workspace/projects";
+import { selectWindowProject } from "@/features/workspace/window-project";
+
 import { PathInput } from "../components/path-input";
 
 const meta = {
@@ -31,6 +34,8 @@ export const BrowseOnWeb: Story = {
 /** A dropped file is uploaded into the workspace's data/ and stored by its workspace path. */
 export const DropUploadsOnWeb: Story = {
   args: { workspace: true },
+  // Uploads go to the window's project, as in the app after a project is opened.
+  beforeEach: () => { selectWindowProject(EXAMPLE_PROJECT_ID); return () => selectWindowProject(); },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const field = canvas.getByLabelText("输入文件");
@@ -44,6 +49,8 @@ export const DropUploadsOnWeb: Story = {
 /** Pasting a file into the field uploads it too; pasted text is left to the input. */
 export const PasteUploadsOnWeb: Story = {
   args: { workspace: true },
+  // Uploads go to the window's project, as in the app after a project is opened.
+  beforeEach: () => { selectWindowProject(EXAMPLE_PROJECT_ID); return () => selectWindowProject(); },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const field = canvas.getByLabelText("输入文件");
