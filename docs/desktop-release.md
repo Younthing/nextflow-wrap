@@ -3,7 +3,7 @@
 The workflow follows [Electron Fiddle's release pattern](https://github.com/electron/fiddle/blob/main/.github/workflows/release.yml): native builds upload artifacts; one downstream job publishes after all builds succeed. This project uses electron-builder rather than Fiddle's Electron Forge.
 
 1. Open a PR: Linux packaged-app E2E runs, then all four native packaging jobs build unsigned packages. No signing secrets are passed to PR builds.
-2. Update `desktop/package.json`'s version and push a matching stable tag, for example `desktop-v0.2.0`.
+2. Update `desktop/package.json`'s version and push a matching stable tag, for example `desktop-v0.2.1`.
 3. Linux E2E builds the Linux x64 server archive. Every desktop package receives this same archive for WSL/SSH connections.
 4. Windows x64 produces an NSIS `.exe`; macOS arm64 and x64 each produce `.dmg` and `.zip`; Linux x64 produces `.AppImage`. Each macOS architecture builds on its own native runner so the bundled Next.js server has matching native dependencies.
 5. A single release job collects packages, blockmaps and update metadata, merges both macOS file lists and verifies referenced assets' SHA-512 hashes. Only this job has `contents: write`.

@@ -4,7 +4,8 @@ ComfyUI 式的 Nextflow 可视化前端：在笔记本里写分析脚本并发�
 
 - 使用说明：[用户指南](docs/user-guide/README.md)，两节入门课分别是单细胞（PBMC 3k）和分子对接（AutoDock Vina）。新数据目录自带的示例项目是一个普通项目：四本表达分析笔记本（质控、标准化与 PCA、组间比较、汇总报告）和把它们连起来的流程，另有免疫荧光主题的示例。
 - 项目文件夹的结构、保存冲突和运行记录的位置见 [项目工作台](docs/project-workbench.md)。
-- 桌面版（macOS / Linux，Electron 托管 web、runner 和内核）：见 [desktop/README.md](desktop/README.md)。
+- 桌面版（macOS / Linux / Windows，服务端跑在本机、WSL 或 SSH 远程机器上）：见 [desktop/README.md](desktop/README.md)。
+- 其他文档：[独立服务端](docs/server.md)、[桌面版发布](docs/desktop-release.md)、[前端开发指南](docs/frontend-development.md)、[液态玻璃主题](docs/liquid-glass.md)、[接下来的计划](docs/roadmap.md)。早期的真实执行接入计划和验收记录已移到 [docs/archive/](docs/archive/)，只作历史参考。
 
 ## 技术栈
 
@@ -123,7 +124,7 @@ COPILOT_MODEL=anthropic/claude-sonnet-5-5
 
 ### 真实 Nextflow 测试
 
-Vitest 里的 Nextflow 模式测试和 host-chain 测试会直接调用 `nextflow`，二进制不存在时失败而不是跳过。`bash scripts/install-nextflow.sh` 安装官方 GitHub release 中的 26.10.4 launcher（本机需已有 Java 17–26，脚本不安装 JDK）。CI 在 Temurin 21 之后执行同一脚本。Cloud Agent 环境不读取仓库里的 `environment.json`，需要在 dashboard 的 `install` 里运行该脚本，镜像里已有的 OpenJDK 21 即可。
+Vitest 里的 Nextflow 模式测试（`src/features/project/patterns.test.ts` 等）会直接调用 `nextflow`，二进制不存在时失败而不是跳过。`bash scripts/install-nextflow.sh` 安装官方 GitHub release 中的 26.10.4 launcher（本机需已有 Java 17–26，脚本不安装 JDK）。CI 在 Temurin 21 之后执行同一脚本。Cloud Agent 环境不读取仓库里的 `environment.json`，需要在 dashboard 的 `install` 里运行该脚本，镜像里已有的 OpenJDK 21 即可。
 
 可通过 `NEXTFLOW_STUDIO_DATA_DIR` 设置数据目录，`NEXTFLOW_STUDIO_CACHE_DIR` 设置缓存目录；`NEXTFLOW_BIN`、`DOCKER_BIN` 指定可执行文件；`NEXTFLOW_JAVA_HOME` 指定 JDK。需要代理时用 `NEXTFLOW_HTTP_PROXY` 指定 HTTP 代理地址，子进程会忽略 Nextflow 不支持的 SOCKS 代理变量。
 
@@ -136,13 +137,20 @@ pnpm runner      # 独立执行服务；先等到 Runner ready
 pnpm dev:real    # 另一个终端，http://127.0.0.1:3000
 ```
 
-runner 启动时写入一个内置示例流程（host-chain：用本机 shell 命令串起各种通道模式），输入是它创建的合成文本数据。点击「运行」（第一次可先在「运行设置」里选环境），即可查看真实任务、日志和下载结果。默认任务上限 2 CPU / 2 GB，可在「运行设置」里调整；输出和 work 目录由服务端隔离管理。自备数据时，`--input` 和文件输入、文件夹输入节点上选的路径必须是 runner 主机上的绝对路径。
+新数据目录自带示例项目（表达分析笔记本和连接它们的流程，另有免疫荧光示例）。在工作台打开流程，点击「运行」（第一次可先在「运行设置」里选环境），即可查看真实任务、日志和下载结果。默认任务上限 2 CPU / 2 GB，可在「运行设置」里调整。自备数据时，`--input` 和文件输入、文件夹输入节点上的路径相对项目根目录（拖入或上传的文件进 `data/`），也可以写后端主机上的绝对路径或对象存储地址。
 
 本机 web 默认只监听 127.0.0.1，执行可信工作流。runner 按执行器分槽位排队：本机执行器同一时间只跑一个运行（任务都在这台机器上，避免 CPU/内存超订）；集群和云执行器的 Nextflow head 只负责提交作业，默认可同时跑 4 个，用 `NEXTFLOW_STUDIO_REMOTE_SLOTS` 调整。两类各自先到先跑，本机运行排队时不挡集群运行。runner 落盘提交时生成的项目快照（模块之后重新发布也不影响这次运行），用 `nf-weblog@1.2.0` 采集真实状态，trace 最终对账；运行图中的任务数随数据流展开。取消会向 Nextflow 进程组发 SIGTERM（本机 10 秒、集群/云 60 秒后 SIGKILL），并清理带本次运行标签的容器。Nextflow head 在独立进程组里运行，输出直接写日志文件，所以 runner 停止或崩溃时运行不中断；重启后 runner 核验原进程身份并重新接管，复用上次的事件端口继续接收 weblog（端口被占用时改为轮询 trace）。head 在 runner 停止期间结束的，按 `.nextflow/history` 记录的 OK/ERR 判定成功或失败。只有还在准备阶段的运行会被标记中断。重启 web 不影响独立 runner。
 
-数据目录默认在 Linux 上是 `${XDG_DATA_HOME:-~/.local/share}/nextflow-studio/`，macOS 上是 `~/Library/Application Support/Nextflow Studio/`（已有 `~/.local/share/nextflow-studio/studio.sqlite` 时继续用旧位置）。其中 `studio.sqlite` 保存工作流和运行状态，`workspaces/default/` 是示例项目的文件夹（设 `NEXTFLOW_STUDIO_WORKSPACE` 换成别的文件夹），新建或打开的项目用各自的目录，结构相同：`studio.json` 记工作区 id 和格式版本，另有 `.gitignore`、`notebooks/`、`modules/`、`pipelines/`、`samplesheets/`、`runs/`，目前只有 `notebooks/` 已在使用；`host-chain/` 保存示例输入；`library/modules/<namespace>/<name>/<version>/` 是模块库，每个发布版本一个目录，内容和生成项目里的模块目录相同，另有 `notebook.py|R`（percent 格式笔记本）和 `module.json`，设 `NEXTFLOW_STUDIO_MODULE_LIBRARY` 可指向共享目录（比如团队的 Git 仓库）；`pipelines/<流程 id>/` 是每个流程固定的项目和 launch 目录，每次运行只重写有变化的文件，`.nextflow/` 历史和缓存库也在这里；`work/` 是所有流程共用的本机 work 目录；`executions/<lineage>/attempts/<run-id>/` 保存各次参数、日志、trace、报告、结果和当次运行的项目副本 `project/`。
+数据目录默认在 Linux 上是 `${XDG_DATA_HOME:-~/.local/share}/nextflow-studio/`，macOS 上是 `~/Library/Application Support/Nextflow Studio/`（`NEXTFLOW_STUDIO_DATA_DIR` 可改）。数据目录只放跨项目的东西：
 
-固定项目目录是因为 Nextflow 把 `bin/` 和模块 `resources/usr/bin/` 里的脚本按路径和修改时间算进任务哈希，项目换目录或被整体重写后 `-resume` 就找不到缓存。同一流程的运行因此按顺序执行。结果用 `publishDir` 发布：work 和结果目录在同一文件系统上时用硬链接（`link`，不占额外空间，清理 work 后结果仍在），否则复制。
+- `workspace-registry.sqlite`：最近打开的项目、运行环境状态和共享模块库（发布到共享库的模块版本，安装时复制进项目）。没有迁移，格式版本不同时服务端拒绝打开；桌面版会在启动前删掉它重建：项目文件夹不受影响，但共享模块库会清空。
+- `workspaces/default/`：示例项目（`NEXTFLOW_STUDIO_WORKSPACE` 可换位置）。
+- `settings.json`、`secrets.json`（设置和密钥；权限 0600，只有桌面版通过系统钥匙串传入 `NEXTFLOW_STUDIO_SECRET_KEY` 时才用 AES-256-GCM 加密，独立服务端或没有可用钥匙串的 Linux 上是明文）、`toolchain/`（应用安装的 JRE、Nextflow、nf-weblog、micromamba，按版本分目录）、`logs/`。
+- `studio.sqlite`：项目化之前的旧数据库，只读；仍有流程或模块时工作台首页会提议导入。
+
+项目本身是一个普通文件夹（详见 [项目工作台](docs/project-workbench.md)）：`studio.json` 记项目 id 和格式版本；笔记本（`.ipynb`，默认 `notebooks/`）和流程画布（`.workflow.json`，默认 `workflows/`）是权威文件；发布的模块是 `modules/<名称>/<版本>/` 下不可变的版本目录；每次运行在 `runs/<运行 id>/`（参数、日志、trace、报告、`results/` 和当次项目快照）；`.studio/state.sqlite` 是可从文件重建的索引，`.studio/runtime/workflows/<流程 id>/` 是每个流程固定的 launch 目录（`.nextflow/` 历史和缓存库也在这里），`.studio/runtime/work/` 是项目的本机 work 目录。
+
+固定 launch 目录是因为 Nextflow 把 `bin/` 和模块 `resources/usr/bin/` 里的脚本按路径和修改时间算进任务哈希，项目换目录或被整体重写后 `-resume` 就找不到缓存。同一流程的运行因此按顺序执行。结果用 `publishDir` 发布：work 和结果目录在同一文件系统上时用硬链接（`link`，不占额外空间，清理 work 后结果仍在），否则复制。
 
 缓存目录默认在 Linux 上是 `${XDG_CACHE_HOME:-~/.cache}/nextflow-studio/`，macOS 上是 `~/Library/Caches/Nextflow Studio/`。runner 把 `NXF_CONDA_CACHEDIR` 指到其中的 `conda/`、`NXF_SINGULARITY_CACHEDIR` 和 `NXF_APPTAINER_CACHEDIR` 指到 `singularity/`（环境里已设置的值优先），笔记本试跑的 conda 环境也放在同一个 `conda/`。
 
@@ -153,7 +161,7 @@ runner 启动时写入一个内置示例流程（host-chain：用本机 shell �
 设置页「远程集群」保存登录节点（主机、用户、端口、私钥、集群上的基础目录、Nextflow 命令、登录后执行的一行命令），运行时选「从哪里启动 Nextflow」。runner 用系统 `ssh`（`BatchMode=yes`，控制套接字复用连接；脚本经 stdin 交给 `sh -s` / `bash -l -s`，不经登录 shell 解析）：
 
 1. 检查集群上的 Nextflow、调度器命令和运行时；
-2. 把流程的启动目录用 tar（保留修改时间，`-resume` 才能命中缓存）复制到 `<基础目录>/pipelines/<流程 id>/`，`run.config`、`params.json` 放到 `<基础目录>/runs/<运行 id>/`，默认 work 目录是 `<基础目录>/work`；
+2. 把流程的启动目录用 tar（保留修改时间，`-resume` 才能命中缓存）复制到 `<基础目录>/pipelines/<流程 id>/`，`run.config`、`params.json` 放到 `<基础目录>/runs/<运行 id>/`，默认 work 目录是 `<基础目录>/work`；参数里用到的项目数据（以及项目样本表列出的文件）同步到 `<基础目录>/projects/<项目>/`，每次运行读取 `<基础目录>/snapshots/<项目>/` 下按数据状态命名的硬链接快照，所以之后的同步不改变正在用的数据，数据不变时续跑仍命中缓存；
 3. 在登录节点上用 `setsid nohup` 启动 Nextflow（退出码写入 `exit-code`），记录 pid 和启动时间；
 4. 每 `NEXTFLOW_STUDIO_REMOTE_POLL_MS`（默认 10000）毫秒经 ssh 读一次存活状态、trace 和控制台尾部；取消发 SIGTERM，60 秒后 SIGKILL；ssh 断开 30 分钟内持续重试；runner 重启后按记录的 pid 重新接管；
 5. 结束后取回日志、报告、`.nextflow/history`（拿到 session 供续跑）和结果；结果超过 `NEXTFLOW_STUDIO_REMOTE_FETCH_MAX_MB`（默认 2048）时留在集群上。任务日志在查看时经 ssh 读取。
@@ -165,7 +173,7 @@ NEXTFLOW_STUDIO_SSH=$PWD/scripts/ssh-shim.sh NEXTFLOW_STUDIO_REMOTE_POLL_MS=1000
 pnpm smoke:remote # 测试连接 → 集群上运行成功 → 结果取回 → 经 ssh 读任务日志 → 集群缓存续跑 → 停止
 ```
 
-云端执行器（AWS / Google / Azure Batch、Kubernetes）仍由本机 Nextflow 提交；设置页「云端凭据」里的 profile、区域、服务账号文件和账户名映射为 `AWS_PROFILE`、`AWS_REGION`、`GOOGLE_APPLICATION_CREDENTIALS`、`AZURE_BATCH_ACCOUNT_NAME` 等变量，访问密钥（`AWS_ACCESS_KEY_ID`、`AWS_SECRET_ACCESS_KEY`、`AZURE_BATCH_ACCOUNT_KEY`、`AZURE_STORAGE_ACCOUNT_KEY`）和 API key 一样只写、加密保存，runner 重启后生效。
+云端执行器（AWS / Google / Azure Batch、Kubernetes）仍由本机 Nextflow 提交；设置页「云端凭据」里的 profile、区域、服务账号文件和账户名映射为 `AWS_PROFILE`、`AWS_REGION`、`GOOGLE_APPLICATION_CREDENTIALS`、`AZURE_BATCH_ACCOUNT_NAME` 等变量，访问密钥（`AWS_ACCESS_KEY_ID`、`AWS_SECRET_ACCESS_KEY`、`AZURE_BATCH_ACCOUNT_KEY`、`AZURE_STORAGE_ACCOUNT_KEY`）和 API key 一样只写，存进 `secrets.json`（加密条件见上面的数据目录说明），runner 重启后生效。
 
 可执行完整 API 验收（需要 web 和 runner 都已启动，会新增验收记录）：
 
@@ -181,7 +189,7 @@ pnpm smoke:runner # 幂等提交 → 实时任务 → 成功/下载 → 缓存�
 - `e2e/single-cell.spec.ts`：两本 scanpy 笔记本（质控、聚类）在常驻 Jupyter 内核里逐格运行，用本机 Python 试跑后发布；画布上把「文件输入」接到质控、再接到聚类，用 Shell 运行时跑真实 Nextflow，结果页显示 UMAP 和 marker 表。数据由 `scripts/make-pbmc-demo.py` 准备：优先 `PBMC3K_H5AD` 指向的文件，其次下载 10x PBMC 3k，都不可用时生成确定性的合成 PBMC 计数。
 
 - `e2e/docking.spec.ts`：RDKit 笔记本把 SMILES 变成 3D 配体，Vina 笔记本在 CPU 上对接；两个文件输入（配体表、受体）接入画布，真实 Nextflow 运行后结果页显示打分表，最佳构象在 Mol* 里打开。数据由 `scripts/make-docking-demo.py` 准备（默认是离线的合成口袋）。
-- `e2e-desktop/packaged.spec.ts`：打包后的桌面应用（`pnpm --dir desktop dist:linux`）用 Playwright 的 Electron 驱动启动，验证旧版本数据目录自动升级，以及笔记本模块在应用里生成项目并真实运行。命令：`xvfb-run pnpm exec playwright test -c e2e-desktop/playwright.config.ts`。
+- `e2e-desktop/packaged.spec.ts`：打包后的桌面应用（`pnpm --dir desktop dist:linux`）用 Playwright 的 Electron 驱动启动，验证格式不兼容的项目注册表被重置而设置保留，以及笔记本模块在应用里生成项目并真实运行。命令：`xvfb-run pnpm exec playwright test -c e2e-desktop/playwright.config.ts`。
 
 需要 `python3 -m pip install ipykernel matplotlib h5py scanpy igraph leidenalg vina meeko gemmi scipy rdkit`，R 部分另需 `Rscript`。runner 首次运行要从 Nextflow 插件仓库下载 `nf-weblog@1.2.0`；下载不到时进度改为每 3 秒读取 trace 文件。
 
@@ -211,7 +219,7 @@ COPILOT_BACKEND=grok pnpm dev   # 顶栏应显示「本机 Grok Build」
 
 生产模式先 `pnpm build:real`，再分别运行 `pnpm runner` 和 `pnpm start`。公共环境变量在构建时固化，因此真实生产构建必须使用 `build:real`。
 
-演示模式的数据保存在浏览器 `nf-studio-mock-db-v2`，不会自动导入为真实数据。可以先在 `pnpm dev` 演示模式导出 JSON，再在真实模式导入并保存；模拟运行历史不会冒充真实执行记录。
+演示模式的数据保存在浏览器 `nf-studio-mock-db-v3`，不会自动导入为真实数据。可以先在 `pnpm dev` 演示模式导出 JSON，再在真实模式导入并保存；模拟运行历史不会冒充真实执行记录。
 
 ```bash
 pnpm install

@@ -21,7 +21,7 @@ Windows 上没有 WSL 时，连接页的「安装 WSL」以管理员身份运行
 | ---- | ---- |
 | 重启 | 停掉服务端（SSH 的也真的停掉）再启动 |
 | 重新安装服务端 | 用应用自带的包覆盖安装后重启。开发版这里是「用当前代码重新构建」：Windows 上在 WSL 里跑 `scripts/wsl-bootstrap.sh`（同 `pnpm dev:win`），macOS / Linux 跑 `scripts/bundle.mjs` |
-| 清除数据 | 停掉服务端，删掉数据库、示例项目、运行记录、启动目录和 `work/`，再启动。设置（`settings.json`、`secrets.json`）、工具链、日志和自己文件夹里的项目保留 |
+| 清除数据 | 停掉服务端，删掉项目注册表（`workspace-registry.sqlite`，即最近项目、运行环境状态和共享模块库），再启动。设置（`settings.json`、`secrets.json`）、工具链、日志、示例项目和各项目文件夹（连同其中的运行记录）保留 |
 | 切换 | 已保存的后端和新建 WSL / SSH / 地址连接。同一个发行版、主机或地址只保存一条 |
 
 连接保存在 userData 的 `connections.json`。服务端包、`server.json`、启动时打印的 ready 行和 `/api/health` 都带构建号（`BUILD`）：已经在运行的服务端不是刚装好的那个构建时，会先停掉再启动，不会被直接复用；连上后的构建号和包不一致时报错，不会显示旧界面。
@@ -78,7 +78,7 @@ pnpm --dir desktop exec electron-builder --win   # Windows NSIS 安装包（只�
 
 每个构建都装在只属于它的目录里：WSL / SSH 是 `~/.local/share/nextflow-studio/server/<包名>-<构建号>/`（`current` 指向它，其他构建删掉），打包应用是 userData 下按构建号命名的目录；服务端每次启动前还会清掉 Next.js 写在自己目录里的页面缓存（`.next/server/route-cache`）。这个缓存按路由而不是按构建存放，如果新构建解压到旧目录上，就会继续把旧构建渲染的页面（连同它引用的旧脚本）发给窗口，表现为接口是新的、页面却新旧混杂（右键菜单、预览消失，页面报错）。
 
-打包的应用每次构建都有自己的构建号（`resources/app-server.build`），版本号不变也会重新解压服务端，不会继续用 userData 里上一次解压的旧服务端。本机数据库的格式版本和当前代码不同时（没有迁移），启动本机服务端前会清掉数据库、示例项目、运行记录和工作目录；设置、工具链和放在自己文件夹里的项目保留。
+打包的应用每次构建都有自己的构建号（`resources/app-server.build`），版本号不变也会重新解压服务端，不会继续用 userData 里上一次解压的旧服务端。本机项目注册表（`workspace-registry.sqlite`）的格式版本和当前代码不同时（没有迁移），启动本机服务端前会删掉它；设置、工具链、项目文件夹和项目化之前的 `studio.sqlite`（首页会提议导入）都保留。
 
 ### Windows 开发
 
@@ -100,9 +100,10 @@ pnpm dev:win --skip-server  # 只重打包外壳，沿用 resources/server 里�
 
 ## 签名、公证和自动更新
 
-见仓库的 `.github/workflows/desktop.yml`。打 `desktop-v*` 标签时在 macOS 和 Linux 上构建；配置了下面的 secrets 就签名并公证，否则产出未签名的内测包：
+流程见 [docs/desktop-release.md](../docs/desktop-release.md) 和 `.github/workflows/desktop.yml`。改 `desktop/package.json` 的版本并推送同名标签（如 `desktop-v0.2.1`）后，CI 在 macOS arm64 / x64、Linux x64、Windows x64 上构建，由一个发布任务统一上传到 GitHub Release。配置了下面的 secrets 就签名（macOS 另做公证），否则产出未签名的内测包：
 
-- `CSC_LINK`、`CSC_KEY_PASSWORD`：Developer ID Application 证书（base64 的 .p12）
+- `MAC_CSC_LINK`、`MAC_CSC_KEY_PASSWORD`：Developer ID Application 证书（base64 的 .p12）
 - `APPLE_ID`、`APPLE_APP_SPECIFIC_PASSWORD`、`APPLE_TEAM_ID`：公证
+- `WIN_CSC_LINK`、`WIN_CSC_KEY_PASSWORD`：Windows 代码签名证书
 
 自动更新用 `electron-updater` 读 GitHub Releases。工具链（JRE、Nextflow、nf-weblog、micromamba）装在数据目录下按版本分目录，不随应用更新替换。设 `NEXTFLOW_STUDIO_DISABLE_UPDATES=1` 关闭检查。
