@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { CODEX_PROBE_TIMEOUT_MS, createCopilotRoute, type CopilotRouteHandlers } from "./copilot-route";
+import { CODEX_PROBE_TIMEOUT_MS, createCopilotRoute, STATUS_TIMEOUT_MS, type CopilotRouteHandlers } from "./copilot-route";
 import { FakeCodexHarness } from "./fake-codex-harness";
 
 // CopilotKit posts telemetry unless this is set. Checked when a runtime is constructed.
@@ -139,12 +139,13 @@ async function waitFor(ready: () => boolean, label: string): Promise<void> {
   }
 }
 
-function routeFor(harness: FakeCodexHarness, env: Record<string, string | undefined>, probeTimeoutMs?: number): CopilotRouteHandlers {
+function routeFor(harness: FakeCodexHarness, env: Record<string, string | undefined>, probeTimeoutMs?: number, statusTimeoutMs?: number): CopilotRouteHandlers {
   return createCopilotRoute({
     env,
     harness,
     cwd: "/work",
     ...(probeTimeoutMs === undefined ? {} : { probeTimeoutMs }),
+    ...(statusTimeoutMs === undefined ? {} : { statusTimeoutMs }),
   });
 }
 
@@ -524,6 +525,24 @@ describe("CopilotKit backend fallback", () => {
       reason: "codex-unauthenticated",
     });
     expect(unauthenticated.opens).toEqual([]);
+  });
+
+  it("answers the status before a slow probe ends and reports the real backend once it does", async () => {
+    expect(STATUS_TIMEOUT_MS).toBeLessThan(CODEX_PROBE_TIMEOUT_MS);
+    const harness = new FakeCodexHarness({ hangProbe: true });
+    const route = routeFor(harness, { COPILOT_BACKEND: "auto", ...KEY }, 5_000, 30);
+    const started = Date.now();
+    const first = await route.GET(get("/api/copilotkit/status"));
+    expect(Date.now() - started).toBeLessThan(1_000);
+    await expect(first.json()).resolves.toMatchObject({ enabled: false, reason: "status-timeout" });
+    // A second check while the probe still runs shares it instead of starting another CLI.
+    await route.GET(get("/api/copilotkit/status"));
+    expect(harness.probeCalls).toBe(1);
+    harness.releaseProbe({ installed: true, authed: true });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const settled = await route.GET(get("/api/copilotkit/status")).then((res) => res.json());
+    expect(settled).toMatchObject({ enabled: true, backend: "codex" });
+    expect(harness.probeCalls).toBe(1);
   });
 
   it("applies the probe deadline and does not call Codex again while the result is cached", async () => {

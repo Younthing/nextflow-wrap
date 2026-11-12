@@ -1,11 +1,12 @@
-import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
 /**
  * Every directory the app writes to comes from here.
  *
- * - The data directory holds the database, run records and the per-workflow launch directories.
+ * - The data directory holds app-wide state: the project registry (`workspace-registry.sqlite`), settings, the
+ *   example project and the fallback shared work directory. Each project keeps its own runs in `runs/` and its
+ *   launch directories and task scratch in `.studio/runtime/` (see docs/project-workbench.md).
  * - The cache directory holds large files that can be rebuilt: conda environments and container images.
  *   Nextflow and the notebook try-run share it, so one `environment.yml` is built once.
  */
@@ -40,8 +41,8 @@ export const condaCacheDirectory = (input?: PathEnv) => join(cacheDirectory(inpu
 export const singularityCacheDirectory = (input?: PathEnv) => join(cacheDirectory(input), "singularity");
 
 /**
- * Folder of the example project: a workspace with `studio.json`, `notebooks/`, `modules/`, `pipelines/`,
- * `samplesheets/` and `runs/`. Projects the user creates or opens use their own folders. Set
+ * Folder of the example project, laid out like any project: `studio.json`, `notebooks/`, `workflows/`,
+ * `modules/`, `runs/` and `.studio/`. Projects the user creates or opens use their own folders. Set
  * `NEXTFLOW_STUDIO_WORKSPACE` to put the example project elsewhere.
  */
 export function workspaceDirectory(input?: PathEnv, data?: string): string {
@@ -50,21 +51,8 @@ export function workspaceDirectory(input?: PathEnv, data?: string): string {
   return join(data ?? dataDirectory(input), "workspaces", "default");
 }
 
-/** Shared local work directory. Task hashes do not depend on it, so every workflow can use one. */
+/** Shared local work directory for runs outside a project; project runs use `.studio/runtime/work/`. */
 export const workDirectory = (input?: PathEnv) => join(dataDirectory(input), "work");
-
-/** Run records: parameters, logs, trace, reports, results and a copy of the project that ran. */
-export const executionDirectory = (lineageId: string, input?: PathEnv) => join(dataDirectory(input), "executions", lineageId);
-
-/**
- * Stable project and launch directory for one workflow.
- * Nextflow hashes `bin/` scripts by path and modification time, and the generated scripts call
- * `${workflow.projectDir}/bin/...`, so `-resume` only finds cached tasks when the project stays here.
- */
-export function pipelineDirectory(workflowId: string, input?: PathEnv): string {
-  const safe = /^[A-Za-z0-9_-]{1,80}$/.test(workflowId) ? workflowId : `wf-${createHash("sha256").update(workflowId).digest("hex").slice(0, 16)}`;
-  return join(dataDirectory(input), "pipelines", safe);
-}
 
 /** Environment for Nextflow child processes. Values the user already set win. */
 export function nextflowCacheEnv(env: Partial<Record<string, string>> = process.env, input?: PathEnv): Record<string, string> {

@@ -10,6 +10,9 @@ const KEY_ENV: Record<string, string> = {
   gemini: "GOOGLE_API_KEY",
 };
 
+/** `reason` of a status that gave up waiting for the CLI probes; the browser asks again. */
+export const STATUS_TIMEOUT_REASON = "status-timeout";
+
 export type BackendMode = "auto" | "codex" | "grok" | "builtin";
 
 /** Why a local CLI backend (Codex or Grok) was not selected. */
@@ -262,21 +265,26 @@ export function createAssistantResolver(deps: {
   };
 }
 
+/** Cache a probe for `ttlMs`, and share one in flight, so a status check that gave up still fills the cache. */
 function cachedProbe(
   probe: () => Promise<ProbeResult>,
   ttlMs: number,
   clock?: () => number,
 ): () => Promise<ProbeResult> {
   let cache: { at: number; result: ProbeResult } | undefined;
-  return async () => {
+  let pending: Promise<ProbeResult> | undefined;
+  return () => {
     const now = clock?.() ?? Date.now();
-    if (cache && now - cache.at < ttlMs) return cache.result;
-    try {
-      const result = await probe();
-      cache = { at: now, result };
-      return result;
-    } catch {
-      return { installed: false };
-    }
+    if (cache && now - cache.at < ttlMs) return Promise.resolve(cache.result);
+    pending ??= probe().then(
+      (result) => {
+        cache = { at: clock?.() ?? Date.now(), result };
+        return result;
+      },
+      (): ProbeResult => ({ installed: false }),
+    ).finally(() => {
+      pending = undefined;
+    });
+    return pending;
   };
 }

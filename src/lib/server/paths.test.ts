@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { cacheDirectory, dataDirectory, nextflowCacheEnv, pipelineDirectory, workDirectory, workspaceDirectory } from "./paths";
+import { cacheDirectory, dataDirectory, nextflowCacheEnv, workDirectory, workspaceDirectory } from "./paths";
 
 describe("dataDirectory", () => {
   it("honours NEXTFLOW_STUDIO_DATA_DIR", () => {
@@ -29,20 +29,13 @@ describe("cacheDirectory", () => {
 describe("run directories", () => {
   const input = { platform: "linux" as const, home: "/home/a", env: {} };
 
-  it("gives each workflow one stable project directory and all runs one work directory", () => {
-    expect(pipelineDirectory("hostchain", input)).toBe("/home/a/.local/share/nextflow-studio/pipelines/hostchain");
+  it("gives runs outside a project one shared work directory", () => {
     expect(workDirectory(input)).toBe("/home/a/.local/share/nextflow-studio/work");
   });
 
-  it("keeps the module library and default workspace next to the data, unless pointed elsewhere", () => {
+  it("keeps the example project next to the data, unless pointed elsewhere", () => {
     expect(workspaceDirectory(input)).toBe("/home/a/.local/share/nextflow-studio/workspaces/default");
     expect(workspaceDirectory({ ...input, env: { NEXTFLOW_STUDIO_WORKSPACE: "/projects/pbmc" } })).toBe("/projects/pbmc");
-  });
-
-  it("hashes workflow ids that are not safe directory names", () => {
-    const path = pipelineDirectory("../../etc", input);
-    expect(path).toMatch(/\/pipelines\/wf-[0-9a-f]{16}$/);
-    expect(pipelineDirectory("../../etc", input)).toBe(path);
   });
 });
 
