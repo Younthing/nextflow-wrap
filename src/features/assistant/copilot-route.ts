@@ -2,7 +2,7 @@ import { BuiltInAgent, CopilotRuntime, createCopilotRuntimeHandler } from "@copi
 
 import type { CodexHarness, ProbeResult } from "@/features/codex-harness";
 import type { GrokHarness } from "@/features/grok-harness";
-import { createAssistantResolver, type AssistantChoice, type EnvLike } from "./backend";
+import { createAssistantResolver, STATUS_TIMEOUT_REASON, type AssistantChoice, type EnvLike } from "./backend";
 import { createCodexAgent } from "./codex-agent";
 import { ASSISTANT_MAX_STEPS } from "./codex-turn";
 import { createGrokAgent } from "./grok-agent";
@@ -23,6 +23,11 @@ import {
  * the CLI as installed with unknown auth, which is the `unavailable` fallback.
  */
 export const CODEX_PROBE_TIMEOUT_MS = 8_000;
+/**
+ * How long `/api/copilotkit/status` waits for the CLI probes. Past it the status says so and the probes keep
+ * running; their results are cached, so the browser's retry gets the real answer.
+ */
+export const STATUS_TIMEOUT_MS = 3_000;
 
 export interface CopilotRouteDeps {
   env: EnvLike;
@@ -36,6 +41,8 @@ export interface CopilotRouteDeps {
   cwd?: string;
   /** Overrides {@link CODEX_PROBE_TIMEOUT_MS}. Tests pass a few dozen milliseconds. */
   probeTimeoutMs?: number;
+  /** Overrides {@link STATUS_TIMEOUT_MS}. */
+  statusTimeoutMs?: number;
 }
 
 export interface CopilotRouteHandlers {
@@ -69,6 +76,7 @@ export interface CopilotRouteHandlers {
  */
 export function createCopilotRoute(deps: CopilotRouteDeps): CopilotRouteHandlers {
   const probeTimeoutMs = deps.probeTimeoutMs ?? CODEX_PROBE_TIMEOUT_MS;
+  const statusTimeoutMs = deps.statusTimeoutMs ?? STATUS_TIMEOUT_MS;
   const resolveAssistant = createAssistantResolver({
     env: deps.env,
     probe: () => probeWithDeadline(deps.harness, probeTimeoutMs),
@@ -168,8 +176,8 @@ export function createCopilotRoute(deps: CopilotRouteDeps): CopilotRouteHandlers
     const rejection = denied(request);
     if (rejection) return rejection;
 
+    if (new URL(request.url).pathname === "/api/copilotkit/status") return Response.json(await resolveStatus());
     const choice = await resolveAssistant();
-    if (new URL(request.url).pathname === "/api/copilotkit/status") return Response.json(choice);
     if (!choice.enabled) {
       return Response.json(
         { message: choice.message, reason: choice.reason, ...(choice.missing ? { missing: choice.missing } : {}) },
@@ -196,6 +204,15 @@ export function createCopilotRoute(deps: CopilotRouteDeps): CopilotRouteHandlers
       );
     }
     return builtinCopilotHandler(choice, prepared.prompt)(prepared.request);
+  }
+
+  /** The status the UI shows. It never waits longer than {@link STATUS_TIMEOUT_MS} for the CLI probes. */
+  async function resolveStatus(): Promise<AssistantChoice> {
+    try {
+      return await withDeadline(resolveAssistant(), statusTimeoutMs);
+    } catch {
+      return { enabled: false, backend: "auto", reason: STATUS_TIMEOUT_REASON, message: "AI 助手状态检查超时，稍后自动重试" };
+    }
   }
 
   return { GET: handle, POST: handle, DELETE: handle, HEAD: head };

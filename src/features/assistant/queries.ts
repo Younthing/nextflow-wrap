@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import type { AssistantStatus } from "./assistant-provider";
-import type { CliBlocker } from "./backend";
+import { STATUS_TIMEOUT_REASON, type CliBlocker } from "./backend";
 
 /** The `/api/copilotkit/status` body: the server's `AssistantChoice`. */
 interface StatusBody {
@@ -52,10 +52,14 @@ async function fetchStatus(): Promise<AssistantStatus> {
   }
 }
 
+/** How soon to ask again after the server gave up waiting for the CLI probes, which keep running there. */
+const STATUS_RETRY_MS = 4_000;
+
 export function useAssistantStatusQuery() {
   return useQuery({
     queryKey: ["assistant", "status"],
     queryFn: fetchStatus,
     staleTime: Infinity,
+    refetchInterval: (query) => (query.state.data?.reason === STATUS_TIMEOUT_REASON ? STATUS_RETRY_MS : false),
   });
 }

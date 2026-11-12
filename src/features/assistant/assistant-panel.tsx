@@ -23,8 +23,10 @@ const SIDEBAR_WIDTH = "100%";
 const DEFAULT_PANEL_WIDTH = 440;
 
 /** A stable portal host lets the chat move documents without remounting its tools or thread. */
-export function AssistantPanel({ children, open, onOpenChange, labels }: {
+export function AssistantPanel({ children, enabled = true, open, onOpenChange, labels }: {
   children: React.ReactNode;
+  /** Off: only the workspace renders, so turning the assistant on later keeps the children mounted. */
+  enabled?: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   labels: React.ComponentProps<typeof CopilotSidebar>["labels"];
@@ -155,7 +157,7 @@ export function AssistantPanel({ children, open, onOpenChange, labels }: {
   return <>
     <div className="assistant-workspace" data-docked={open && mode === "docked"} style={{ "--assistant-width": `${width}px` } as React.CSSProperties}>{children}</div>
     {open && mode === "detached" ? <button type="button" onClick={dock} className="glass-strong fixed top-3 right-3 z-50 rounded-lg px-3 py-2 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">AI 已在独立窗口打开 · 移回此窗口</button> : null}
-    {host ? createPortal(<>
+    {enabled && host ? createPortal(<>
       <HeaderContext value={header}>
         {/* The host CSS owns the live width. Changing CopilotKit's width prop
             replaces the scroll view, just like changing its header slot. */}

@@ -18,10 +18,7 @@
 
 ## P0：马上处理
 
-1. **首屏被 AI 助手状态挡住。** `AssistantProvider` 在 `/api/copilotkit/status` 返回前直接 `return null`（`src/features/assistant/assistant-provider.tsx`），而这个接口要探测本机 Codex / Grok 登录，所以整页要等它。改成先渲染 `children`，状态未知时按钮显示加载中；服务端的 `resolveAssistant()` 探测加超时（前端已按 `staleTime: Infinity` 缓存结果）。开发模式下第一次打开的慢主要是 Turbopack 按需编译，和这个问题分开看。
-   - 验收：断开或拖慢状态接口时，工作台仍立即可用；补一个 Storybook 状态示例。
-2. **清掉项目化之前的死代码。** `src/lib/server/paths.ts` 里的 `pipelineDirectory()`、`executionDirectory()` 只剩测试在用，文件头注释仍说数据目录放运行记录和 launch 目录；`WORKSPACE_FOLDERS` 仍创建 `pipelines/`、`samplesheets/`，而流程实际默认存到 `workflows/`。统一成项目工作台文档里的结构，并同步测试。
-3. **项目注册表的迁移策略。** `workspace-registry.sqlite` 没有迁移，格式一变桌面版就删掉重建（最近项目、运行环境状态、共享模块库都会丢）。共享模块库是用户数据，至少要在重建前导出到文件，或者把共享库挪成一个普通文件夹。
+1. **项目注册表的迁移策略。** `workspace-registry.sqlite` 没有迁移，格式一变桌面版就删掉重建（最近项目、运行环境状态、共享模块库都会丢）。共享模块库是用户数据，至少要在重建前导出到文件，或者把共享库挪成一个普通文件夹。
 
 ## P1：下一个版本（0.3）
 

@@ -93,7 +93,7 @@ ComfyUI 式的 Nextflow 可视化前端：在笔记本里写分析脚本并发�
 - **编辑器**：助手能看到当前流程（节点、端口、连线、参数和校验问题），可以搜索模块、添加节点、连线和断开、删除节点，修改别名、模块参数、`ext.args`/`ext.prefix`/资源标签/是否发布，以及设置流程参数。工具出错时会把原因返回给模型，模型据此修正后重试。`start_run` 会先弹出确认对话框，接受后才用运行对话框里保存的设置启动。
 - **运行详情页**：助手能看到这次运行的状态、参数、命令和失败任务，可以读取任务的 `.command.log` 和 Nextflow 主日志来解释失败原因。`cancel_run` 和 `resume_run` 同样要先确认，取消或关闭对话框不会停止或恢复。
 
-助手默认（`COPILOT_BACKEND=auto`）按这个顺序选后端：本机已经 `codex login` 的 Codex CLI → 本机已经 `grok login` 的 Grok Build CLI（走 X／Grok 订阅；没登录时也可用 `XAI_API_KEY`）→ 下面的 API key 模型。`codex`、`grok`、`builtin` 强制只用一条路径。认证分别留在 `~/.codex`、`~/.grok`，服务端不读取 token，两条 CLI 路径都不需要 `OPENAI_API_KEY`／`ANTHROPIC_API_KEY`。顶栏按钮的提示会写明当前后端（「本机 Codex」「本机 Grok Build」或模型名）；`GET /api/copilotkit/status` 返回 `backend` 是 `codex`、`grok` 还是 `builtin`，未启用时 `message` 说明原因（例如「请先运行 grok login」）。
+助手默认（`COPILOT_BACKEND=auto`）按这个顺序选后端：本机已经 `codex login` 的 Codex CLI → 本机已经 `grok login` 的 Grok Build CLI（走 X／Grok 订阅；没登录时也可用 `XAI_API_KEY`）→ 下面的 API key 模型。`codex`、`grok`、`builtin` 强制只用一条路径。认证分别留在 `~/.codex`、`~/.grok`，服务端不读取 token，两条 CLI 路径都不需要 `OPENAI_API_KEY`／`ANTHROPIC_API_KEY`。顶栏按钮的提示会写明当前后端（「本机 Codex」「本机 Grok Build」或模型名）；`GET /api/copilotkit/status` 返回 `backend` 是 `codex`、`grok` 还是 `builtin`，未启用时 `message` 说明原因（例如「请先运行 grok login」）。页面不等这个接口：状态未知时侧栏的「AI 助手」按钮显示加载中。接口最多等 3 秒 CLI 探测，超时就返回 `reason: "status-timeout"`，探测在服务端继续跑并缓存结果，浏览器几秒后自动再问一次。
 
 `/api/copilotkit` 只接受本机回环地址上的同源请求（`localhost`、`127.0.0.1`、`::1`；需要别的回环名时设置 `COPILOT_ALLOWED_HOSTS`）。Codex 同时最多处理 `CODEX_MAX_SESSIONS` 个会话，Grok 另算 `GROK_MAX_SESSIONS` 个（各自默认 2，再多返回 429）。每次 Codex／Grok 对话的工作目录是空的临时目录，不是项目仓库。Grok 对话另外：用只保留 `todo_write` 的聊天 agent profile（没有 shell、读写文件、联网工具），`GROK_SANDBOX=strict`，不开 `--always-approve`，权限请求一律拒绝。一轮用户消息里最多再调用模型 12 次；未知工具，以及说明文字和工具 JSON 混在同一段回复里，都会被拒绝，不会执行。
 

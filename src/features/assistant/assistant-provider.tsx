@@ -3,7 +3,7 @@
 import * as React from "react";
 import type { CliBlocker } from "./backend";
 import { useAssistantStatusQuery } from "./queries";
-import { CopilotKitProvider } from "@copilotkit/react-core/v2";
+import { CopilotKitProvider, HttpAgent } from "@copilotkit/react-core/v2";
 import "@copilotkit/react-core/v2/styles.css";
 import { ComposerProvider } from "./composer";
 import { AssistantModuleHost } from "./modules/activation";
@@ -50,12 +50,15 @@ export type AssistantStatus =
 
 interface AssistantContextValue {
   status: AssistantStatus;
+  /** True until `/api/copilotkit/status` answers; the header button shows a spinner meanwhile. */
+  checking: boolean;
   open: boolean;
   setOpen: (open: boolean) => void;
 }
 
 const AssistantContext = React.createContext<AssistantContextValue>({
   status: { enabled: false, message: "" },
+  checking: false,
   open: false,
   setOpen: () => {},
 });
@@ -65,11 +68,6 @@ export const useAssistantStatus = () =>
   React.useContext(AssistantContext).status;
 export const useAssistantPanel = () => React.useContext(AssistantContext);
 
-/**
- * Wraps the app in CopilotKit when the server has a backend. The status is
- * settled before children render, so the tree (and editor state) never
- * remounts when the provider appears.
- */
 function sameStringList(left: readonly string[], right: readonly string[]): boolean {
   return left.length === right.length && left.every((item, index) => item === right[index]);
 }
@@ -93,10 +91,33 @@ function useFoldNavWhileOpen(open: boolean) {
   }, [open]);
 }
 
+const CHECKING: AssistantStatus = { enabled: false, message: "正在检查 AI 助手…" };
+const NO_AGENTS = {};
+
+/**
+ * Never runs: it only lets CopilotKit mount without a runtime while the assistant is off or still being checked.
+ * Surfaces register tools and the panel mounts the chat only once the status says the assistant is on.
+ */
+class IdleAgent extends HttpAgent {
+  constructor() {
+    super({ url: RUNTIME_URL });
+  }
+  override clone() {
+    return new IdleAgent();
+  }
+}
+
+/**
+ * Wraps the app in CopilotKit. Children render at once, before `/api/copilotkit/status` answers (it probes the
+ * local Codex and Grok logins). The provider tree has the same shape whatever the status, so the workbench (and
+ * editor state) never remounts when the status arrives: only the runtime URL and the panel switch on.
+ */
 export function AssistantProvider({ children }: { children: React.ReactNode }) {
-  const { data: status } = useAssistantStatusQuery();
+  const { data } = useAssistantStatusQuery();
+  const status = data ?? CHECKING;
+  const checking = data === undefined;
   const [open, setOpen] = React.useState(false);
-  useFoldNavWhileOpen(open);
+  useFoldNavWhileOpen(open && status.enabled);
   const [modules, setModules] = React.useState<readonly string[]>([]);
   const onModules = React.useCallback((ids: readonly string[]) => {
     setModules((current) => (sameStringList(current, ids) ? current : ids));
@@ -106,26 +127,28 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
     [modules],
   );
 
+  const [idleAgents] = React.useState(() => ({ idle: new IdleAgent() }));
+
   const value = React.useMemo(
-    () => status && { status, open, setOpen },
-    [status, open],
+    () => ({ status, checking, open: open && status.enabled, setOpen }),
+    [status, checking, open],
   );
 
-  if (!value) return null;
-  const chat = !value.status.enabled ? (
-    children
-  ) : (
-    <CopilotKitProvider runtimeUrl={RUNTIME_URL} properties={properties}>
-      <ComposerProvider>
-        <AssistantPanel open={open} onOpenChange={setOpen} labels={LABELS}>
-          {children}
-        </AssistantPanel>
-      </ComposerProvider>
-    </CopilotKitProvider>
-  );
   return (
     <AssistantModuleHost onChange={onModules}>
-      <AssistantContext value={value}>{chat}</AssistantContext>
+      <AssistantContext value={value}>
+        <CopilotKitProvider
+          runtimeUrl={status.enabled ? RUNTIME_URL : undefined}
+          agents__unsafe_dev_only={status.enabled ? NO_AGENTS : idleAgents}
+          properties={properties}
+        >
+          <ComposerProvider>
+            <AssistantPanel enabled={status.enabled} open={value.open} onOpenChange={setOpen} labels={LABELS}>
+              {children}
+            </AssistantPanel>
+          </ComposerProvider>
+        </CopilotKitProvider>
+      </AssistantContext>
     </AssistantModuleHost>
   );
 }
