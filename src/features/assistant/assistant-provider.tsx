@@ -95,8 +95,8 @@ const CHECKING: AssistantStatus = { enabled: false, message: "正在检查 AI �
 const NO_AGENTS = {};
 
 /**
- * Never runs: it only lets CopilotKit mount without a runtime while the assistant is off or still being checked.
- * Surfaces register tools and the panel mounts the chat only once the status says the assistant is on.
+ * The chat can mount before CopilotKit has applied its new runtime URL. Keep the default agent available
+ * during that render, and let the real runtime replace it after the provider connects.
  */
 class IdleAgent extends HttpAgent {
   constructor() {
@@ -104,6 +104,10 @@ class IdleAgent extends HttpAgent {
   }
   override clone() {
     return new IdleAgent();
+  }
+
+  override async connectAgent() {
+    return { result: undefined, newMessages: [] };
   }
 }
 
@@ -127,7 +131,7 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
     [modules],
   );
 
-  const [idleAgents] = React.useState(() => ({ idle: new IdleAgent() }));
+  const [idleAgents] = React.useState(() => ({ default: new IdleAgent() }));
 
   const value = React.useMemo(
     () => ({ status, checking, open: open && status.enabled, setOpen }),

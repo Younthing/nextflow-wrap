@@ -66,6 +66,29 @@ export const SlowStatus: StoryObj = {
   },
 };
 
+export const EnabledAfterChecking: StoryObj = {
+  parameters: { msw: [
+    http.get("/api/copilotkit/status", async () => {
+      await delay(600);
+      return HttpResponse.json({ enabled: true, backend: "builtin", model: "test" });
+    }),
+    http.get("/api/copilotkit/info", () => HttpResponse.json({
+      agents: { default: { name: "default", description: "Test agent", className: "HttpAgent" } },
+      version: "1.0.0",
+    })),
+  ] },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const cell = await canvas.findByRole("textbox", { name: "笔记本单元格" });
+    await userEvent.type(cell, "print(1)");
+    const assistantButton = () => canvas.getByRole("button", { name: "AI 助手" });
+    await waitFor(() => expect(assistantButton()).toBeEnabled(), { timeout: 3_000 });
+    await userEvent.click(assistantButton());
+    await expect(await within(document.body).findByRole("button", { name: "收起 AI 助手" })).toBeVisible();
+    await expect(cell).toHaveValue("print(1)");
+  },
+};
+
 /** The status endpoint is down: the page still works and the button says why the assistant is off. */
 export const Unreachable: StoryObj = {
   parameters: status(() => HttpResponse.error()),
