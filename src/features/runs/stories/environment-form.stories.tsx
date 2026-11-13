@@ -29,6 +29,8 @@ export const RealRunner: Story = {
     const canvas = within(canvasElement);
     expect(canvas.queryByText(/模拟运行，不连接/)).toBeNull();
     expect(canvas.getByLabelText("工作目录（workDir）")).toBeDisabled();
+    expect(canvas.queryByRole("radio", { name: /HyperQueue/ })).toBeNull();
+    await userEvent.click(canvas.getByRole("button", { name: "更多执行环境" }));
     const hq = canvas.getByRole("radio", { name: /HyperQueue/ });
     expect(hq).toBeEnabled();
     await userEvent.click(hq);
@@ -40,9 +42,12 @@ export const RealRunner: Story = {
 export const ChangeExecutor: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "更多执行环境" }));
     const option = canvas.getByRole("radio", { name: /Slurm/i });
     await userEvent.click(option);
     await expect(option).toHaveAttribute("aria-checked", "true");
+    await userEvent.click(canvas.getByRole("button", { name: "收起执行环境" }));
+    await expect(canvas.getByRole("radio", { name: /Slurm/i })).toHaveAttribute("aria-checked", "true");
   },
 };
 export const OnCluster: Story = {
@@ -59,6 +64,8 @@ export const OnCluster: Story = {
     await expect(canvas.getByText(/工作区数据运行前自动同步过去/)).toBeInTheDocument();
     await expect(canvas.getByLabelText("工作目录（workDir）")).toBeEnabled();
     await expect(canvas.getByText("填 work 时用 ~/nextflow-studio/work")).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "更多执行环境" }));
+    expect(canvas.queryByRole("radio", { name: /AWS Batch/ })).toBeNull();
     const slurm = canvas.getByRole("radio", { name: /^SLURM/ });
     await expect(slurm).toHaveAccessibleName(/Nextflow 在登录节点上提交作业/);
     await userEvent.click(slurm);

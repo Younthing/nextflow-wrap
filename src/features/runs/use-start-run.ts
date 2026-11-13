@@ -24,9 +24,11 @@ export function useStartRun() {
         resumeFrom,
       }: { doc: WorkflowDoc; project: GeneratedProject; config: LaunchConfig; resumeFrom?: string },
       onLaunched?: () => void,
+      onError?: (error: Error) => void,
     ) => {
       rememberLaunchConfig(doc.id, config);
       mutate(launchRequest(doc, project, config, resumeFrom), {
+        onError,
         onSuccess: (run) => {
           onLaunched?.();
           router.push(`/runs/${run.id}`);
@@ -35,5 +37,5 @@ export function useStartRun() {
     },
     [mutate, router],
   );
-  return { start, pending: launch.isPending, error: launch.error };
+  return { start, pending: launch.isPending, error: launch.error, reset: launch.reset };
 }

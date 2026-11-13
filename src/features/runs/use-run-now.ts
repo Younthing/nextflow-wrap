@@ -25,7 +25,7 @@ export function useRunNow({
 }: {
   issues: readonly Issue[];
   onNodeIssue: (nodeId: string) => void;
-  onNeedsSettings: () => void;
+  onNeedsSettings: (error?: string) => void;
 }) {
   const store = useEditorStoreApi();
   const queryClient = useQueryClient();
@@ -51,11 +51,11 @@ export function useRunNow({
       const doc = state.toDoc();
       const generated = generateFor(doc, state.index, config.registry);
       const problems = setupProblems({ docId: state.docId, saveShortcut, generated, launch: config, health });
-      if (problems.length || !generated.project) {
+      if (!health || problems.length || !generated.project) {
         onNeedsSettings();
         return;
       }
-      startRun.start({ doc, project: generated.project, config });
+      startRun.start({ doc, project: generated.project, config }, undefined, (error) => onNeedsSettings(error.message));
     } finally {
       setChecking(false);
     }

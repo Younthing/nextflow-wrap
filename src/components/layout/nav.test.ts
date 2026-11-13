@@ -43,9 +43,10 @@ describe("sidebar nav", () => {
     expect(isBareRoute("/settings")).toBe(false);
   });
 
-  it("opens the 流程 group on pipeline pages and otherwise remembers it, closed by default", () => {
+  it("defaults to open on pipeline pages and respects the user's choice", () => {
     expect(flowGroupOpen("/workbench", null)).toBe(false);
     expect(flowGroupOpen("/workbench", true)).toBe(true);
-    expect(flowGroupOpen("/runs", false)).toBe(true);
+    expect(flowGroupOpen("/runs", null)).toBe(true);
+    expect(flowGroupOpen("/runs", false)).toBe(false);
   });
 });

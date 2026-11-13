@@ -7,7 +7,7 @@ import { ExportMenu } from "../components/export-menu";
 import { WorkbenchFiles } from "../components/workbench-files";
 import { WorkbenchRuntimes } from "../components/workbench-runtimes";
 import { WorkbenchStart } from "../components/workbench-start";
-import { WorkbenchTabs } from "../components/workbench-tabs";
+import { OpenDocuments as OpenDocumentsList } from "../components/open-documents";
 
 const notebooks: NotebookSummary[] = [
   { id: "nb_qc", name: "01 质控与过滤", description: "过滤低质量细胞", kernel: "py311-pandas", language: "python", rev: 4, updatedAt: "2026-01-02T11:50:00.000Z", projectId: storyProject.id },
@@ -38,10 +38,10 @@ export const LeftColumn: StoryObj = {
   },
 };
 
-export const Tabs: StoryObj<typeof WorkbenchTabs> = {
+export const OpenDocuments: StoryObj<typeof OpenDocumentsList> = {
   render: (args) => (
-    <div className="glass w-[48rem] rounded-xl">
-      <WorkbenchTabs {...args} />
+    <div className="glass w-48 rounded-xl px-2">
+      <OpenDocumentsList {...args} />
     </div>
   ),
   args: {
@@ -58,8 +58,8 @@ export const Tabs: StoryObj<typeof WorkbenchTabs> = {
   },
 };
 
-export const MixedDocuments: StoryObj<typeof WorkbenchTabs> = {
-  ...Tabs,
+export const MixedDocuments: StoryObj<typeof OpenDocumentsList> = {
+  ...OpenDocuments,
   args: {
     tabs: ["nb_qc", "workflow/analysis", "file/samples.csv"],
     names: { nb_qc: "01 质控.ipynb", "workflow/analysis": "主流程.workflow.json", "file/samples.csv": "samples.csv" },
@@ -73,8 +73,8 @@ export const MixedDocuments: StoryObj<typeof WorkbenchTabs> = {
   },
 };
 
-export const ManyDocuments: StoryObj<typeof WorkbenchTabs> = {
-  ...Tabs,
+export const ManyDocuments: StoryObj<typeof OpenDocumentsList> = {
+  ...OpenDocuments,
   args: { tabs: Array.from({ length: 18 }, (_, index) => `file/notes-${index}.txt`), names: {}, active: "file/notes-17.txt", onClose: fn() },
   play: async ({ canvasElement }) => {
     await expect(within(canvasElement).getAllByRole("link")).toHaveLength(18);

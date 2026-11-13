@@ -109,7 +109,7 @@ function InsertBar({
  * Renders and drives the open {@link NotebookSession}. The draft, outputs,
  * autosave, and runs live in the session, which the assistant uses too.
  */
-export function NotebookEditor({ notebookId }: { notebookId: string }) {
+export function NotebookEditor({ notebookId, explorerControl }: { notebookId: string; explorerControl?: React.ReactNode }) {
   const router = useRouter();
   const search = useSearchParams();
   const notebook = useNotebook(notebookId);
@@ -419,8 +419,9 @@ export function NotebookEditor({ notebookId }: { notebookId: string }) {
       <div
         role="toolbar"
         aria-label="笔记本工具栏"
-        className="@container flex h-9 min-w-0 flex-nowrap items-center gap-0.5 overflow-hidden border-b border-border bg-glass-strong px-2"
+        className="@container flex h-9 min-w-0 shrink-0 flex-nowrap items-center gap-0.5 overflow-hidden border-b border-border bg-glass-strong px-2"
       >
+        {explorerControl}
         <Button type="button" size="sm" variant="ghost" className="h-7 shrink-0 gap-1 px-2 font-normal" aria-label="+ 代码" onClick={() => insertCell("code")}>
           <Plus /> <span className="hidden @[22rem]:inline">代码</span>
         </Button>

@@ -45,7 +45,13 @@ export const Runs: Story = {
     nextjs: { navigation: { pathname: "/runs/run_story" } },
   },
   play: async ({ canvasElement }) => {
-    const link = await within(canvasElement).findByRole("link", { name: "运行记录" });
+    const canvas = within(canvasElement);
+    const link = await canvas.findByRole("link", { name: "运行记录" });
+    await expect(link).toHaveAttribute("aria-current", "page");
+    const group = canvas.getByRole("button", { name: /^流程$/ });
+    await userEvent.click(group);
+    await expect(group).toHaveAttribute("aria-expanded", "false");
+    await userEvent.click(group);
     await expect(link).toHaveAttribute("aria-current", "page");
   },
 };
@@ -78,7 +84,7 @@ export const Collapsed: Story = {
     const nav = within(canvasElement).getByRole("navigation", { name: "主导航" });
     await expect(within(nav).getByRole("link", { name: "运行记录" })).toHaveAttribute("aria-current", "page");
     await expect(within(nav).getByRole("link", { name: "设置" })).toBeVisible();
-    await expect(within(nav).getByRole("button", { name: "展开导航栏" })).toBeVisible();
-    await expect(within(nav).getByRole("button", { name: /深色模式|浅色模式/ })).toBeVisible();
+    await expect(within(nav).getByRole("link", { name: "工作台" })).toBeVisible();
+    await expect(within(nav).getByRole("button", { name: /外观/ })).toBeVisible();
   },
 };

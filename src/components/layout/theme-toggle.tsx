@@ -1,40 +1,51 @@
 "use client";
 
 import * as React from "react";
-import { Moon, Sun } from "lucide-react";
+import { Monitor, Moon, Sun } from "lucide-react";
 
-import { applyTheme, type Theme } from "@/lib/theme";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { applyTheme, readThemePreference, THEME_STORAGE_KEY, type ThemePreference } from "@/lib/theme";
 import { sidebarItemClass } from "./sidebar-item";
 
-/** Sidebar row that flips between light and dark. */
-export function ThemeToggle({ collapsed = false }: { collapsed?: boolean }) {
-  const [theme, setTheme] = React.useState<Theme | null>(null);
+const OPTIONS = {
+  system: { label: "跟随系统", Icon: Monitor },
+  light: { label: "浅色", Icon: Sun },
+  dark: { label: "深色", Icon: Moon },
+};
 
+export function ThemeToggle({ collapsed = false }: { collapsed?: boolean }) {
+  const [preference, setPreference] = React.useState<ThemePreference>("system");
   React.useEffect(() => {
-    // The init script already set the class; read it back once on mount.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setTheme(
-      document.documentElement.classList.contains("dark") ? "dark" : "light",
-    );
+    const load = () => setPreference(readThemePreference());
+    load();
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== THEME_STORAGE_KEY && event.key !== null) return;
+      setPreference(event.newValue === "light" || event.newValue === "dark" ? event.newValue : "system");
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
   }, []);
 
-  const next: Theme = theme === "dark" ? "light" : "dark";
-  const label = next === "dark" ? "深色模式" : "浅色模式";
-
+  const { label, Icon } = OPTIONS[preference];
   return (
-    <button
-      type="button"
-      // Open, the visible text names it; folded to an icon, the label does.
-      aria-label={collapsed ? label : undefined}
-      title={collapsed ? label : undefined}
-      className={sidebarItemClass(false, collapsed)}
-      onClick={() => {
-        applyTheme(next);
-        setTheme(next);
-      }}
-    >
-      {theme === "dark" ? <Sun /> : <Moon />}
-      {collapsed ? null : label}
-    </button>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button type="button" aria-label={`外观：${label}`} title={collapsed ? `外观：${label}` : undefined} className={sidebarItemClass(false, collapsed)}>
+          <Icon />
+          {collapsed ? null : `外观 · ${label}`}
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent side="top" align="start" aria-label="外观">
+        <DropdownMenuRadioGroup value={preference} onValueChange={(value) => {
+          const next = value as ThemePreference;
+          setPreference(next);
+          applyTheme(next);
+        }}>
+          {Object.entries(OPTIONS).map(([value, option]) => (
+            <DropdownMenuRadioItem key={value} value={value}>{option.label}</DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

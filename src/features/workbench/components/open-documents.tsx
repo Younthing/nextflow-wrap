@@ -3,7 +3,7 @@
 import { useSyncExternalStore } from "react";
 import { dirtyDocument, subscribeDocument } from "../document-sessions";
 import Link from "next/link";
-import { X } from "lucide-react";
+import { FileText, NotebookText, Workflow, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -12,8 +12,8 @@ function DirtyMark({ id }: { id: string }) {
   return dirty ? <span aria-label="未保存">●</span> : null;
 }
 
-/** Open notebooks as tabs. Middle click or × closes one. */
-export function WorkbenchTabs({
+/** Open files for this project and window. Middle click or × closes one. */
+export function OpenDocuments({
   tabs,
   names,
   active,
@@ -26,21 +26,23 @@ export function WorkbenchTabs({
 }) {
   if (!tabs.length) return null;
   return (
-    <nav aria-label="打开的文件" className="flex min-w-0 items-end gap-0.5 overflow-x-auto border-b border-border px-2 pt-1.5">
+    <ul aria-label="工作台标签页" className="grid gap-0.5">
       {tabs.map((id) => {
         const selected = id === active;
         const name = names[id] ?? decodeURIComponent(id.split("/").slice(1).join("/") || id);
+        const Icon = id.startsWith("workflow/") ? Workflow : id.startsWith("file/") ? FileText : NotebookText;
         return (
-          <div
+          <li
             key={id}
             className={cn(
-              "group flex h-8 max-w-52 shrink-0 items-center gap-1 rounded-t-lg pr-1 pl-3 text-[13px]",
-              selected ? "bg-glass-strong font-medium text-foreground shadow-[0_-1px_0_var(--border)]" : "text-muted-foreground hover:bg-accent hover:text-foreground",
+              "group flex h-8 min-w-0 items-center gap-1 rounded-md pr-1 text-[13px]",
+              selected ? "bg-accent font-medium text-primary" : "text-muted-foreground hover:bg-accent hover:text-foreground",
             )}
             onAuxClick={(event) => { if (event.button === 1) { event.preventDefault(); onClose(id); } }}
           >
-            <Link href={`/workbench/${id}`} aria-current={selected ? "page" : undefined} className="truncate outline-none focus-visible:underline" title={name}>
-              {name} <DirtyMark id={id} />
+            <Link href={`/workbench/${id}`} aria-current={selected ? "page" : undefined} className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-md pl-5 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:outline-none" title={name}>
+              <Icon aria-hidden className="size-4 shrink-0" />
+              <span className="truncate">{name}</span><DirtyMark id={id} />
             </Link>
             <button
               type="button"
@@ -50,9 +52,9 @@ export function WorkbenchTabs({
             >
               <X className="size-3" />
             </button>
-          </div>
+          </li>
         );
       })}
-    </nav>
+    </ul>
   );
 }

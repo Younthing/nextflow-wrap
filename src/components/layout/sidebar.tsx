@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Boxes, ChevronRight, FolderOutput, History, NotebookText, PanelLeftClose, PanelLeftOpen, Settings, Workflow, Waypoints } from "lucide-react";
+import { Boxes, ChevronRight, FolderOutput, History, NotebookText, Settings, Workflow, Waypoints } from "lucide-react";
 
 import { AssistantButton } from "@/features/assistant/assistant-button";
 import { isActive, useRuns } from "@/features/runs/queries";
@@ -50,7 +50,7 @@ function RunningBadge({ count, collapsed }: { count: number; collapsed: boolean 
  * Nextflow pipelines, and at the bottom the backend status, AI assistant, theme and 设置. Newcomers see two items
  * until they open the group. Collapsed, it is an icon rail with every page one click away.
  */
-export function Sidebar({ collapsed = false }: { collapsed?: boolean }) {
+export function Sidebar({ collapsed = false, openDocumentsRef }: { collapsed?: boolean; openDocumentsRef?: React.Ref<HTMLDivElement> }) {
   const pathname = usePathname();
   const [stored, setStored] = usePref<boolean>(FLOW_GROUP_KEY);
   const onFlowPage = isFlowRoute(pathname);
@@ -60,6 +60,7 @@ export function Sidebar({ collapsed = false }: { collapsed?: boolean }) {
   const groupId = React.useId();
   const desktop = useIsDesktop();
   const toggle = useLayoutStore((state) => state.togglePanel);
+  const onWorkbench = isNavActive(WORKBENCH_NAV.href, pathname);
 
   const flowLinks = (
     <ul id={groupId} className="grid gap-0.5">
@@ -96,18 +97,6 @@ export function Sidebar({ collapsed = false }: { collapsed?: boolean }) {
           <span aria-hidden className="grid size-8 shrink-0 place-items-center rounded-[10px] bg-primary font-mono text-xs font-bold text-primary-foreground shadow-sm"><ProductMark theme={productTheme} className="size-6" /></span>
           <span className={cn("font-serif text-[15px] font-bold", collapsed && "sr-only")}>{productTheme.displayName}<span className="sr-only">，回到欢迎页</span></span>
         </Link>
-        <button
-          type="button"
-          aria-label={collapsed ? "展开导航栏" : "收起导航栏"}
-          title={collapsed ? "展开导航栏" : "收起导航栏"}
-          onClick={() => toggle("nav")}
-          className={cn(
-            "grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-none [&_svg]:size-4",
-            !collapsed && "ml-auto",
-          )}
-        >
-          {collapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
-        </button>
       </div>
 
       {/* The desktop app shows the project in its File menu. */}
@@ -115,14 +104,20 @@ export function Sidebar({ collapsed = false }: { collapsed?: boolean }) {
 
       <Link
         href={WORKBENCH_NAV.href}
-        aria-current={isNavActive(WORKBENCH_NAV.href, pathname) ? "page" : undefined}
+        aria-current={onWorkbench ? "page" : undefined}
+        aria-expanded={onWorkbench ? !collapsed : undefined}
         aria-label={collapsed ? WORKBENCH_NAV.label : undefined}
-        title={collapsed ? WORKBENCH_NAV.label : undefined}
-        className={itemClass(isNavActive(WORKBENCH_NAV.href, pathname), collapsed)}
+        title={onWorkbench ? (collapsed ? "展开工作台侧栏" : "收起工作台侧栏") : WORKBENCH_NAV.label}
+        className={itemClass(onWorkbench, collapsed)}
+        onNavigate={(event) => {
+          if (onWorkbench) event.preventDefault();
+          if (onWorkbench || collapsed) toggle("nav");
+        }}
       >
         <NotebookText />
         {collapsed ? null : WORKBENCH_NAV.label}
       </Link>
+      <div ref={openDocumentsRef} hidden={collapsed} className="min-h-0 overflow-y-auto" />
 
       {collapsed ? (
         <>
@@ -135,7 +130,6 @@ export function Sidebar({ collapsed = false }: { collapsed?: boolean }) {
             type="button"
             aria-expanded={open}
             aria-controls={groupId}
-            // On a pipeline page the group cannot hide the page you are on; the toggle only remembers the choice.
             onClick={() => setStored(!open)}
             className={cn(itemClass(!open && onFlowPage), "mt-1")}
           >

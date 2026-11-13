@@ -141,6 +141,7 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
           runtimeUrl={status.enabled ? RUNTIME_URL : undefined}
           agents__unsafe_dev_only={status.enabled ? NO_AGENTS : idleAgents}
           properties={properties}
+          enableInspector={false}
         >
           <ComposerProvider>
             <AssistantPanel enabled={status.enabled} open={value.open} onOpenChange={setOpen} labels={LABELS}>

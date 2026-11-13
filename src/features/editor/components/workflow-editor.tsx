@@ -3,9 +3,12 @@
 import * as React from "react";
 import Link from "next/link";
 import { ReactFlowProvider, useReactFlow } from "@xyflow/react";
+import { LibraryBig, PanelRight } from "lucide-react";
 import { PanelLoading, PanelNotice } from "@/components/ui/panel-notice";
 
 import { Button } from "@/components/ui/button";
+import { ResizeHandle } from "@/components/layout/resize-handle";
+import { usePanel } from "@/components/layout/layout-store";
 import { EditorAssistant } from "@/features/assistant/surfaces/canvas";
 import { ExportProjectDialog } from "@/features/runs/components/export-project-dialog";
 import { RunSettingsDialog } from "@/features/runs/components/run-settings-dialog";
@@ -29,6 +32,8 @@ import {
   useEditorStoreApi,
 } from "@/features/editor/editor-provider";
 import { toast } from "@/lib/toast";
+import { useCompactLayout } from "@/lib/use-compact-layout";
+import { cn } from "@/lib/utils";
 import { useEditorAutosave } from "../use-editor-autosave";
 import { useEditorCommands } from "../use-editor-commands";
 import { EditorToolbar } from "./editor-toolbar";
@@ -50,14 +55,22 @@ function BackToLibrary() {
   );
 }
 
-function Editor({ workflowId }: { workflowId: string }) {
+function Editor({ workflowId, explorerControl }: { workflowId: string; explorerControl?: React.ReactNode }) {
   const catalog = useModuleCatalog();
   const workflow = useWorkflow(workflowId);
   const { fitView, screenToFlowPosition } = useReactFlow();
   const canvasRef = React.useRef<HTMLDivElement>(null);
   const [search, setSearch] = React.useState<SearchRequest | null>(null);
   const [settingsOpen, setSettingsOpen] = React.useState(false);
+  const [launchError, setLaunchError] = React.useState<string>();
   const [exportOpen, setExportOpen] = React.useState(false);
+  const { ref: editorRef, compact } = useCompactLayout(1260);
+  const { ref: panelsRef, compact: compactLibrary } = useCompactLayout(680, false);
+  const [libraryOpen, setLibraryOpen] = React.useState(false);
+  const [inspectorOverride, setInspectorOverride] = React.useState<boolean>();
+  const inspectorOpen = inspectorOverride ?? !compact;
+  const inspector = usePanel("inspector");
+  const panelId = React.useId();
   const [mountToken] = React.useState(() => Symbol("workflow-editor"));
   const applied = useEditorStore((s) => s.appliedWorkflow);
 
@@ -178,7 +191,10 @@ function Editor({ workflowId }: { workflowId: string }) {
   const { runNow, pending: runPending } = useRunNow({
     issues,
     onNodeIssue: focusNode,
-    onNeedsSettings: () => setSettingsOpen(true),
+    onNeedsSettings: (error) => {
+      setLaunchError(error);
+      setSettingsOpen(true);
+    },
   });
 
   const saveFirst = () => {
@@ -264,47 +280,79 @@ function Editor({ workflowId }: { workflowId: string }) {
     return <PanelLoading message="加载模块库和流程…" />;
 
   return (
-    <div className="flex size-full gap-3">
-      <ModuleLibrary
-        modules={modules}
-        onAdd={addAtCenter}
-        className="w-60 shrink-0"
-      />
-      <div className="flex min-w-0 flex-1 flex-col gap-3">
-        <WorkflowConflict id={workflowId} />
-        <EditorToolbar
-          saving={saving}
-          onFit={fitWorkflow}
-          running={runPending}
-          onRun={() => {
-            saveFirst();
-            void runNow();
-          }}
-          onRunSettings={() => {
-            saveFirst();
-            setSettingsOpen(true);
-          }}
-          onExport={() => setExportOpen(true)}
-        />
-        <section
-          ref={canvasRef}
-          className="glass relative min-h-0 flex-1 overflow-hidden rounded-xl"
-        >
-          <NodeIssuesProvider issues={issues}>
-            <WorkflowCanvas onRequestSearch={setSearch} />
-          </NodeIssuesProvider>
-          {nodes.length === 0 && (
-            <div className="pointer-events-none absolute inset-0 grid place-items-center">
-              <div className="glass max-w-sm rounded-xl px-8 py-6 text-center">
-                <p className="text-sm text-muted-foreground">
-                  拖入模块，或双击搜索（{searchKeys}）
-                </p>
-              </div>
-            </div>
+    <div ref={editorRef} className="flex min-h-0 flex-1 flex-col gap-3 p-2">
+      <WorkflowConflict id={workflowId} />
+      <EditorToolbar
+        saving={saving}
+        onFit={fitWorkflow}
+        running={runPending}
+        onRun={() => {
+          saveFirst();
+          void runNow();
+        }}
+        onRunSettings={() => {
+          saveFirst();
+          setLaunchError(undefined);
+          setSettingsOpen(true);
+        }}
+        onExport={() => setExportOpen(true)}
+        leadingControls={<>
+          {explorerControl}
+          {compactLibrary && (
+            <Button type="button" size="icon-sm" variant="ghost" aria-label="模块库" title="模块库" aria-expanded={libraryOpen} aria-controls={`${panelId}-library`} onClick={() => {
+              setLibraryOpen(!libraryOpen);
+              if (!libraryOpen) setInspectorOverride(false);
+            }}>
+              <LibraryBig />
+            </Button>
           )}
-        </section>
+        </>}
+        trailingControls={(
+          <Button type="button" size="icon-sm" variant="ghost" aria-label="参数面板" title="参数面板" aria-expanded={inspectorOpen} aria-controls={`${panelId}-inspector`} onClick={() => {
+            setInspectorOverride(!inspectorOpen);
+            if (!inspectorOpen) setLibraryOpen(false);
+          }}>
+            <PanelRight />
+          </Button>
+        )}
+      />
+      <div ref={panelsRef} className="relative flex min-h-0 flex-1">
+        <div id={`${panelId}-library`} className={cn(
+          "mr-3 flex min-h-0 w-60 max-w-full shrink-0",
+          compactLibrary && "absolute inset-y-0 left-0 z-20",
+          compactLibrary && !libraryOpen && "hidden",
+        )}>
+          <ModuleLibrary modules={modules} onAdd={addAtCenter} className={cn("w-full", compactLibrary && "bg-background shadow-lg")} />
+        </div>
+        <div className="flex min-w-0 flex-1 flex-col gap-2">
+          <section
+            ref={canvasRef}
+            className="glass relative min-h-0 flex-1 overflow-hidden rounded-xl"
+          >
+            <NodeIssuesProvider issues={issues}>
+              <WorkflowCanvas onRequestSearch={setSearch} />
+            </NodeIssuesProvider>
+            {nodes.length === 0 && (
+              <div className="pointer-events-none absolute inset-0 grid place-items-center">
+                <div className="glass max-w-sm rounded-xl px-8 py-6 text-center">
+                  <p className="text-sm text-muted-foreground">
+                    拖入模块，或双击搜索（{searchKeys}）
+                  </p>
+                </div>
+              </div>
+            )}
+          </section>
+        </div>
+        <div className={cn("flex min-h-0 max-w-[min(85%,30rem)] shrink-0", compact && "absolute inset-y-0 right-0 z-20")}>
+          <ResizeHandle panel="inspector" side="left" collapsed={!inspectorOpen} onCollapsedChange={(closed) => {
+            setInspectorOverride(!closed);
+            if (!closed) setLibraryOpen(false);
+          }} showExpandButton={false} />
+          <div id={`${panelId}-inspector`} className={cn("flex min-h-0 min-w-0", !inspectorOpen && "hidden")} style={{ width: inspector.width }}>
+            <Inspector className={cn("w-full", compact && "bg-background shadow-lg")} />
+          </div>
+        </div>
       </div>
-      <Inspector className="w-80 shrink-0" />
       <NodeSearchDialog
         request={search}
         modules={searchable}
@@ -315,6 +363,7 @@ function Editor({ workflowId }: { workflowId: string }) {
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
         issues={issues}
+        launchError={launchError}
       />
       <ExportProjectDialog open={exportOpen} onOpenChange={setExportOpen} />
       <EditorAssistant onCanvasChange={onAssistantChange} />
@@ -322,10 +371,10 @@ function Editor({ workflowId }: { workflowId: string }) {
   );
 }
 
-export function WorkflowEditor({ workflowId }: { workflowId: string }) {
+export function WorkflowEditor({ workflowId, explorerControl }: { workflowId: string; explorerControl?: React.ReactNode }) {
   return (
     <ReactFlowProvider key={workflowId}>
-      <Editor workflowId={workflowId} />
+      <Editor workflowId={workflowId} explorerControl={explorerControl} />
     </ReactFlowProvider>
   );
 }

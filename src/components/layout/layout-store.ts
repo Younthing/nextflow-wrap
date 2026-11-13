@@ -6,13 +6,14 @@ import { create } from "zustand";
 import { readPref, writePref } from "@/lib/local-pref";
 import { readPanelState, type PanelSpec, type PanelState } from "@/lib/panel-size";
 
-export type PanelId = "nav" | "explorer";
+export type PanelId = "nav" | "explorer" | "inspector";
 
 export const PANELS: Record<PanelId, PanelSpec & { label: string }> = {
   /** Main navigation: collapses to an icon rail so pages stay one click away. */
   nav: { label: "导航栏", min: 168, max: 288, defaultWidth: 192, collapsedWidth: 56, collapseBelow: 120 },
   /** Workbench notebooks, files and runtimes: hides completely. */
   explorer: { label: "资源栏", min: 200, max: 520, defaultWidth: 248, collapsedWidth: 0, collapseBelow: 140 },
+  inspector: { label: "参数面板", min: 240, max: 480, defaultWidth: 320, collapsedWidth: 0, collapseBelow: 160 },
 };
 
 const prefKey = (id: PanelId) => `nf-studio.layout.${id}`;
@@ -29,6 +30,7 @@ interface LayoutState {
 const defaults = (): Record<PanelId, PanelState> => ({
   nav: readPanelState(PANELS.nav, null),
   explorer: readPanelState(PANELS.explorer, null),
+  inspector: readPanelState(PANELS.inspector, null),
 });
 
 export const useLayoutStore = create<LayoutState>()((set, get) => ({
@@ -41,6 +43,7 @@ export const useLayoutStore = create<LayoutState>()((set, get) => ({
       panels: {
         nav: readPanelState(PANELS.nav, readPref(prefKey("nav"))),
         explorer: readPanelState(PANELS.explorer, readPref(prefKey("explorer"))),
+        inspector: readPanelState(PANELS.inspector, readPref(prefKey("inspector"))),
       },
     });
   },

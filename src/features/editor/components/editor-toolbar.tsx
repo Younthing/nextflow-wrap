@@ -1,6 +1,6 @@
 "use client";
 
-import type { ComponentProps } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import Link from "next/link";
 import { ArrowLeft, FolderDown, Loader2, Play, Redo2, Scan, Settings2, Undo2 } from "lucide-react";
 
@@ -55,6 +55,8 @@ export function EditorToolbar({
   onRun,
   onRunSettings,
   onExport,
+  leadingControls,
+  trailingControls,
   running = false,
 }: {
   saving: boolean;
@@ -63,6 +65,8 @@ export function EditorToolbar({
   onRun: () => void;
   onRunSettings: () => void;
   onExport: () => void;
+  leadingControls?: ReactNode;
+  trailingControls?: ReactNode;
   running?: boolean;
 }) {
   const name = useEditorStore((s) => s.name);
@@ -83,9 +87,10 @@ export function EditorToolbar({
     <div
       className={cn(
         EDITOR_CHROME_CLASS,
-        "glass flex h-12 shrink-0 items-center gap-1 rounded-xl px-2",
+        "glass flex min-h-12 shrink-0 flex-wrap items-center gap-1 rounded-xl px-2 py-1",
       )}
     >
+      {leadingControls}
       <Tooltip>
         <TooltipTrigger asChild>
           <Button asChild variant="ghost" size="icon-sm" className="shrink-0">
@@ -100,7 +105,7 @@ export function EditorToolbar({
         value={name}
         onChange={(e) => setName(e.target.value)}
         aria-label="流程名称"
-        className="h-8 w-56 min-w-20 shrink rounded-md bg-transparent px-2 font-serif text-sm font-semibold outline-none hover:bg-accent focus:bg-accent"
+        className="h-8 w-56 min-w-20 max-w-full shrink rounded-md bg-transparent px-2 font-serif text-sm font-semibold outline-none hover:bg-accent focus:bg-accent"
       />
       <span
         className={cn(
@@ -149,7 +154,7 @@ export function EditorToolbar({
       >
         <Scan />
       </IconButton>
-      <div className="ml-auto flex shrink-0 items-center gap-2 whitespace-nowrap">
+      <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-2">
         <IconButton label="导出 Nextflow 项目" onClick={onExport}>
           <FolderDown />
         </IconButton>
@@ -164,6 +169,7 @@ export function EditorToolbar({
           </TooltipTrigger>
           <TooltipContent>用上次的运行设置直接启动</TooltipContent>
         </Tooltip>
+        {trailingControls}
       </div>
     </div>
   );

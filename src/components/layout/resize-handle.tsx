@@ -14,11 +14,27 @@ const STEP = 16;
  * collapse, double-click for the default width, arrow keys to step, Enter to collapse or open. A panel that
  * hides completely leaves a small button on the edge to bring it back.
  */
-export function ResizeHandle({ panel, className }: { panel: PanelId; className?: string }) {
+export function ResizeHandle({ panel, className, side = "right", collapsed, onCollapsedChange, showExpandButton = true }: {
+  panel: PanelId;
+  className?: string;
+  side?: "left" | "right";
+  collapsed?: boolean;
+  onCollapsedChange?: (collapsed: boolean) => void;
+  showExpandButton?: boolean;
+}) {
   const spec = PANELS[panel];
-  const state = usePanel(panel);
+  const stored = usePanel(panel);
+  const state = collapsed === undefined ? stored : { ...stored, collapsed };
   const setPanel = useLayoutStore((store) => store.setPanel);
-  const togglePanel = useLayoutStore((store) => store.togglePanel);
+  const direction = side === "right" ? 1 : -1;
+  const update = (next: typeof state) => {
+    if (onCollapsedChange && next.collapsed !== state.collapsed) onCollapsedChange(next.collapsed);
+    const current = useLayoutStore.getState().panels[panel];
+    const savedCollapse = onCollapsedChange ? current.collapsed : next.collapsed;
+    if (current.width !== next.width || current.collapsed !== savedCollapse) {
+      setPanel(panel, { width: next.width, collapsed: savedCollapse });
+    }
+  };
   const drag = React.useRef<{ pointerId: number; startX: number; startWidth: number } | null>(null);
   const [dragging, setDragging] = React.useState(false);
   const hidden = state.collapsed && spec.collapsedWidth === 0;
@@ -53,21 +69,20 @@ export function ResizeHandle({ panel, className }: { panel: PanelId; className?:
       onPointerMove={(event) => {
         const current = drag.current;
         if (!current || current.pointerId !== event.pointerId) return;
-        const raw = current.startWidth + event.clientX - current.startX;
+        const raw = current.startWidth + direction * (event.clientX - current.startX);
         const next = dragPanel(spec, useLayoutStore.getState().panels[panel], raw);
-        const now = useLayoutStore.getState().panels[panel];
-        if (next.width !== now.width || next.collapsed !== now.collapsed) setPanel(panel, next);
+        update(next);
       }}
       onPointerUp={finish}
       onLostPointerCapture={finish}
-      onDoubleClick={() => setPanel(panel, { width: spec.defaultWidth, collapsed: false })}
+      onDoubleClick={() => update({ width: spec.defaultWidth, collapsed: false })}
       onKeyDown={(event) => {
         if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
           event.preventDefault();
-          setPanel(panel, nudgePanel(spec, state, event.key === "ArrowRight" ? STEP : -STEP));
+          update(nudgePanel(spec, state, direction * (event.key === "ArrowRight" ? STEP : -STEP)));
         } else if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
-          togglePanel(panel);
+          update({ ...state, collapsed: !state.collapsed });
         }
       }}
     >
@@ -78,13 +93,13 @@ export function ResizeHandle({ panel, className }: { panel: PanelId; className?:
           "group-hover/resize:bg-primary/40 group-focus-visible/resize:bg-primary group-data-[dragging]/resize:bg-primary",
         )}
       />
-      {hidden ? (
+      {hidden && showExpandButton ? (
         <button
           type="button"
           aria-label={`显示${spec.label}`}
           title={`显示${spec.label}`}
           className="glass-strong absolute top-1/2 left-0 grid h-10 w-3 -translate-y-1/2 cursor-pointer place-items-center rounded-r-md text-muted-foreground hover:w-4 hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-none"
-          onClick={() => togglePanel(panel)}
+          onClick={() => update({ ...state, collapsed: false })}
         >
           <ChevronRight className="size-3" />
         </button>

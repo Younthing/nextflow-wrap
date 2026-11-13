@@ -1,14 +1,16 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { FolderOpen } from "lucide-react";
+import { FolderOpen, PanelLeft } from "lucide-react";
 
 import { AsyncPlaceholder } from "@/components/ui/async-placeholder";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { PANELS, useLayoutStore, usePanel } from "@/components/layout/layout-store";
+import { OpenDocumentsSlot } from "@/components/layout/app-shell";
 import { ResizeHandle } from "@/components/layout/resize-handle";
 import { PanelLoading } from "@/components/ui/panel-notice";
 import { NotebookAssistant } from "@/features/assistant/surfaces/notebook";
@@ -33,12 +35,14 @@ import type { FileMove } from "@/features/workspace/reference-updates";
 import { useWindowTabs } from "../window-tabs";
 import { shownWidth } from "@/lib/panel-size";
 import { toast } from "@/lib/toast";
+import { useCompactLayout } from "@/lib/use-compact-layout";
+import { cn } from "@/lib/utils";
 import { WorkbenchFiles } from "./workbench-files";
 import { WorkbenchRuntimes } from "./workbench-runtimes";
 import { defaultKernel } from "@/features/notebook/kernel-choices";
 import { mockingActive } from "@/lib/mocking";
 import { WorkbenchStart } from "./workbench-start";
-import { WorkbenchTabs } from "./workbench-tabs";
+import { OpenDocuments } from "./open-documents";
 
 export function WorkbenchRoute() {
   // Follow the live URL so soft navigations inside `/workbench/[[...path]]` update the editor
@@ -70,6 +74,7 @@ export function Workbench({ path }: { path?: string[] }) {
 
 function WorkbenchFrame({ project, path }: { project: Project; path?: string[] }) {
   const router = useRouter();
+  const openDocumentsSlot = React.useContext(OpenDocumentsSlot);
   useProjectChanges(project.id);
   const view = workbenchView(path);
   const activeId = view.kind === "notebook" || view.kind === "publish" ? view.id : view.kind === "workflow" ? `workflow/${view.id}` : view.kind === "file" ? `file/${encodeURIComponent(view.id)}` : undefined;
@@ -81,11 +86,13 @@ function WorkbenchFrame({ project, path }: { project: Project; path?: string[] }
   const list = notebooks.data ?? [];
   const [closing, setClosing] = React.useState<string>();
   const [closeError, setCloseError] = React.useState<string>();
+  const [departing, setDeparting] = React.useState<string>();
 
   // The route decides the active tab; opening a notebook by link adds it.
   let tabs = stored ?? [];
-
-  if (activeId) tabs = openTab(tabs, activeId);
+  // The old route can render again before the replacement route commits.
+  if (departing && departing !== activeId) setDeparting(undefined);
+  if (activeId && activeId !== departing) tabs = openTab(tabs, activeId);
   const tabsKey = tabs.join("|");
   React.useEffect(() => {
     if (!tabsReady || tabsKey === stored.join("|")) return;
@@ -121,28 +128,48 @@ function WorkbenchFrame({ project, path }: { project: Project; path?: string[] }
 
   const explorer = usePanel("explorer");
   const togglePanel = useLayoutStore((state) => state.togglePanel);
+  const { ref: frameRef, compact } = useCompactLayout(1280);
+  const [compactExplorerOpen, setCompactExplorerOpen] = React.useState(false);
+  const compactWorkflow = view.kind === "workflow" && compact;
+  const explorerHidden = compactWorkflow ? !compactExplorerOpen : explorer.collapsed;
+  const toggleExplorer = React.useCallback(() => {
+    if (compactWorkflow) setCompactExplorerOpen((open) => !open);
+    else togglePanel("explorer");
+  }, [compactWorkflow, togglePanel]);
   // Ctrl/Cmd+B shows or hides the explorer, as in VS Code.
   React.useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key.toLowerCase() !== "b" || !(event.ctrlKey || event.metaKey) || event.shiftKey || event.altKey) return;
       event.preventDefault();
-      togglePanel("explorer");
+      toggleExplorer();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [togglePanel]);
+  }, [toggleExplorer]);
 
   const closeNow = (id: string) => {
     forgetDocument(id);
     setClosing(undefined);
     setCloseError(undefined);
     const result = closeTab(tabs, id, activeId);
+    if (activeId === id) {
+      setDeparting(id);
+      router.push(result.next ? `/workbench/${result.next}` : "/workbench");
+    }
     setStored(result.tabs);
-    if (activeId === id) router.push(result.next ? `/workbench/${result.next}` : "/workbench");
   };
+  const explorerButton = (
+    <Button type="button" variant="ghost" size="icon-sm" aria-label="项目文件" title="项目文件" aria-expanded={!explorerHidden} aria-controls="workbench-explorer" onClick={toggleExplorer}>
+      <PanelLeft />
+    </Button>
+  );
 
   return (
-    <div className="flex size-full min-h-0">
+    <div ref={frameRef} className="relative flex size-full min-h-0">
+      {openDocumentsSlot && createPortal(
+        <OpenDocuments tabs={tabs} names={names} active={activeId} onClose={(id) => { if (dirtyDocument(id)) { pauseDocument(id, true); setClosing(id); } else closeNow(id); }} />,
+        openDocumentsSlot,
+      )}
       <ReferenceUpdateDialog />
       <Dialog open={!!closing} onOpenChange={(open) => { if (!open) { if (closing) pauseDocument(closing, false); setClosing(undefined); } }}>
         <DialogContent><DialogHeader><DialogTitle>保存对文件的修改？</DialogTitle></DialogHeader>
@@ -156,9 +183,10 @@ function WorkbenchFrame({ project, path }: { project: Project; path?: string[] }
         </DialogContent>
       </Dialog>
       <div
-        className="panel-animate flex min-h-0 shrink-0 overflow-hidden"
-        style={{ width: shownWidth(PANELS.explorer, explorer) }}
-        inert={explorer.collapsed}
+        id="workbench-explorer"
+        className={cn("panel-animate flex min-h-0 shrink-0 overflow-hidden", compactWorkflow && "max-w-[40%]")}
+        style={{ width: compactWorkflow ? (explorerHidden ? 0 : explorer.width) : shownWidth(PANELS.explorer, explorer) }}
+        inert={explorerHidden}
       >
         <aside aria-label="笔记本、文件与运行时" className="glass flex min-h-0 w-full min-w-[200px] flex-col gap-2 rounded-xl px-1.5 pt-3 pb-2">
           <WorkbenchFiles
@@ -173,15 +201,19 @@ function WorkbenchFrame({ project, path }: { project: Project; path?: string[] }
           <WorkbenchRuntimes notebooks={list} active={active} />
         </aside>
       </div>
-      <ResizeHandle panel="explorer" />
+      <ResizeHandle panel="explorer" collapsed={compactWorkflow ? explorerHidden : undefined} onCollapsedChange={compactWorkflow ? (hidden) => setCompactExplorerOpen(!hidden) : undefined} showExpandButton={view.kind === "publish"} />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
         {view.kind === "publish" ? (
           <PublishWizard notebookId={view.id} />
         ) : (
           <section className="glass flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl">
-            <WorkbenchTabs tabs={tabs} names={names} active={activeId} onClose={(id) => { if (dirtyDocument(id)) { pauseDocument(id, true); setClosing(id); } else closeNow(id); }} />
+            {view.kind !== "workflow" && view.kind !== "notebook" && (
+              <div className="flex shrink-0 items-center border-b px-2 py-1">{explorerButton}</div>
+            )}
             {view.kind === "workflow" ? (
-              <EditorProvider key={view.id} store={workflowSession(view.id)}><WorkflowEditor workflowId={view.id} /></EditorProvider>
+              <EditorProvider key={view.id} store={workflowSession(view.id)}>
+                <WorkflowEditor workflowId={view.id} explorerControl={explorerButton} />
+              </EditorProvider>
             ) : view.kind === "file" ? (
               <TextEditor key={view.id} path={view.id} />
             ) : view.kind === "notebook" ? (
@@ -189,7 +221,7 @@ function WorkbenchFrame({ project, path }: { project: Project; path?: string[] }
               <NotebookSessionProvider key={view.id} notebookId={view.id}>
                 <NotebookAssistant />
                 <NotebookConflict id={view.id} />
-                <NotebookEditor notebookId={view.id} />
+                <NotebookEditor notebookId={view.id} explorerControl={explorerButton} />
               </NotebookSessionProvider>
             ) : view.kind === "missing" ? (
               <AsyncPlaceholder status="error" className="m-4 h-auto" message="没有这个页面" />

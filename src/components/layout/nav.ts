@@ -32,5 +32,5 @@ export const isFlowRoute = (pathname: string) => FLOW_NAV.some((item) => isNavAc
 /** Pages drawn without the sidebar: the welcome page and the first-run setup. */
 export const isBareRoute = (pathname: string) => pathname === "/" || within("/setup", pathname);
 
-/** The 流程 group starts open on a pipeline page, otherwise as the user left it (closed for newcomers). */
-export const flowGroupOpen = (pathname: string, stored: boolean | null) => isFlowRoute(pathname) || (stored ?? false);
+/** Use the saved choice, or open the group on pipeline pages on the first visit. */
+export const flowGroupOpen = (pathname: string, stored: boolean | null) => stored ?? isFlowRoute(pathname);

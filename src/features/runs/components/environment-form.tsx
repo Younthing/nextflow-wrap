@@ -2,8 +2,9 @@
 
 import * as React from "react";
 import { RadioGroup } from "radix-ui";
-import { Cloud, Server, Ship } from "lucide-react";
+import { ChevronDown, Cloud, Server, Ship } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { FormField as Field } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import {
@@ -23,6 +24,7 @@ import {
   isGridExecutor,
   REGISTRIES,
   type ExecutorField,
+  type ExecutorDef,
   type ExecutorId,
   type LaunchConfig,
 } from "@/features/project/launch";
@@ -98,11 +100,40 @@ export function EnvironmentForm({
   remotes?: RemoteHost[];
 }) {
   const formId = React.useId();
+  const [showExecutors, setShowExecutors] = React.useState(false);
   const def = executorDef(config.executor);
   const set = (patch: Partial<LaunchConfig>) =>
     onChange({ ...config, ...patch });
   const host = remotes.find((candidate) => candidate.id === config.remote);
   const executors = host ? EXECUTORS.filter((e) => onHost(e.id)) : EXECUTORS;
+  const groups = [
+    { label: "集群调度器", options: executors.filter((e) => isGridExecutor(e.id)) },
+    { label: "云与容器平台", options: executors.filter((e) => !onHost(e.id)) },
+  ];
+  const executorOption = (executor: ExecutorDef) => {
+    const Icon = executorIcon(executor.id);
+    const active = executor.id === config.executor;
+    const loginNode = host && executor.id === "local";
+    return (
+      <RadioGroup.Item
+        value={executor.id}
+        key={executor.id}
+        type="button"
+        className={cn(
+          "flex flex-col gap-1 rounded-lg border p-3 text-left transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring",
+          active ? "border-primary bg-primary/10 shadow-sm" : "border-border",
+        )}
+      >
+        <span className="flex items-center gap-2 text-sm font-medium">
+          <Icon className={cn("size-4", active ? "text-primary" : "text-muted-foreground")} />
+          {loginNode ? "登录节点" : executor.name}
+        </span>
+        <span className="text-xs leading-snug text-muted-foreground">
+          {loginNode ? "在登录节点上直接执行任务，只适合轻量流程。" : host ? executor.description.replace("Nextflow 在本机提交作业", "Nextflow 在登录节点上提交作业") : executor.description}
+        </span>
+      </RadioGroup.Item>
+    );
+  };
   const chooseHost = (id: string) => {
     const next = remotes.find((candidate) => candidate.id === id);
     if (!next) {
@@ -153,7 +184,7 @@ export function EnvironmentForm({
           {host ? "任务在哪里执行" : "运行在哪里"}
         </h3>
         <RadioGroup.Root
-          className="grid grid-cols-2 gap-2 lg:grid-cols-3"
+          className="grid gap-3"
           value={config.executor}
           aria-label="执行器"
           onValueChange={(value) => {
@@ -168,37 +199,26 @@ export function EnvironmentForm({
             set({ executor: next.id, engine, workDir, settings: {} });
           }}
         >
-          {executors.map((e) => {
-            const Icon = executorIcon(e.id);
-            const active = e.id === config.executor;
-            return (
-              <RadioGroup.Item
-                value={e.id}
-                key={e.id}
-                type="button"
-                className={cn(
-                  "flex flex-col gap-1 rounded-lg border p-3 text-left transition-colors hover:bg-accent",
-                  active
-                    ? "border-primary bg-primary/10 shadow-sm"
-                    : "border-border",
-                )}
-              >
-                <span className="flex items-center gap-2 text-sm font-medium">
-                  <Icon
-                    className={cn(
-                      "size-4",
-                      active ? "text-primary" : "text-muted-foreground",
-                    )}
-                  />
-                  {host && e.id === "local" ? "登录节点" : e.name}
-                </span>
-                <span className="text-[11px] leading-snug text-muted-foreground">
-                  {host && e.id === "local" ? "在登录节点上直接执行任务，只适合轻量流程。" : host ? e.description.replace("Nextflow 在本机提交作业", "Nextflow 在登录节点上提交作业") : e.description}
-                </span>
-              </RadioGroup.Item>
-            );
-          })}
+          {executorOption(showExecutors ? executorDef("local") : def)}
+          <div id={`${formId}-executors`} hidden={!showExecutors}>
+            {showExecutors && (
+              <div className="grid gap-3">
+                {groups.filter(({ options }) => options.length > 0).map(({ label, options }) => (
+                  <div key={label} role="group" aria-label={label} className="grid gap-2">
+                    <h4 className="text-xs font-semibold text-muted-foreground">{label}</h4>
+                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                      {options.map(executorOption)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </RadioGroup.Root>
+        <Button type="button" variant="ghost" size="sm" className="justify-self-start" aria-expanded={showExecutors} aria-controls={`${formId}-executors`} onClick={() => setShowExecutors(!showExecutors)}>
+          <ChevronDown className={cn(showExecutors && "rotate-180")} />
+          {showExecutors ? "收起执行环境" : "更多执行环境"}
+        </Button>
       </section>
 
       {def.fields.length > 0 && (

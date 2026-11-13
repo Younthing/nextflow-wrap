@@ -25,7 +25,7 @@ export const Light: Story = {
     const badge = version.closest("[data-slot='badge']");
     expect(badge).toBeTruthy();
     expect(badge?.textContent).toContain("模拟");
-    expect(within(canvas.getByRole("navigation", { name: "主导航" })).getByRole("button", { name: /深色模式|浅色模式/ })).toBeVisible();
+    expect(within(canvas.getByRole("navigation", { name: "主导航" })).getByRole("button", { name: /外观/ })).toBeVisible();
   },
 };
 export const Dark: Story = { globals: { theme: "dark" } };
