@@ -237,6 +237,19 @@ describe("CopilotKit route with a fake Codex harness", () => {
     }
   });
 
+  it("summarizes a conversation with the configured CLI in a separate tool-free run", async () => {
+    const harness = use(new FakeCodexHarness({ turns: [[{ type: "text", text: "「质控结果解读」" }]] }));
+    const route = routeFor(harness, { COPILOT_BACKEND: "codex" });
+    const response = await route.POST(post("/api/copilotkit/title", {
+      question: "解释数据质控", answer: "三个样本通过质控，两个低覆盖。",
+    }));
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ title: "质控结果解读" });
+    expect(harness.prompts[0]).toContain("只输出标题");
+    expect(harness.prompts[0]).toContain("三个样本通过质控");
+    expect(harness.prompts[0]).not.toContain("search_modules");
+  });
+
   it("streams CLI execution activity and summaries through the CopilotKit runtime", async () => {
     const harness = use(new FakeCodexHarness({ turns: [[
       { type: "event", event: { type: "tool.started", itemId: "cmd", tool: "commandExecution" } },

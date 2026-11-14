@@ -69,6 +69,7 @@ function EditorTools({ onCanvasChange, onFocusNode }: { onCanvasChange: () => vo
   });
 
   useConfigureSuggestions({
+    available: "always",
     suggestions: [
       {
         title: "搭一个质控流程",

@@ -63,3 +63,15 @@ export function useAssistantStatusQuery() {
     refetchInterval: (query) => (query.state.data?.reason === STATUS_TIMEOUT_REASON ? STATUS_RETRY_MS : false),
   });
 }
+
+export async function requestConversationTitle(question: string, answer: string, signal: AbortSignal): Promise<string | undefined> {
+  const response = await fetch("/api/copilotkit/title", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ question: question.slice(0, 500), answer: answer.slice(0, 400) }),
+    signal,
+  });
+  if (!response.ok || response.status === 204) return;
+  const data = await response.json() as { title?: string };
+  return typeof data.title === "string" ? data.title : undefined;
+}

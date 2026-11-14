@@ -216,6 +216,54 @@ export const ReviewAndApply: StoryObj = {
   },
 };
 
+export const QueueAndTitle: StoryObj = {
+  parameters: { msw: [
+    http.get("/api/projects", () => HttpResponse.json({ projects: [] })),
+    http.get("/api/copilotkit/status", () => HttpResponse.json({ enabled: true, backend: "builtin", model: "test" })),
+    http.get("/api/copilotkit/info", () => HttpResponse.json({
+      agents: { default: { name: "default", description: "Test agent", className: "HttpAgent" } },
+      version: "1.0.0",
+    })),
+    http.post("/api/copilotkit/title", () => HttpResponse.json({ title: "分析工作规划" })),
+    http.post("/api/copilotkit/agent/default/run", async ({ request }) => {
+      const input = await request.json() as { threadId: string; runId: string; messages: { role: string; content: string }[] };
+      const last = input.messages.at(-1)?.content;
+      await delay(last === "分析流程" ? 2200 : 150);
+      const envelope = { threadId: input.threadId, runId: input.runId };
+      return new HttpResponse([
+        { ...envelope, type: "RUN_STARTED" },
+        { type: "TEXT_MESSAGE_CHUNK", messageId: input.runId, role: "assistant", delta: `已处理：${last}` },
+        { ...envelope, type: "RUN_FINISHED" },
+      ].map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""), { headers: { "Content-Type": "text/event-stream" } });
+    }),
+  ] },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const body = within(document.body);
+    const assistant = () => canvas.getByRole("button", { name: "AI 助手" });
+    await waitFor(() => expect(assistant()).toBeEnabled());
+    await userEvent.click(assistant());
+    const input = () => body.getByPlaceholderText("输入问题或分析需求");
+    await userEvent.click(await body.findByRole("button", { name: "规划分析" }));
+    await expect(input()).toHaveValue("帮我规划一次分析。先问我需要分析什么数据，以及想得到什么结果。");
+    await userEvent.clear(input());
+    await userEvent.type(input(), "分析流程{Enter}");
+    await userEvent.type(input(), "检查数据");
+    await userEvent.click(await body.findByRole("button", { name: "加入队列" }));
+    await userEvent.type(input(), "定位失败{Enter}");
+    const queue = within(await body.findByRole("region", { name: "消息队列" }));
+    await userEvent.click(queue.getByRole("button", { name: "优先发送第 2 条消息" }));
+    await expect(queue.getAllByRole("listitem")[0]).toHaveTextContent("定位失败");
+    await userEvent.click(queue.getByRole("button", { name: "移除第 2 条消息" }));
+    await userEvent.type(input(), "保留草稿");
+    await expect(await body.findByText("已处理：定位失败", {}, { timeout: 7000 })).toBeVisible();
+    await expect(input()).toHaveValue("保留草稿");
+    await expect(await body.findByText("分析工作规划", {}, { timeout: 7000 })).toBeVisible();
+    await expect(body.getByRole("button", { name: "规划分析" })).toBeVisible();
+    await expect(body.queryByText("已处理：检查数据")).toBeNull();
+  },
+};
+
 /** The status endpoint is down: the page still works and the button says why the assistant is off. */
 export const Unreachable: StoryObj = {
   parameters: status(() => HttpResponse.error()),

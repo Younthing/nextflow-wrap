@@ -8,6 +8,7 @@ export interface AssistantConversation {
   title: string;
   updatedAt: number;
   customTitle?: boolean;
+  generatedTitle?: boolean;
   messages: AssistantMessage[];
 }
 

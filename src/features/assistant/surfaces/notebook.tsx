@@ -79,6 +79,7 @@ function NotebookTools({ selectedCellId }: { selectedCellId: string | null }) {
   const selectedId = currentCell?.id;
   const hasErrors = Object.values(outputs).some((item) => item.error || item.outputs?.some((segment) => segment.outputType === "error"));
   useConfigureSuggestions({
+    available: "always",
     suggestions: [
       { title: "解释笔记本", message: "用几句话解释这本笔记本每一格在做什么" },
       ...(selectedId ? [{ title: "解释当前单元格", message: `解释第 ${selectedIndex + 1} 格（${selectedId}）在做什么` }] : []),

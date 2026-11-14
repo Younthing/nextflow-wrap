@@ -12,6 +12,7 @@ import { useCurrentProject } from "@/features/workspace/queries";
 import { useConversationHistory } from "./conversation-history";
 import { ConversationMenu } from "./conversation-menu";
 import { AssistantToolRecords } from "./tool-record";
+import { MessageQueueContext, useMessageQueue } from "./message-queue";
 
 type Mode = "docked" | "floating" | "detached";
 const clampWidth = (value: number) => Math.min(560, Math.max(320, value));
@@ -154,8 +155,7 @@ export function AssistantPanel({ children, enabled = true, open, onOpenChange, l
       onLostPointerCapture={() => { drag.current = null; }}
     >
       <GripVertical className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-      <span className="min-w-0 flex-1 truncate text-sm font-medium">{labels?.modalHeaderTitle}</span>
-      <ConversationActions />
+      <ConversationActions fallback={labels?.modalHeaderTitle} />
       {mode !== "docked" ? <HeaderAction label="停靠到右侧" onClick={dock}><PanelRight className="size-4" /></HeaderAction> : <HeaderAction label="在应用内浮动" onClick={float}><PanelsTopLeft className="size-4" /></HeaderAction>}
       {mode !== "detached" ? <HeaderAction label="移到独立窗口" onClick={detach}><ExternalLink className="size-4" /></HeaderAction> : null}
       <HeaderAction label="收起 AI 助手" onClick={() => { if (mode === "detached") dock(); onOpenChange(false); }}><X className="size-4" /></HeaderAction>
@@ -187,30 +187,38 @@ export function AssistantPanel({ children, enabled = true, open, onOpenChange, l
   </>;
 }
 
-function ConversationActions() {
-  return React.useContext(ConversationControls);
+function ConversationActions({ fallback }: { fallback?: string }) {
+  return React.useContext(ConversationControls)
+    ?? <span className="min-w-0 flex-1 truncate text-sm font-medium">{fallback}</span>;
 }
 
 type ChatProps = Pick<React.ComponentProps<typeof CopilotSidebar>, "open" | "onOpenChange" | "labels">;
 
 function SidebarChat(props: ChatProps) {
+  const queue = useMessageQueue();
   const [error, setError] = React.useState<string>();
   const errorTimer = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   React.useEffect(() => () => clearTimeout(errorTimer.current), []);
   return (
+    <MessageQueueContext value={queue}>
     <ChatError value={error}>
       <CopilotSidebar {...props} header={HEADER_SLOT} toggleButton={HIDDEN_TOGGLE} input={AssistantChatInput}
+        suggestionView={NO_SUGGESTION_VIEW}
         messageView={MESSAGE_VIEW} width={SIDEBAR_WIDTH} className="assistant-chat"
         onError={(event) => {
           if (!("error" in event)) return;
+          queue.setPaused(true);
           setError(event.error.message || "请求失败，请重试");
           clearTimeout(errorTimer.current);
           errorTimer.current = setTimeout(() => setError(undefined), 12_000);
         }}
       />
     </ChatError>
+    </MessageQueueContext>
   );
 }
+
+const NO_SUGGESTION_VIEW = { className: "hidden" };
 
 function AssistantChat({ conversations, ...props }: ChatProps & { conversations: boolean }) {
   if (conversations) return <ProjectChat {...props} />;
@@ -227,7 +235,12 @@ function ProjectChat(props: ChatProps) {
 function ConversationChat({ scope, ...props }: ChatProps & { scope: string }) {
   const history = useConversationHistory(scope);
   return (
-    <ConversationControls value={<ConversationMenu {...history} />}>
+    <ConversationControls value={
+      <>
+        <span className="min-w-0 flex-1 truncate text-sm font-medium" title={history.title}>{history.title}</span>
+        <ConversationMenu {...history} />
+      </>
+    }>
       <SidebarChat key={history.active} {...props} />
     </ConversationControls>
   );

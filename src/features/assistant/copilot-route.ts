@@ -8,6 +8,8 @@ import { ASSISTANT_MAX_STEPS } from "./codex-turn";
 import { createGrokAgent } from "./grok-agent";
 import { requestAssistantPrompt } from "./modules/request";
 import { allowedCopilotHosts, copilotAccessResponse } from "./request-guard";
+import { readConversationTitle, TITLE_PROMPT, TITLE_REQUEST_LIMIT } from "./conversation-title";
+import { isRecord } from "@/lib/record";
 import {
   busyResponse,
   codexBusyResponse,
@@ -176,7 +178,9 @@ export function createCopilotRoute(deps: CopilotRouteDeps): CopilotRouteHandlers
     const rejection = denied(request);
     if (rejection) return rejection;
 
-    if (new URL(request.url).pathname === "/api/copilotkit/status") return Response.json(await resolveStatus());
+    const path = new URL(request.url).pathname;
+    if (path === "/api/copilotkit/status") return Response.json(await resolveStatus());
+    if (path === "/api/copilotkit/title" && request.method === "POST") return title(request);
     const choice = await resolveAssistant();
     if (!choice.enabled) {
       return Response.json(
@@ -185,12 +189,16 @@ export function createCopilotRoute(deps: CopilotRouteDeps): CopilotRouteHandlers
       );
     }
     const prepared = await requestAssistantPrompt(request);
+    return dispatch(choice, prepared.request, prepared.prompt);
+  }
+
+  function dispatch(choice: Extract<AssistantChoice, { enabled: true }>, request: Request, prompt: string) {
     if (choice.backend === "codex") {
       return runCli(
         codexSessions,
         codexBusyResponse,
-        (permit) => codexCopilotHandler(choice, permit, prepared.prompt),
-        prepared.request,
+        (permit) => codexCopilotHandler(choice, permit, prompt),
+        request,
       );
     }
     if (choice.backend === "grok") {
@@ -199,11 +207,47 @@ export function createCopilotRoute(deps: CopilotRouteDeps): CopilotRouteHandlers
       return runCli(
         grokSessions,
         () => busyResponse("Grok"),
-        (permit) => grokCopilotHandler(grok, choice, permit, prepared.prompt),
-        prepared.request,
+        (permit) => grokCopilotHandler(grok, choice, permit, prompt),
+        request,
       );
     }
-    return builtinCopilotHandler(choice, prepared.prompt)(prepared.request);
+    return builtinCopilotHandler(choice, prompt)(request);
+  }
+
+  async function title(request: Request) {
+    const raw = await request.text();
+    if (raw.length > TITLE_REQUEST_LIMIT) return new Response(null, { status: 413 });
+    let input: unknown;
+    try { input = JSON.parse(raw); } catch { return new Response(null, { status: 400 }); }
+    if (!isRecord(input) || typeof input.question !== "string" || typeof input.answer !== "string"
+      || !input.question.trim() || !input.answer.trim()) return new Response(null, { status: 400 });
+    const choice = await resolveAssistant();
+    if (!choice.enabled) return new Response(null, { status: 204 });
+    const threadId = crypto.randomUUID();
+    const url = new URL("/api/copilotkit/agent/default/run", request.url);
+    const headers = new Headers(request.headers);
+    headers.delete("content-length");
+    headers.set("content-type", "application/json");
+    headers.set("accept", "text/event-stream");
+    const run = new Request(url, {
+      method: "POST", headers,
+      signal: AbortSignal.any([request.signal, AbortSignal.timeout(15_000)]),
+      body: JSON.stringify({
+        protocolVersion: "1.0", threadId, runId: crypto.randomUUID(), tools: [], context: [], state: {},
+        messages: [{ id: crypto.randomUUID(), role: "user", content: JSON.stringify({ question: input.question, answer: input.answer }) }],
+      }),
+    });
+    try {
+      const response = await dispatch(choice, run, TITLE_PROMPT);
+      if (!response.ok) {
+        await response.body?.cancel();
+        return new Response(null, { status: 204 });
+      }
+      const name = await readConversationTitle(response);
+      return name ? Response.json({ title: name }) : new Response(null, { status: 204 });
+    } catch {
+      return new Response(null, { status: 204 });
+    }
   }
 
   /** The status the UI shows. It never waits longer than {@link STATUS_TIMEOUT_MS} for the CLI probes. */

@@ -39,7 +39,7 @@ function RunTools({ run, tasks, onOpenLocation }: { run: RunDetail; tasks: TaskR
   ];
   if (isActive(run.status)) suggestions.push({ title: "停止运行", message: "停止这次运行" });
   else if (run.nextflowSessionId) suggestions.push({ title: "从这里恢复", message: "从这次运行恢复" });
-  useConfigureSuggestions({ suggestions }, [run.status, run.nextflowSessionId]);
+  useConfigureSuggestions({ suggestions, available: "always" }, [run.status, run.nextflowSessionId]);
 
   useFrontendTool(
     {
