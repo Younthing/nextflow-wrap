@@ -5,10 +5,13 @@ import { join } from "node:path";
 import type { CodexEvent, CodexHarness } from "@/features/codex-harness";
 import type { SessionPermit } from "./session-limit";
 import { isRecord } from "@/lib/record";
+import { ASSISTANT_ACTIVITY, activityLabel, activityStatus, type AssistantActivity } from "./activity";
 
 /** AG-UI events this adapter emits. CopilotKit adds run start and run finish. */
 export type CodexAguiEvent =
   | { type: "TEXT_MESSAGE_CHUNK"; role: "assistant"; messageId: string; delta: string }
+  | { type: "ACTIVITY_SNAPSHOT"; messageId: string; activityType: typeof ASSISTANT_ACTIVITY; content: AssistantActivity; replace: true }
+  | { type: "REASONING_MESSAGE_CHUNK"; messageId: string; delta: string }
   | { type: "TOOL_CALL_START"; toolCallId: string; toolCallName: string; parentMessageId: string }
   | { type: "TOOL_CALL_ARGS"; toolCallId: string; delta: string }
   | { type: "TOOL_CALL_END"; toolCallId: string };
@@ -145,6 +148,15 @@ export async function* interpretCodexEvents(
   let failure: string | undefined;
   let ended = false;
   const messageId = nextId();
+  const steps = new Map<string, { messageId: string; label: string }>();
+  const summaries = new Map<string, string>();
+  const activity = (step: { messageId: string; label: string }, status: AssistantActivity["status"]): CodexAguiEvent => ({
+    type: "ACTIVITY_SNAPSHOT",
+    activityType: ASSISTANT_ACTIVITY,
+    messageId: step.messageId,
+    content: { label: step.label, status },
+    replace: true,
+  });
   for await (const event of events) {
     throwIfAborted(signal, label);
     if (event.type === "text.delta") {
@@ -157,12 +169,31 @@ export async function* interpretCodexEvents(
       }
       continue;
     }
+    if (event.type === "reasoning.summary") {
+      const id = summaries.get(event.itemId) ?? nextId();
+      summaries.set(event.itemId, id);
+      yield { type: "REASONING_MESSAGE_CHUNK", messageId: id, delta: event.delta };
+      continue;
+    }
+    if (event.type === "tool.started") {
+      const step = { messageId: nextId(), label: activityLabel(event.tool) };
+      steps.set(event.itemId, step);
+      yield activity(step, "running");
+      continue;
+    }
+    if (event.type === "tool.completed") {
+      const step = steps.get(event.itemId) ?? { messageId: nextId(), label: activityLabel(event.tool) };
+      steps.delete(event.itemId);
+      yield activity(step, activityStatus(event.status));
+      continue;
+    }
     if (event.type === "error") {
       failure = event.message;
       continue;
     }
     if (event.type === "turn.end") {
       ended = true;
+      for (const step of steps.values()) yield activity(step, "stopped");
       if (event.status !== "completed") throw new Error(failure ?? `${label} 回合结束：${event.status}`);
       break;
     }

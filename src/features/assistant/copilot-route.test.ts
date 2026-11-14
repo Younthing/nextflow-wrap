@@ -237,6 +237,24 @@ describe("CopilotKit route with a fake Codex harness", () => {
     }
   });
 
+  it("streams CLI execution activity and summaries through the CopilotKit runtime", async () => {
+    const harness = use(new FakeCodexHarness({ turns: [[
+      { type: "event", event: { type: "tool.started", itemId: "cmd", tool: "commandExecution" } },
+      { type: "event", event: { type: "reasoning.summary", itemId: "summary", delta: "核对输入。" } },
+      { type: "event", event: { type: "tool.completed", itemId: "cmd", tool: "commandExecution" } },
+      { type: "text", text: "检查完毕。" },
+    ]] }));
+    const route = routeFor(harness, { COPILOT_BACKEND: "codex" });
+    const response = await route.POST(post("/api/copilotkit/agent/default/run", runBody(crypto.randomUUID(), [user("检查")])));
+    const events = await readEvents(response);
+    expect(events).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "ACTIVITY_SNAPSHOT", content: { status: "running", label: "执行命令" } }),
+      expect.objectContaining({ type: "ACTIVITY_SNAPSHOT", content: { status: "completed", label: "执行命令" } }),
+      expect.objectContaining({ type: "REASONING_MESSAGE_CONTENT", delta: "核对输入。" }),
+    ]));
+    expect(textOf(events)).toBe("检查完毕。");
+  });
+
   it("streams a plain text turn and closes the read-only session", async () => {
     const harness = use(new FakeCodexHarness({
       turns: [[{ type: "text", text: "你好" }, { type: "text", text: "，流程没问题。" }]],

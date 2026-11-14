@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { NotebookAssistant } from "@/features/assistant/surfaces/notebook";
 import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import { CodeXml, Eraser, FastForward, Loader2, Plus, X } from "lucide-react";
@@ -183,6 +184,8 @@ export function NotebookEditor({ notebookId, explorerControl }: { notebookId: st
       session.onReveal((cellId) => {
         setSelected(cellId);
         setDeleteArmed(false);
+        const slot = cellListRef.current?.querySelector(`[data-cell-id="${CSS.escape(cellId)}"]`);
+        slot?.scrollIntoView({ block: "nearest" });
       }),
     [session],
   );
@@ -415,6 +418,7 @@ export function NotebookEditor({ notebookId, explorerControl }: { notebookId: st
 
   return (
     <div className="flex size-full min-h-0 flex-col">
+      <NotebookAssistant selectedCellId={selected} />
       {/* Single row: never wrap. Narrow widths hide lower-priority actions via @container. */}
       <div
         role="toolbar"
@@ -565,6 +569,7 @@ export function NotebookEditor({ notebookId, explorerControl }: { notebookId: st
             <div
               key={cell.id}
               data-cell-slot
+              data-cell-id={cell.id}
               className={cn("relative", drag && "motion-safe:transition-transform motion-safe:duration-200 motion-safe:ease-out")}
               style={offsets?.[index] ? { transform: `translateY(${offsets[index]}px)` } : undefined}
             >

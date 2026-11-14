@@ -25,8 +25,9 @@ import { ConfirmToolCard } from "../confirm-tool-card";
 import { useAssistantModule } from "../modules/activation";
 import { moduleTool } from "../modules/contract";
 import { notebookModule } from "../modules/notebook";
+import { useToolNavigation } from "../tool-record";
 
-function NotebookTools() {
+function NotebookTools({ selectedCellId }: { selectedCellId: string | null }) {
   const session = useNotebookSession();
   const actions = React.useMemo(() => createNotebookActions(session), [session]);
   const { invoke, dialog } = useConfirmedTool();
@@ -35,10 +36,19 @@ function NotebookTools() {
   const busy = useNotebookSessionState((state) => state.running !== null);
   // Recomputed on every draft edit or new output, so each chat turn sees the notebook as it is.
   const summary = React.useMemo(() => (doc ? notebookSummary({ doc, outputs, busy }) : null), [doc, outputs, busy]);
+  const selectedIndex = doc?.cells.findIndex((cell) => cell.id === selectedCellId) ?? -1;
+  const currentCell = selectedIndex < 0 ? undefined : doc?.cells[selectedIndex];
+  useToolNavigation(React.useCallback((result) => {
+    if (result.notebookId !== session.notebookId) return;
+    const cellId = result.cellId ?? result.edited ?? result.inserted;
+    if (typeof cellId === "string" && session.doc()?.cells.some((cell) => cell.id === cellId)) {
+      return () => session.revealCell(cellId);
+    }
+  }, [session]));
 
   useAgentContext({
     description: "用户正在编辑的笔记本：单元格 id、类型、内容预览和输出状态",
-    value: summary as unknown as JsonSerializable,
+    value: { ...summary, selectedCellId: currentCell?.id ?? null } as unknown as JsonSerializable,
   });
 
   // Kernel variables: names in the context, and chips above the chat input that insert `name`.
@@ -48,27 +58,34 @@ function NotebookTools() {
     value: React.useMemo(() => notebookVariablesContext(variables), [variables]) as unknown as JsonSerializable,
   });
   const references = React.useMemo<ComposerReferences | null>(() => {
-    if (!variables) return null;
+    if (!doc) return null;
+    const cellReferences = currentCell ? [{
+      label: `第 ${selectedIndex + 1} 格`,
+      detail: `${doc.name} · ${currentCell.role}`,
+      text: `单元格 ${codeReference(currentCell.id)}`,
+    }] : [];
     return {
-      title: "变量",
-      items: variables.variables.map((item) => ({
+      title: doc.name,
+      items: [...cellReferences, ...(variables?.variables ?? []).map((item) => ({
         label: item.name,
         detail: `${item.type}${item.size ? ` · ${item.size}` : ""}`,
         text: codeReference(item.name),
-      })),
-      note: variables.available ? "内核里还没有变量" : variables.reason,
-      onRefresh: () => void session.refreshVariables(),
+      }))],
+      onRefresh: variables ? () => void session.refreshVariables() : undefined,
     };
-  }, [variables, session]);
+  }, [doc, currentCell, selectedIndex, variables, session]);
   useComposerReferences(references);
 
+  const selectedId = currentCell?.id;
+  const hasErrors = Object.values(outputs).some((item) => item.error || item.outputs?.some((segment) => segment.outputType === "error"));
   useConfigureSuggestions({
     suggestions: [
       { title: "解释笔记本", message: "用几句话解释这本笔记本每一格在做什么" },
-      { title: "修复报错", message: "看看哪一格报错了，修好并重新运行" },
+      ...(selectedId ? [{ title: "解释当前单元格", message: `解释第 ${selectedIndex + 1} 格（${selectedId}）在做什么` }] : []),
+      ...(hasErrors ? [{ title: "修复报错", message: "定位报错的单元格，提出修改并重新运行" }] : []),
       { title: "标注端口", message: "帮我把这本笔记本的输入和输出端口标出来" },
     ],
-  });
+  }, [selectedId, selectedIndex, hasErrors]);
 
   useFrontendTool({
     name: moduleTool(notebookModule, "get_notebook_summary").name,
@@ -89,8 +106,12 @@ function NotebookTools() {
       kind: z.enum(NOTEBOOK_CELL_KINDS).optional().describe("单元格类型。insert 默认 code"),
       source: z.string().optional().describe("单元格完整内容"),
     }),
-    handler: async (args) => attempt(() => actions.editCell(args)),
-  }, [actions]);
+    handler: (args, context) => invoke(context, {
+      interruptedMessage: "确认被中断，笔记本未修改。",
+      prepare: () => actions.prepareEditCell(args),
+    }),
+    render: ConfirmToolCard,
+  }, [actions, invoke]);
 
   useFrontendTool({
     name: moduleTool(notebookModule, "run_notebook_cell").name,
@@ -111,8 +132,8 @@ function NotebookTools() {
     name: moduleTool(notebookModule, "read_cell_output").name,
     description: moduleTool(notebookModule, "read_cell_output").description,
     parameters: z.object({ cellId: z.string().describe("单元格 id") }),
-    handler: async ({ cellId }) => attempt(() => actions.readOutput(cellId)),
-  }, [actions]);
+    handler: async ({ cellId }) => attempt(() => ({ notebookId: session.notebookId, ...actions.readOutput(cellId) })),
+  }, [actions, session]);
 
   useFrontendTool({
     name: moduleTool(notebookModule, "list_notebook_variables").name,
@@ -136,8 +157,8 @@ function NotebookTools() {
  * open notebook session, the way vscode-jupyter tools call the notebook
  * document and kernel provider rather than reaching into an editor.
  */
-export function NotebookAssistant() {
+export function NotebookAssistant({ selectedCellId }: { selectedCellId: string | null }) {
   useAssistantModule(notebookModule.id);
   if (!useAssistantStatus().enabled) return null;
-  return <NotebookTools />;
+  return <NotebookTools selectedCellId={selectedCellId} />;
 }

@@ -6,6 +6,7 @@ import type { CodexEvent, CodexHarness, CodexSession, OpenSessionOptions, ProbeR
  * Pass one script per `open()` via `turns`. Each script is a list of steps:
  * - `{ type: "text", text }` — assistant prose, streamed as one delta
  * - `{ type: "tool", name, arguments }` — a whole-message tool reply
+ * - `{ type: "event", event }` — an event supplied by the harness, such as a tool status
  * - `{ type: "hold" }` — wait until `release()` or until cancel (`interrupt` / `close`)
  * - `{ type: "fail", message }` — end the turn with an error
  *
@@ -20,6 +21,7 @@ import type { CodexEvent, CodexHarness, CodexSession, OpenSessionOptions, ProbeR
  * holds those; the current prompt is recorded in `startTurn`, after `open`).
  */
 export type FakeCodexStep =
+  | { type: "event"; event: CodexEvent }
   | { type: "text"; text: string }
   | { type: "tool"; name: string; arguments: Record<string, unknown> }
   | { type: "hold" }
@@ -161,6 +163,10 @@ class FakeCodexSession implements CodexSession {
   private async *play(): AsyncGenerator<CodexEvent> {
     for (const step of this.steps) {
       if (this.cancelled) return;
+      if (step.type === "event") {
+        yield step.event;
+        continue;
+      }
       if (step.type === "hold") {
         this.harness.holds += 1;
         await this.gate.wait();

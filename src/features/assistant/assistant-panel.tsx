@@ -7,12 +7,17 @@ import { GripVertical, PanelRight, PanelsTopLeft, ExternalLink, X } from "lucide
 
 import { usePref } from "@/lib/local-pref";
 import { toast } from "@/lib/toast";
-import { AssistantChatInput } from "./composer";
+import { AssistantChatInput, ChatError } from "./composer";
+import { useCurrentProject } from "@/features/workspace/queries";
+import { useConversationHistory } from "./conversation-history";
+import { ConversationMenu } from "./conversation-menu";
+import { AssistantToolRecords } from "./tool-record";
 
 type Mode = "docked" | "floating" | "detached";
 const clampWidth = (value: number) => Math.min(560, Math.max(320, value));
 const HIDDEN_TOGGLE = { style: { display: "none" } };
 const HeaderContext = React.createContext<React.ReactNode>(null);
+const ConversationControls = React.createContext<React.ReactNode>(null);
 function PanelHeader() {
   return React.useContext(HeaderContext);
 }
@@ -21,15 +26,17 @@ function PanelHeader() {
 const HEADER_SLOT = { children: () => <PanelHeader /> };
 const SIDEBAR_WIDTH = "100%";
 const DEFAULT_PANEL_WIDTH = 440;
+const MESSAGE_VIEW = { toolCallDisplay: "turn" } as const;
 
 /** A stable portal host lets the chat move documents without remounting its tools or thread. */
-export function AssistantPanel({ children, enabled = true, open, onOpenChange, labels }: {
+export function AssistantPanel({ children, enabled = true, open, onOpenChange, labels, conversations = false }: {
   children: React.ReactNode;
   /** Off: only the workspace renders, so turning the assistant on later keeps the children mounted. */
   enabled?: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   labels: React.ComponentProps<typeof CopilotSidebar>["labels"];
+  conversations?: boolean;
 }) {
   const [host, setHost] = React.useState<HTMLDivElement | null>(null);
   const [mode, setMode] = React.useState<Mode>("docked");
@@ -148,6 +155,7 @@ export function AssistantPanel({ children, enabled = true, open, onOpenChange, l
     >
       <GripVertical className="size-4 shrink-0 text-muted-foreground" aria-hidden />
       <span className="min-w-0 flex-1 truncate text-sm font-medium">{labels?.modalHeaderTitle}</span>
+      <ConversationActions />
       {mode !== "docked" ? <HeaderAction label="停靠到右侧" onClick={dock}><PanelRight className="size-4" /></HeaderAction> : <HeaderAction label="在应用内浮动" onClick={float}><PanelsTopLeft className="size-4" /></HeaderAction>}
       {mode !== "detached" ? <HeaderAction label="移到独立窗口" onClick={detach}><ExternalLink className="size-4" /></HeaderAction> : null}
       <HeaderAction label="收起 AI 助手" onClick={() => { if (mode === "detached") dock(); onOpenChange(false); }}><X className="size-4" /></HeaderAction>
@@ -158,10 +166,11 @@ export function AssistantPanel({ children, enabled = true, open, onOpenChange, l
     <div className="assistant-workspace" data-docked={open && mode === "docked"} style={{ "--assistant-width": `${width}px` } as React.CSSProperties}>{children}</div>
     {open && mode === "detached" ? <button type="button" onClick={dock} className="glass-strong fixed top-3 right-3 z-50 rounded-lg px-3 py-2 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">AI 已在独立窗口打开 · 移回此窗口</button> : null}
     {enabled && host ? createPortal(<>
+      <AssistantToolRecords />
       <HeaderContext value={header}>
         {/* The host CSS owns the live width. Changing CopilotKit's width prop
             replaces the scroll view, just like changing its header slot. */}
-        <CopilotSidebar open={open} onOpenChange={onOpenChange} labels={labels} header={HEADER_SLOT} toggleButton={HIDDEN_TOGGLE} input={AssistantChatInput} width={SIDEBAR_WIDTH} className="assistant-chat" />
+        <AssistantChat open={open} onOpenChange={onOpenChange} labels={labels} conversations={conversations} />
       </HeaderContext>
       {mode !== "detached" ? <div role="separator" aria-label="调整 AI 面板宽度" aria-orientation="vertical" aria-valuemin={320} aria-valuemax={560} aria-valuenow={width} tabIndex={0} className="assistant-width-handle"
         onKeyDown={(event) => {
@@ -176,6 +185,52 @@ export function AssistantPanel({ children, enabled = true, open, onOpenChange, l
       /> : null}
     </>, host) : null}
   </>;
+}
+
+function ConversationActions() {
+  return React.useContext(ConversationControls);
+}
+
+type ChatProps = Pick<React.ComponentProps<typeof CopilotSidebar>, "open" | "onOpenChange" | "labels">;
+
+function SidebarChat(props: ChatProps) {
+  const [error, setError] = React.useState<string>();
+  const errorTimer = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  React.useEffect(() => () => clearTimeout(errorTimer.current), []);
+  return (
+    <ChatError value={error}>
+      <CopilotSidebar {...props} header={HEADER_SLOT} toggleButton={HIDDEN_TOGGLE} input={AssistantChatInput}
+        messageView={MESSAGE_VIEW} width={SIDEBAR_WIDTH} className="assistant-chat"
+        onError={(event) => {
+          if (!("error" in event)) return;
+          setError(event.error.message || "请求失败，请重试");
+          clearTimeout(errorTimer.current);
+          errorTimer.current = setTimeout(() => setError(undefined), 12_000);
+        }}
+      />
+    </ChatError>
+  );
+}
+
+function AssistantChat({ conversations, ...props }: ChatProps & { conversations: boolean }) {
+  if (conversations) return <ProjectChat {...props} />;
+  return <SidebarChat {...props} />;
+}
+
+function ProjectChat(props: ChatProps) {
+  const { project, isPending } = useCurrentProject();
+  if (isPending) return null;
+  const scope = project?.id ?? "no-project";
+  return <ConversationChat key={scope} scope={scope} {...props} />;
+}
+
+function ConversationChat({ scope, ...props }: ChatProps & { scope: string }) {
+  const history = useConversationHistory(scope);
+  return (
+    <ConversationControls value={<ConversationMenu {...history} />}>
+      <SidebarChat key={history.active} {...props} />
+    </ConversationControls>
+  );
 }
 
 function HeaderAction({ label, onClick, children }: { label: string; onClick: () => void; children: React.ReactNode }) {

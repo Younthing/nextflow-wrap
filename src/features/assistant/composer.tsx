@@ -9,6 +9,7 @@ import { createStore, type StoreApi } from "zustand/vanilla";
 import { insertToken } from "./composer-text";
 
 export { codeReference } from "./composer-text";
+export const ChatError = React.createContext<string | undefined>(undefined);
 
 /*
  * The chat composer the host owns. Surfaces offer references (notebook variables today) that the user clicks to
@@ -60,15 +61,12 @@ const MAX_CHIPS = 12;
 
 function ReferenceRow({ references, onPick }: { references: ComposerReferences; onPick: (text: string) => void }) {
   const shown = references.items.slice(0, MAX_CHIPS);
-  // Empty kernel status is already visible in the workbench. Offer context here
-  // only once there are variables the user can actually insert.
-  if (shown.length === 0) return null;
   return (
     <div className="pointer-events-auto flex w-full flex-wrap items-center gap-1.5 pt-2 text-xs" aria-label={references.title}>
       <span className="text-muted-foreground">{references.title}</span>
       {shown.map((item) => (
         <button
-          key={item.label}
+          key={item.text}
           type="button"
           title={item.detail ? `${item.detail} · 点击插入` : "点击插入"}
           onClick={() => onPick(item.text)}
@@ -94,6 +92,7 @@ function ReferenceRow({ references, onPick }: { references: ComposerReferences; 
 }
 
 function ChatInputWithReferences(props: CopilotChatInputProps) {
+  const error = React.useContext(ChatError);
   const store = React.useContext(ComposerContext);
   const references = useStore(store ?? NO_COMPOSER, (state) => state.references);
   const wrapper = React.useRef<HTMLDivElement>(null);
@@ -117,6 +116,7 @@ function ChatInputWithReferences(props: CopilotChatInputProps) {
   const { showDisclaimer = true, textArea = NO_SPELLCHECK, ...input } = props;
   return (
     <div ref={wrapper} className="assistant-composer">
+      {error && <p role="alert" className="mb-2 max-h-24 overflow-auto rounded-md border border-destructive/30 px-2 py-1 text-xs text-destructive">{error.slice(0, 400)}</p>}
       <CopilotChatInput {...input} textArea={textArea} showDisclaimer={false} />
       {references && <ReferenceRow references={references} onPick={insert} />}
       {showDisclaimer && <CopilotChatInput.Disclaimer />}

@@ -13,7 +13,6 @@ import { PANELS, useLayoutStore, usePanel } from "@/components/layout/layout-sto
 import { OpenDocumentsSlot } from "@/components/layout/app-shell";
 import { ResizeHandle } from "@/components/layout/resize-handle";
 import { PanelLoading } from "@/components/ui/panel-notice";
-import { NotebookAssistant } from "@/features/assistant/surfaces/notebook";
 import { NotebookEditor } from "@/features/notebook/components/notebook-editor";
 import { NotebookSessionProvider } from "@/features/notebook/session-provider";
 import { PublishWizard } from "@/features/notebook/components/publish-wizard";
@@ -219,7 +218,6 @@ function WorkbenchFrame({ project, path }: { project: Project; path?: string[] }
             ) : view.kind === "notebook" ? (
               // The editor and the assistant both work on the open notebook's session.
               <NotebookSessionProvider key={view.id} notebookId={view.id}>
-                <NotebookAssistant />
                 <NotebookConflict id={view.id} />
                 <NotebookEditor notebookId={view.id} explorerControl={explorerButton} />
               </NotebookSessionProvider>

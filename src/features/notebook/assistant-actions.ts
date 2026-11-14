@@ -48,6 +48,7 @@ export interface NotebookCellOutputView {
 }
 
 export interface RanNotebookCell extends AcceptedResult, NotebookCellOutputView {
+  notebookId: string;
   /** Cells the run executed, including earlier ones for a one-shot (R) run. */
   ranCells: number;
   kernelNote?: string;
@@ -215,9 +216,54 @@ export function createNotebookActions(commands: NotebookDocumentApi, makeCell = 
     throw new Error("editType 只能是 insert、delete 或 edit");
   }
 
+  function prepareEditCell(input: NotebookEditInput): PreparedInvocation<AcceptedResult> {
+    const { doc } = commands.read();
+    const anchor = input.cellId?.trim() || "BOTTOM";
+    const target = input.editType === "insert" && (anchor === "TOP" || anchor === "BOTTOM")
+      ? undefined
+      : findCell(doc, input.cellId);
+    if (input.editType === "delete" && doc.cells.length < 2) throw new Error("笔记本至少要保留一个单元格");
+    if (input.editType === "edit" && input.source === undefined && input.kind === undefined) {
+      throw new Error("edit 需要 source 或 kind");
+    }
+    const verb = input.editType === "insert" ? "插入" : input.editType === "delete" ? "删除" : "修改";
+    const place = target ? `第 ${target.index + 1} 格` : anchor === "TOP" ? "开头" : "末尾";
+    const cell = target?.cell;
+    const before = input.editType === "insert" ? undefined : cell?.source;
+    const after = input.editType === "delete" ? undefined : input.source ?? before ?? "";
+    const targetRole = input.kind ?? (input.editType === "insert" ? "code" : cell?.role);
+    return {
+      view: {
+        title: `${verb}单元格`,
+        message: `${doc.name} · ${place}${input.editType === "insert" && target ? "之后" : ""}`,
+        type: input.editType === "delete" ? "delete" : "default",
+        confirmLabel: input.editType === "delete" ? "删除" : "应用修改",
+        itemList: targetRole && targetRole !== cell?.role ? [`单元格类型：${targetRole}`] : [],
+        problems: [],
+        declinedMessage: "已取消，笔记本未修改。",
+        ...(before !== after && { preview: { before, after } }),
+      },
+      problems: () => {
+        const latest = commands.read().doc;
+        if (latest.id !== doc.id || latest.cells.length !== doc.cells.length || latest.cells.some((item, index) => {
+          const original = doc.cells[index];
+          return item.id !== original.id || item.role !== original.role || item.source !== original.source;
+        })) return ["笔记本已变化，请重新生成预览。"];
+        return [];
+      },
+      invoke: async () => ({
+        ...editCell(input),
+        notebookId: doc.id,
+        accepted: true,
+        message: `已${verb}单元格`,
+      }),
+    };
+  }
+
   /** Runs after the surface's confirm. Re-checks blockers, so a stale accept never runs the wrong cell. */
   async function runCell(cellId: string): Promise<RanNotebookCell> {
-    const problems = runCellBlockers(commands.read(), cellId);
+    const snapshot = commands.read();
+    const problems = runCellBlockers(snapshot, cellId);
     if (problems.length) throw new Error(problems.join("；"));
     const result = await commands.runCell(cellId);
     const own = result.cells.find((cell) => cell.id === cellId);
@@ -225,6 +271,7 @@ export function createNotebookActions(commands: NotebookDocumentApi, makeCell = 
     const failed = result.cells.find((cell) => cell.id !== cellId && describeCellOutput(cell).status === "error");
     return {
       accepted: true,
+      notebookId: snapshot.doc.id,
       ...view,
       ranCells: result.cells.length,
       ...(result.kernel?.note && { kernelNote: result.kernel.note }),
@@ -284,5 +331,5 @@ export function createNotebookActions(commands: NotebookDocumentApi, makeCell = 
     return { available: true, ...result.variable };
   }
 
-  return { summary, editCell, runCell, readOutput, prepareRunCell, listVariables, getVariable };
+  return { summary, editCell, prepareEditCell, runCell, readOutput, prepareRunCell, listVariables, getVariable };
 }

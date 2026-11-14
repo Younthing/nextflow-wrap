@@ -202,6 +202,10 @@ function mapNotification(method: string, params: unknown): CodexEvent[] {
   const record = isRecord(params) ? params : {};
   const turnId = readString(record, "turnId") ?? readString(record.turn, "id");
 
+  if (method === "item/reasoning/summaryTextDelta" && typeof record.delta === "string") {
+    return [{ type: "reasoning.summary", itemId: readString(record, "itemId") ?? "", delta: record.delta, turnId }];
+  }
+
   if (method === "item/agentMessage/delta") {
     const delta = typeof record.delta === "string" ? record.delta : undefined;
     if (delta === undefined) return [];

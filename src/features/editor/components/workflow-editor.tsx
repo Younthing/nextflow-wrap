@@ -366,7 +366,7 @@ function Editor({ workflowId, explorerControl }: { workflowId: string; explorerC
         launchError={launchError}
       />
       <ExportProjectDialog open={exportOpen} onOpenChange={setExportOpen} />
-      <EditorAssistant onCanvasChange={onAssistantChange} />
+      <EditorAssistant onCanvasChange={onAssistantChange} onFocusNode={focusNode} />
     </div>
   );
 }

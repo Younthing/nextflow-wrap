@@ -6,6 +6,7 @@ import { Check, Info, Loader2, Square, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { ConfirmView } from "./confirm";
+import { ChangePreview } from "./change-preview";
 
 /** Above CopilotKit's sidebar (z-index 1100) so the confirm stays in front of the chat. */
 const LAYER = "z-[1200]";
@@ -58,6 +59,7 @@ export function ConfirmDialog({
                 <span>{view.hint}</span>
               </div>
             )}
+            {view.preview && <ChangePreview {...view.preview} />}
           </div>
           <div className="flex shrink-0 flex-wrap justify-end gap-4">
             {view.type === "info" ? (
@@ -69,7 +71,7 @@ export function ConfirmDialog({
                 </Button>
                 <Button variant={view.type === "delete" ? "destructive" : "default"} onClick={onConfirm} disabled={busy}>
                   {busy ? <Loader2 className="animate-spin" /> : view.type === "delete" ? <Square /> : <Check />}
-                  {busy ? "正在提交" : view.type === "delete" ? "停止" : "确认"}
+                  {busy ? "正在提交" : view.confirmLabel ?? (view.type === "delete" ? "停止" : "确认")}
                 </Button>
               </>
             )}

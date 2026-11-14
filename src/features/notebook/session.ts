@@ -72,6 +72,7 @@ export interface NotebookSession {
   update(patch: Partial<NotebookDoc>): void;
   /** Replaces the cells as one edit and asks editors to reveal `select`. */
   setCells(cells: NotebookCell[], select?: string): void;
+  revealCell(cellId: string): void;
   /** Editors listen to show the cell a tool touched. */
   onReveal(listener: (cellId: string) => void): () => void;
   clearOutput(cellId?: string): void;
@@ -272,6 +273,9 @@ export function createNotebookSession(options: {
     setCells(cells, select) {
       update({ cells });
       if (select) for (const listener of revealers) listener(select);
+    },
+    revealCell(cellId) {
+      for (const listener of revealers) listener(cellId);
     },
     onReveal(listener) {
       revealers.add(listener);

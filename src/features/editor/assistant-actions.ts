@@ -21,6 +21,7 @@ import type {
   WorkflowNodeData,
 } from "@/features/workflow/types";
 import { validateWorkflow } from "@/features/workflow/validate";
+import type { AcceptedResult, PreparedInvocation } from "@/features/assistant/confirm";
 
 /*
  * What the AI assistant can see and do in the editor. Everything goes through
@@ -309,6 +310,28 @@ export function createEditorActions(store: EditorStore) {
     return { removed: node.data.alias };
   }
 
+  function prepareRemoveNode(ref: string): PreparedInvocation<AcceptedResult> {
+    const node = findNode(ref);
+    const { docId, revision, edges } = store.getState();
+    const connections = edges.filter((edge) => edge.source === node.id || edge.target === node.id).length;
+    return {
+      view: {
+        title: "移除流程节点",
+        message: `移除 ${node.data.alias}，同时删除关联连线。`,
+        type: "delete",
+        confirmLabel: "移除节点",
+        itemList: [`${connections} 条关联连线`],
+        problems: [],
+        declinedMessage: "已取消，画布未修改。",
+      },
+      problems: () => {
+        const state = store.getState();
+        return state.docId === docId && state.revision === revision ? [] : ["流程已变化，请重新检查要移除的节点。"];
+      },
+      invoke: async () => ({ ...removeNode(node.id), accepted: true, message: `已移除节点 ${node.data.alias}` }),
+    };
+  }
+
   function configureNode(args: {
     node: string;
     alias?: string;
@@ -382,6 +405,7 @@ export function createEditorActions(store: EditorStore) {
     connectNodes,
     disconnect,
     removeNode,
+    prepareRemoveNode,
     configureNode,
     setParam,
   };

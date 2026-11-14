@@ -43,7 +43,7 @@ export const canvasEditModule = {
     },
     {
       name: "remove_node",
-      description: "删除一个节点和它的连线。",
+      description: "请求移除一个节点和它的连线。工具会等待用户确认后返回结果。",
     },
     {
       name: "configure_node",

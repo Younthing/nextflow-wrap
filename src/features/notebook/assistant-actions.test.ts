@@ -76,6 +76,20 @@ describe("get_notebook_summary", () => {
 });
 
 describe("edit_notebook_cell", () => {
+  it("previews the exact replacement and invalidates it if the draft changes", async () => {
+    const source = editor.state.doc.cells[1].source;
+    const change = { editType: "edit", cellId: "c2", source: "print(rows)" } as const;
+    const preview = editor.actions.prepareEditCell(change);
+    expect(preview.view.preview).toEqual({ before: source, after: change.source });
+    expect(editor.state.doc.cells[1].source).toBe(source);
+    expect(preview.problems()).toEqual([]);
+    editor.actions.editCell({ ...change, source: "rows = []" });
+    expect(preview.problems()).toHaveLength(1);
+    const refreshed = editor.actions.prepareEditCell(change);
+    expect(refreshed.problems()).toEqual([]);
+    await expect(refreshed.invoke()).resolves.toMatchObject({ accepted: true, edited: "c2", notebookId: "qc_summary" });
+    expect(editor.state.doc.cells[1].source).toBe(change.source);
+  });
   it("inserts after a cell, at the top, and at the bottom", () => {
     expect(editor.actions.editCell({ editType: "insert", cellId: "c2", source: "print(rows)\n" })).toEqual({ inserted: "new1", index: 2, kind: "code" });
     expect(editor.actions.editCell({ editType: "insert", cellId: "TOP", kind: "markdown", source: "# QC" })).toMatchObject({ inserted: "new2", index: 0, kind: "markdown" });

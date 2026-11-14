@@ -150,6 +150,7 @@ export function TaskTable({
   nodeFilter,
   nodeLabel,
   onClearFilter,
+  selection,
 }: {
   runId: string;
   tasks: TaskRecord[];
@@ -157,8 +158,11 @@ export function TaskTable({
   nodeFilter?: string | null;
   nodeLabel?: string;
   onClearFilter?: () => void;
+  selection?: { taskId: string | null; onChange: (id: string | null) => void };
 }) {
-  const [selected, setSelected] = React.useState<string | null>(null);
+  const [localSelection, setLocalSelection] = React.useState<string | null>(null);
+  const selected = selection ? selection.taskId : localSelection;
+  const setSelected = selection?.onChange ?? setLocalSelection;
   const data = React.useMemo(() => (nodeFilter ? tasks.filter((t) => t.nodeId === nodeFilter) : tasks), [tasks, nodeFilter]);
   const table = useTable({
     features,

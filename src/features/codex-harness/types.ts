@@ -55,6 +55,7 @@ export interface CodexSession {
 }
 
 export type CodexEvent =
+  | { type: "reasoning.summary"; itemId: string; delta: string; turnId?: string }
   | {
       type: "text.delta";
       itemId: string;

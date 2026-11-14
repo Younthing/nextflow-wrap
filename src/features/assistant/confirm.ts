@@ -176,6 +176,8 @@ export interface ConfirmView {
   hint?: string;
   problems: string[];
   declinedMessage: string;
+  confirmLabel?: string;
+  preview?: { before?: string; after?: string };
 }
 
 /** An OK-only view for an action that cannot run. */

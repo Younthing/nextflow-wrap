@@ -12,10 +12,25 @@ import { useAssistantModule } from "../modules/activation";
 import { moduleTool } from "../modules/contract";
 import { RUN_LOG_TAIL, runDiagnosticsModule } from "../modules/run-diagnostics";
 import { RunControlTools } from "./run-control";
+import { useComposerReferences } from "../composer";
+import { useToolNavigation } from "../tool-record";
 
-function RunTools({ run, tasks }: { run: RunDetail; tasks: TaskRecord[] }) {
+type OpenRunLocation = (destination: "log" | "tasks", nodeId?: string, taskId?: string) => void;
+
+function RunTools({ run, tasks, onOpenLocation }: { run: RunDetail; tasks: TaskRecord[]; onOpenLocation?: OpenRunLocation }) {
   const summary = React.useMemo(() => runSummary(run, tasks), [run, tasks]);
   useAgentContext({ description: "用户正在查看的这次 Nextflow 运行", value: summary as unknown as JsonSerializable });
+  useComposerReferences(React.useMemo(() => ({
+    title: "当前运行",
+    items: [{ label: run.runName, text: `运行 ${run.runName}` }],
+  }), [run.runName]));
+  useToolNavigation(React.useCallback((result) => {
+    const destination = result.destination;
+    if (!onOpenLocation || result.runId !== run.id || (destination !== "log" && destination !== "tasks")) return;
+    const nodeId = typeof result.nodeId === "string" ? result.nodeId : undefined;
+    const taskId = typeof result.taskId === "string" ? result.taskId : undefined;
+    return () => onOpenLocation(destination, nodeId, taskId);
+  }, [run.id, onOpenLocation]));
 
   const suggestions = [
     run.status === "failed"
@@ -35,7 +50,7 @@ function RunTools({ run, tasks }: { run: RunDetail; tasks: TaskRecord[] }) {
         const match = findTask(tasks, task);
         if (!match) return { error: `找不到任务 ${task}` };
         const { text } = await fetchTaskLog(run.id, match.id ?? match.hash);
-        return { task: match.name, status: match.status, exitStatus: match.exitStatus, log: text };
+        return { runId: run.id, destination: "tasks", nodeId: match.nodeId, taskId: match.id ?? match.hash, task: match.name, status: match.status, exitStatus: match.exitStatus, log: text };
       },
     },
     [run.id, tasks],
@@ -48,7 +63,7 @@ function RunTools({ run, tasks }: { run: RunDetail; tasks: TaskRecord[] }) {
       parameters: z.object({}),
       handler: async () => {
         const { lines } = await fetchRunLog(run.id);
-        return { lines: lines.slice(-RUN_LOG_TAIL) };
+        return { runId: run.id, destination: "log", lines: lines.slice(-RUN_LOG_TAIL) };
       },
     },
     [run.id],
@@ -58,12 +73,12 @@ function RunTools({ run, tasks }: { run: RunDetail; tasks: TaskRecord[] }) {
 }
 
 /** Run-diagnostics module: read the run on screen, then stop or resume after confirmation. */
-export function RunAssistant({ run, tasks }: { run: RunDetail; tasks: TaskRecord[] | undefined }) {
+export function RunAssistant({ run, tasks, onOpenLocation }: { run: RunDetail; tasks: TaskRecord[] | undefined; onOpenLocation?: OpenRunLocation }) {
   useAssistantModule(runDiagnosticsModule.id);
   if (!useAssistantStatus().enabled) return null;
   return (
     <>
-      <RunTools run={run} tasks={tasks ?? []} />
+      <RunTools run={run} tasks={tasks ?? []} onOpenLocation={onOpenLocation} />
       <RunControlTools run={run} />
     </>
   );

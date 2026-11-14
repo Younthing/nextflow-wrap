@@ -14,6 +14,7 @@ import {
   type PreparedInvocation,
 } from "./confirm";
 import { ConfirmDialog, subscribeAbort, useConfirmDialog } from "./confirm-dialog";
+import { useConfirmationStore } from "./pending-confirmation";
 
 export interface ConfirmedCall<T extends AcceptedResult> {
   /** Declined result when the chat stops the call before or during the dialog. */
@@ -29,9 +30,11 @@ export interface ConfirmedCall<T extends AcceptedResult> {
  */
 export function useConfirmedTool() {
   const confirm = useConfirmDialog();
+  const confirmations = useConfirmationStore();
   const { setOpen } = useAssistantPanel();
   const live = React.useRef({ confirm, setOpen });
   const [queue] = React.useState(createConfirmQueue);
+  const [inlineId, setInlineId] = React.useState<string>();
   React.useLayoutEffect(() => {
     live.current = { confirm, setOpen };
   });
@@ -46,6 +49,7 @@ export function useConfirmedTool() {
         if (context?.signal?.aborted) return declinedResult(call.interruptedMessage);
         const current = live.current;
         current.setOpen(true);
+        const toolCallId = context?.toolCall.id;
         const stopAbort = subscribeAbort(context?.signal, () => current.confirm.dismiss());
         try {
           let prepared: PreparedInvocation<T>;
@@ -57,7 +61,18 @@ export function useConfirmedTool() {
           return await confirmThenRun({
             isReplay: false,
             aborted: () => context?.signal?.aborted === true,
-            ask: (view) => current.confirm.ask(view),
+            ask: (view) => {
+              if (view.preview && toolCallId && confirmations && !confirmations.getState() && view.type !== "info") {
+                setInlineId(toolCallId);
+                confirmations.setState({
+                  id: toolCallId,
+                  view,
+                  approve: current.confirm.confirm,
+                  decline: current.confirm.dismiss,
+                }, true);
+              }
+              return current.confirm.ask(view);
+            },
             close: () => current.confirm.close(),
             view: prepared.view,
             problems: prepared.problems,
@@ -66,12 +81,16 @@ export function useConfirmedTool() {
           });
         } finally {
           stopAbort();
+          if (confirmations?.getState()?.id === toolCallId && toolCallId) {
+            confirmations?.setState(null, true);
+            setInlineId(undefined);
+          }
         }
       }),
-    [queue],
+    [queue, confirmations],
   );
 
-  const dialog = (
+  const dialog = inlineId ? null : (
     <ConfirmDialog
       open={confirm.view !== null}
       view={confirm.view}

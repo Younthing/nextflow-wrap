@@ -20,26 +20,43 @@ import { useAssistantModule } from "../modules/activation";
 import { canvasEditModule } from "../modules/canvas-edit";
 import { moduleTool } from "../modules/contract";
 import { StartRunTool } from "./canvas-start-run";
+import { useComposerReferences } from "../composer";
+import { useToolNavigation } from "../tool-record";
+import { useConfirmedTool } from "../confirmed-tool";
+import { ConfirmToolCard } from "../confirm-tool-card";
 
 const widgetValue = z.union([z.string(), z.number(), z.boolean()]);
 
-function EditorTools({ onCanvasChange }: { onCanvasChange: () => void }) {
+function EditorTools({ onCanvasChange, onFocusNode }: { onCanvasChange: () => void; onFocusNode?: (id: string) => void }) {
   const store = useEditorStoreApi();
   const {
     addModule,
     configureNode,
     connectNodes,
     disconnect,
-    removeNode,
+    prepareRemoveNode,
     searchCatalog,
     setParam,
     workflowSummary,
   } = React.useMemo(() => createEditorActions(store), [store]);
+  const { invoke, dialog } = useConfirmedTool();
   const nodes = useEditorStore((s) => s.nodes);
   const edges = useEditorStore((s) => s.edges);
   const params = useEditorStore((s) => s.params);
   const name = useEditorStore((s) => s.name);
   const index = useEditorStore((s) => s.index);
+  const selectedNode = nodes.find((node) => node.selected);
+  const selectedAlias = selectedNode?.data.alias;
+  useComposerReferences(React.useMemo(() => ({
+    title: name,
+    items: selectedAlias ? [{ label: selectedAlias, text: `节点 ${selectedAlias}` }] : [],
+  }), [name, selectedAlias]));
+  useToolNavigation(React.useCallback((result) => {
+    const state = store.getState();
+    const nodeId = result.nodeId;
+    if (onFocusNode && result.workflowId === state.docId && typeof nodeId === "string"
+      && state.nodes.some((node) => node.id === nodeId)) return () => onFocusNode(nodeId);
+  }, [store, onFocusNode]));
   // Recomputed on every edit so each chat turn sees the canvas as it is.
   const summary = React.useMemo(
     () => workflowSummary({ nodes, edges, params, name, index }),
@@ -48,7 +65,7 @@ function EditorTools({ onCanvasChange }: { onCanvasChange: () => void }) {
 
   useAgentContext({
     description: "编辑器里当前打开的流程：节点、连线、流程参数和校验问题",
-    value: summary as unknown as JsonSerializable,
+    value: { ...summary, selectedNodeId: selectedNode?.id } as unknown as JsonSerializable,
   });
 
   useConfigureSuggestions({
@@ -59,9 +76,10 @@ function EditorTools({ onCanvasChange }: { onCanvasChange: () => void }) {
       },
       { title: "检查流程", message: "检查当前流程有什么问题，能修的直接修好" },
       { title: "解释这个流程", message: "用几句话解释当前流程每一步在做什么" },
+      ...(selectedAlias ? [{ title: "检查当前节点", message: `检查节点 ${selectedAlias} 的配置和连线` }] : []),
       { title: "运行当前流程", message: "启动当前流程" },
     ],
-  });
+  }, [selectedAlias]);
 
   useFrontendTool({
     name: moduleTool(canvasEditModule, "search_modules").name,
@@ -91,10 +109,10 @@ function EditorTools({ onCanvasChange }: { onCanvasChange: () => void }) {
         attempt(() => {
           const result = addModule(args);
           onCanvasChange();
-          return result;
+          return { ...result, workflowId: store.getState().docId, nodeId: result.id };
         }),
     },
-    [onCanvasChange],
+    [onCanvasChange, addModule, store],
   );
 
   useFrontendTool({
@@ -120,8 +138,12 @@ function EditorTools({ onCanvasChange }: { onCanvasChange: () => void }) {
     name: moduleTool(canvasEditModule, "remove_node").name,
     description: moduleTool(canvasEditModule, "remove_node").description,
     parameters: z.object({ node: z.string().describe("节点 id 或别名") }),
-    handler: async ({ node }) => attempt(() => removeNode(node)),
-  });
+    handler: ({ node }, context) => invoke(context, {
+      interruptedMessage: "确认被中断，画布未修改。",
+      prepare: () => prepareRemoveNode(node),
+    }),
+    render: ConfirmToolCard,
+  }, [invoke, prepareRemoveNode]);
 
   useFrontendTool({
     name: moduleTool(canvasEditModule, "configure_node").name,
@@ -164,7 +186,10 @@ function EditorTools({ onCanvasChange }: { onCanvasChange: () => void }) {
         .optional()
         .describe("文件输入或文件夹输入节点是否可以不选路径"),
     }),
-    handler: async (args) => attempt(() => configureNode(args)),
+    handler: async (args) => attempt(() => {
+      const result = configureNode(args);
+      return { ...result, workflowId: store.getState().docId, nodeId: result.id };
+    }),
   });
 
   useFrontendTool({
@@ -174,20 +199,22 @@ function EditorTools({ onCanvasChange }: { onCanvasChange: () => void }) {
     handler: async ({ key, value }) => attempt(() => setParam(key, value)),
   });
 
-  return null;
+  return dialog;
 }
 
 /** Canvas-edit module: read and edit the open workflow, then start it after confirmation. */
 export function EditorAssistant({
   onCanvasChange,
+  onFocusNode,
 }: {
   onCanvasChange: () => void;
+  onFocusNode?: (id: string) => void;
 }) {
   useAssistantModule(canvasEditModule.id);
   if (!useAssistantStatus().enabled) return null;
   return (
     <>
-      <EditorTools onCanvasChange={onCanvasChange} />
+      <EditorTools onCanvasChange={onCanvasChange} onFocusNode={onFocusNode} />
       <StartRunTool />
     </>
   );

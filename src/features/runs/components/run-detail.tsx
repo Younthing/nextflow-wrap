@@ -53,12 +53,18 @@ function RunBody({ run: data }: { run: RunDetail }) {
   useRefreshWhenDone(data.id, active);
   const [tab, setTab] = React.useState("graph");
   const [nodeFilter, setNodeFilter] = React.useState<string | null>(null);
+  const [selectedTask, setSelectedTask] = React.useState<string | null>(null);
+  const openAssistantLocation = React.useCallback((destination: "log" | "tasks", nodeId?: string, taskId?: string) => {
+    setNodeFilter(nodeId ?? null);
+    setSelectedTask(taskId ?? null);
+    setTab(destination);
+  }, []);
   const index = catalog.data?.index;
 
   return (
     <section className="glass flex size-full flex-col gap-5 overflow-hidden rounded-xl p-5">
       <RunHeader run={data} />
-      <RunAssistant run={data} tasks={tasks.data} />
+      <RunAssistant run={data} tasks={tasks.data} onOpenLocation={openAssistantLocation} />
       <Tabs value={tab} onValueChange={setTab} className="min-h-0 flex-1">
         <TabsList>
           <TabsTrigger value="graph">流程图</TabsTrigger>
@@ -77,6 +83,7 @@ function RunBody({ run: data }: { run: RunDetail }) {
               tasks={tasks.data}
               index={index}
               onSelectNode={(id) => {
+                setSelectedTask(null);
                 setNodeFilter(id);
                 setTab("tasks");
               }}
@@ -95,6 +102,7 @@ function RunBody({ run: data }: { run: RunDetail }) {
             tasks={tasks.data ?? []}
             active={active}
             nodeFilter={nodeFilter}
+            selection={{ taskId: selectedTask, onChange: setSelectedTask }}
             nodeLabel={
               data.workflow.nodes.find((n) => n.id === nodeFilter)?.data.alias
             }

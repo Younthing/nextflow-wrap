@@ -92,7 +92,8 @@ aside.copilotKitSidebar[data-copilot-sidebar] {
   display: grid; place-items: center; width: 28px; height: 28px;
   border-radius: var(--radius-sm); color: var(--muted-foreground);
 }
-.assistant-header-action:hover { background: var(--accent); color: var(--foreground); }
+.assistant-header-action:not(:disabled):hover { background: var(--accent); color: var(--foreground); }
+.assistant-header-action:disabled { opacity: 0.45; cursor: default; }
 .assistant-header-action:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .assistant-width-handle {
   position: absolute; z-index: 1; left: -12px; top: 16px; bottom: 16px;

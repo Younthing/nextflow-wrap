@@ -108,6 +108,21 @@ describe("Codex assistant turns", () => {
     ]);
   });
 
+  it("updates a single activity card and forwards only the published reasoning summary", async () => {
+    const events: CodexEvent[] = [
+      { type: "tool.started", itemId: "cmd", tool: "commandExecution", title: "private arguments" },
+      { type: "tool.delta", itemId: "cmd", delta: "private output" },
+      { type: "reasoning.summary", itemId: "summary", delta: "正在核对输入" },
+      { type: "tool.completed", itemId: "cmd", tool: "commandExecution", status: "failed" },
+      { type: "turn.end", turnId: "turn", status: "completed" },
+    ];
+    expect(await collect(interpretCodexEvents(of(events), [], ids()))).toEqual([
+      { type: "ACTIVITY_SNAPSHOT", activityType: "fluora.agent-step", messageId: "id-2", replace: true, content: { label: "执行命令", status: "running" } },
+      { type: "REASONING_MESSAGE_CHUNK", messageId: "id-3", delta: "正在核对输入" },
+      { type: "ACTIVITY_SNAPSHOT", activityType: "fluora.agent-step", messageId: "id-2", replace: true, content: { label: "执行命令", status: "failed" } },
+    ]);
+  });
+
   it("treats a fence that arrives one backtick at a time as a tool call", async () => {
     const fenced = "```json\n{\"tool\":\"search_modules\",\"arguments\":{\"query\":\"fastqc\"}}\n```";
     const pieces = [fenced.slice(0, 1), fenced.slice(1, 2), fenced.slice(2)];

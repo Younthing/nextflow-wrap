@@ -12,6 +12,9 @@ import { useLayoutStore } from "@/components/layout/layout-store";
 import { getProductTheme } from "@/lib/product-theme";
 
 import { AssistantPanel } from "./assistant-panel";
+import { assistantActivityRenderers } from "./activity-card";
+import { ToolNavigationProvider } from "./tool-record";
+import { PendingConfirmationProvider } from "./pending-confirmation";
 
 const RUNTIME_URL = "/api/copilotkit";
 const productName = getProductTheme().displayName;
@@ -145,12 +148,17 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
           runtimeUrl={status.enabled ? RUNTIME_URL : undefined}
           agents__unsafe_dev_only={status.enabled ? NO_AGENTS : idleAgents}
           properties={properties}
+          renderActivityMessages={assistantActivityRenderers}
           enableInspector={false}
         >
           <ComposerProvider>
-            <AssistantPanel enabled={status.enabled} open={value.open} onOpenChange={setOpen} labels={LABELS}>
-              {children}
-            </AssistantPanel>
+            <ToolNavigationProvider>
+              <PendingConfirmationProvider>
+                <AssistantPanel enabled={status.enabled} open={value.open} onOpenChange={setOpen} labels={LABELS} conversations>
+                  {children}
+                </AssistantPanel>
+              </PendingConfirmationProvider>
+            </ToolNavigationProvider>
           </ComposerProvider>
         </CopilotKitProvider>
       </AssistantContext>
